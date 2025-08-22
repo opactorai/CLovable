@@ -311,7 +311,6 @@ export default function ChatInput({
               className="flex w-full ring-offset-background placeholder:text-gray-500 dark:placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 resize-none text-[16px] leading-snug md:text-base max-h-[200px] bg-transparent focus:bg-transparent flex-1 m-1 rounded-md p-0 text-gray-900 dark:text-gray-100"
               id="chatinput"
               placeholder={placeholder}
-              maxLength={50000}
               disabled={disabled}
               style={{ minHeight: '40px', height: '40px' }}
             />
