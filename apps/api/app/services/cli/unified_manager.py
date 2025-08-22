@@ -18,7 +18,8 @@ import base64
 def get_project_root() -> str:
     """Get project root directory using relative path navigation"""
     current_file_dir = os.path.dirname(os.path.abspath(__file__))
-    # unified_manager.py -> cli -> services -> app -> api -> apps -> project-root
+    # unified_manager.py is in: app/services/cli/
+    # Navigate: cli -> services -> app -> api -> apps -> project-root
     project_root = os.path.join(current_file_dir, "..", "..", "..", "..", "..")
     return os.path.abspath(project_root)
 
@@ -1026,8 +1027,9 @@ class CursorAgentCLI(BaseCLI):
         try:
             # Read system prompt from the source file using relative path
             current_file_dir = os.path.dirname(os.path.abspath(__file__))
-            # unified_manager.py -> cli -> services -> app
-            app_dir = os.path.join(current_file_dir, "..", "..", "..")
+            # unified_manager.py is in: app/services/cli/
+            # Navigate: cli -> services -> app
+            app_dir = os.path.join(current_file_dir, "..", "..")
             app_dir = os.path.abspath(app_dir)
             system_prompt_path = os.path.join(app_dir, "prompt", "system-prompt.md")
             
