@@ -14,7 +14,7 @@
 <img src="https://img.shields.io/badge/OPACTOR-Website-000000?style=flat&logo=web&logoColor=white" alt="OPACTOR Website">
 </a>
 <a href="https://twitter.com/aaron_xong">
-<img src="https://img.shields.io/badge/Follow-@aaron__xong-1DA1F2?style=flat&logo=twitter&logoColor=white" alt="Follow Aaron">
+<img src="https://img.shields.io/badge/Follow-@aaron__xong-000000?style=flat&logo=x&logoColor=white" alt="Follow Aaron">
 </a>
 </p>
 
