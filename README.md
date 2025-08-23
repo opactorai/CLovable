@@ -225,3 +225,7 @@ If you encounter the error: `Error output dangerously skip permissions cannot be
 ## License
 
 MIT License.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=opactorai/Claudable&type=Date)](https://www.star-history.com/#opactorai/Claudable&Date)
