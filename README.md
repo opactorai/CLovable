@@ -10,6 +10,12 @@
 <a href="https://discord.gg/NJNbafHNQC">
 <img src="https://img.shields.io/badge/Discord-Join%20Community-7289da?style=flat&logo=discord&logoColor=white" alt="Join Discord Community">
 </a>
+<a href="https://opactor.ai">
+<img src="https://img.shields.io/badge/OPACTOR-Website-000000?style=flat&logo=web&logoColor=white" alt="OPACTOR Website">
+</a>
+<a href="https://twitter.com/aaron_xong">
+<img src="https://img.shields.io/badge/Follow-@aaron__xong-1DA1F2?style=flat&logo=twitter&logoColor=white" alt="Follow Aaron">
+</a>
 </p>
 
 ## What is Claudable?
