@@ -232,6 +232,17 @@ If you encounter the error: `Error output dangerously skip permissions cannot be
 
 MIT License.
 
+## Upcoming Features
+These features are in development and will be opened soon.
+- **New CLI Agents** - Trust us, you're going to LOVE this!
+- **Checkpoints for Chat** - Save and restore conversation/codebase states
+- **Advanced MCP Integration** - Native integration with MCP
+- **Enhanced Agent System** - Subagents, AGENTS.md integration
+- **Website Cloning** - You can start a project from a reference URL.
+- Various bug fixes and community PR merges
+
+We're working hard to deliver the features you've been asking for. Stay tuned!
+
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=opactorai/Claudable&type=Date)](https://www.star-history.com/#opactorai/Claudable&Date)
