@@ -799,9 +799,10 @@ export default function ChatPage({ params }: Params) {
     });
   };
 
-  async function runAct(messageOverride?: string) {
+  async function runAct(messageOverride?: string, externalImages?: any[]) {
     let finalMessage = messageOverride || prompt;
-    if (!finalMessage.trim() && uploadedImages.length === 0) {
+    const imagesToUse = externalImages || uploadedImages;
+    if (!finalMessage.trim() && imagesToUse.length === 0) {
       alert('작업 내용을 입력하거나 이미지를 업로드해주세요.');
       return;
     }
@@ -824,13 +825,29 @@ export default function ChatPage({ params }: Params) {
     const requestId = crypto.randomUUID();
     
     try {
+      // Handle images - convert UploadedImage format to API format
+      const processedImages = imagesToUse.map(img => {
+        // Check if this is from ChatInput (has 'path' property) or old format (has 'base64')
+        if (img.path) {
+          // New format from ChatInput - send path directly
+          return {
+            path: img.path,
+            name: img.filename || img.name || 'image'
+          };
+        } else if (img.base64) {
+          // Old format - convert to base64_data
+          return {
+            name: img.name,
+            base64_data: img.base64.split(',')[1], // Remove data:image/...;base64, prefix
+            mime_type: img.base64.split(';')[0].split(':')[1] // Extract mime type
+          };
+        }
+        return img; // Return as-is if already in correct format
+      });
+
       const requestBody = { 
         instruction: finalMessage, 
-        images: uploadedImages.map(img => ({
-          name: img.name,
-          base64_data: img.base64.split(',')[1], // Remove data:image/...;base64, prefix
-          mime_type: img.base64.split(';')[0].split(':')[1] // Extract mime type
-        })),
+        images: processedImages,
         is_initial_prompt: false, // Mark as continuation message
         request_id: requestId // ★ NEW: request_id 추가
       };
@@ -862,10 +879,13 @@ export default function ChatPage({ params }: Params) {
       
       // 프롬프트 및 업로드된 이미지들 초기화
       setPrompt('');
-      uploadedImages.forEach(img => {
-        URL.revokeObjectURL(img.url);
-      });
-      setUploadedImages([]);
+      // Clean up old format images if any
+      if (uploadedImages && uploadedImages.length > 0) {
+        uploadedImages.forEach(img => {
+          if (img.url) URL.revokeObjectURL(img.url);
+        });
+        setUploadedImages([]);
+      }
       
     } catch (error) {
       console.error('Act 실행 오류:', error);
@@ -1264,8 +1284,9 @@ export default function ChatPage({ params }: Params) {
             {/* 간단한 입력 영역 */}
             <div className="p-4 rounded-bl-2xl">
               <ChatInput 
-                onSendMessage={(message) => {
-                  runAct(message);
+                onSendMessage={(message, images) => {
+                  // Pass images to runAct
+                  runAct(message, images);
                 }}
                 disabled={isRunning}
                 placeholder={mode === 'act' ? "Ask Claudable..." : "Chat with Claudable..."}
