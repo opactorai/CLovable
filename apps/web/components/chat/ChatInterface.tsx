@@ -27,6 +27,7 @@ export function ChatInterface({ projectId, conversationId }: ChatInterfaceProps)
     currentSession,
     sendMessage,
     executeAct,
+    executeChat,
     clearMessages
   } = useChat({ projectId, conversationId });
 
@@ -38,7 +39,11 @@ export function ChatInterface({ projectId, conversationId }: ChatInterfaceProps)
 
   const handleSendMessage = useCallback(async (content: string, images?: ImageAttachment[]) => {
     if (mode === 'chat') {
-      await sendMessage(content);
+      await executeChat(content, {
+        cliPreference: preference?.preferred_cli,
+        fallbackEnabled: preference?.fallback_enabled,
+        images
+      });
     } else {
       await executeAct(content, {
         cliPreference: preference?.preferred_cli,
@@ -46,7 +51,7 @@ export function ChatInterface({ projectId, conversationId }: ChatInterfaceProps)
         images
       });
     }
-  }, [mode, sendMessage, executeAct, preference]);
+  }, [mode, executeChat, executeAct, preference]);
 
   const handleCLISelect = useCallback(async (cliId: string) => {
     await updatePreference(cliId);

@@ -88,6 +88,28 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
                     ) : (
                       <div className="whitespace-pre-wrap break-words">
                         {message.content}
+                        {/* Attachments (thumbnails) */}
+                        {message.metadata_json && Array.isArray((message as any).metadata_json.attachments) && (
+                          <div className="mt-2 grid grid-cols-3 gap-2">
+                            {(message as any).metadata_json.attachments.map((att: any, idx: number) => {
+                              const rawUrl = att.url as string;
+                              const fullUrl = rawUrl?.startsWith('http')
+                                ? rawUrl
+                                : `${process.env.NEXT_PUBLIC_API_BASE || ''}${rawUrl || ''}`;
+                              const name = att.name || 'image';
+                              return (
+                                <div key={idx} className="w-20 h-20 overflow-hidden rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800">
+                                  {fullUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={fullUrl} alt={name} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-xs opacity-60">img</div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

@@ -13,7 +13,7 @@ interface UploadedImage {
 }
 
 interface ChatInputProps {
-  onSendMessage: (message: string) => void;
+  onSendMessage: (message: string, images?: UploadedImage[]) => void;
   disabled?: boolean;
   placeholder?: string;
   mode?: 'act' | 'chat';
@@ -46,17 +46,8 @@ export default function ChatInput({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if ((message.trim() || uploadedImages.length > 0) && !disabled) {
-      // Add image paths to message if images are uploaded
-      let finalMessage = message.trim();
-      if (uploadedImages.length > 0) {
-        const imagePaths = uploadedImages.map((img, index) => 
-          `Image #${index + 1} path: ${img.path}`
-        ).join('\n');
-        finalMessage = finalMessage ? `${finalMessage}\n\n${imagePaths}` : imagePaths;
-      }
-      
-      
-      onSendMessage(finalMessage);
+      // Send message and images separately - unified_manager will add image references
+      onSendMessage(message.trim(), uploadedImages);
       setMessage('');
       setUploadedImages([]);
       if (textareaRef.current) {
