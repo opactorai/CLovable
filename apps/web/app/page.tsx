@@ -55,6 +55,9 @@ export default function HomePage() {
       { id: 'gpt-5', name: 'GPT-5' },
       { id: 'claude-sonnet-4', name: 'Claude Sonnet 4' },
       { id: 'claude-opus-4.1', name: 'Claude Opus 4.1' }
+    ],
+    codex: [
+      { id: 'gpt-5', name: 'GPT-5' }
     ]
   };
   
@@ -364,6 +367,8 @@ export default function HomePage() {
       
       // Upload images if any
       let finalPrompt = prompt.trim();
+      let imageData: any[] = [];
+      
       if (uploadedImages.length > 0) {
         try {
           const uploadedPaths = [];
@@ -384,6 +389,12 @@ export default function HomePage() {
               const result = await uploadResponse.json();
               // Use absolute path so AI can read the file with Read tool
               uploadedPaths.push(`Image #${i + 1} path: ${result.absolute_path}`);
+              
+              // Track image data for API
+              imageData.push({
+                name: result.filename || image.name,
+                path: result.absolute_path
+              });
             }
           }
           
@@ -396,8 +407,32 @@ export default function HomePage() {
         }
       }
       
+      // Execute initial prompt directly with images
+      if (finalPrompt.trim()) {
+        try {
+          const actResponse = await fetchAPI(`${API_BASE}/api/chat/${project.id}/act`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              instruction: prompt.trim(), // Original prompt without image paths
+              images: imageData,
+              is_initial_prompt: true,
+              cli_preference: selectedAssistant
+            })
+          });
+          
+          if (actResponse.ok) {
+            console.log('✅ ACT started successfully with images:', imageData);
+          } else {
+            console.error('❌ ACT failed:', await actResponse.text());
+          }
+        } catch (actError) {
+          console.error('❌ ACT API error:', actError);
+        }
+      }
+      
       // Navigate to chat page
-      router.push(`/${project.id}/chat?initial_prompt=${encodeURIComponent(finalPrompt)}`);
+      router.push(`/${project.id}/chat`);
       
     } catch (error) {
       console.error('Failed to create project:', error);
@@ -486,6 +521,8 @@ export default function HomePage() {
       setSelectedModel('claude-sonnet-4');
     } else if (assistant === 'cursor') {
       setSelectedModel('gpt-5');
+    } else if (assistant === 'codex') {
+      setSelectedModel('gpt-5');
     }
     
     setShowAssistantDropdown(false);
@@ -493,7 +530,8 @@ export default function HomePage() {
 
   const assistantOptions = [
     { id: 'claude', name: 'Claude Code', icon: '/claude.png' },
-    { id: 'cursor', name: 'Cursor Agent', icon: '/cursor.png' }
+    { id: 'cursor', name: 'Cursor Agent', icon: '/cursor.png' },
+    { id: 'codex', name: 'Codex', icon: '/oai.png' }
   ];
 
   return (
@@ -816,13 +854,13 @@ export default function HomePage() {
                   >
                     <div className="w-4 h-4 rounded overflow-hidden">
                       <img 
-                        src={selectedAssistant === 'claude' ? '/claude.png' : '/cursor.png'} 
-                        alt={selectedAssistant === 'claude' ? 'Claude' : 'Cursor'}
+                        src={selectedAssistant === 'claude' ? '/claude.png' : selectedAssistant === 'cursor' ? '/cursor.png' : '/oai.png'} 
+                        alt={selectedAssistant === 'claude' ? 'Claude' : selectedAssistant === 'cursor' ? 'Cursor' : 'Codex'}
                         className="w-full h-full object-contain"
                       />
                     </div>
                     <span className="hidden md:flex text-xs">
-                      {selectedAssistant === 'claude' ? 'Claude Code' : 'Cursor Agent'}
+                      {selectedAssistant === 'claude' ? 'Claude Code' : selectedAssistant === 'cursor' ? 'Cursor Agent' : 'Codex'}
                     </span>
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 -960 960 960" className={`shrink-0 transition-transform ${showAssistantDropdown ? 'rotate-0' : 'rotate-90'}`} fill="currentColor">
                       <path d="M530-481 353-658q-9-9-8.5-21t9.5-21 21.5-9 21.5 9l198 198q5 5 7 10t2 11-2 11-7 10L396-261q-9 9-21 8.5t-21-9.5-9-21.5 9-21.5z"/>
