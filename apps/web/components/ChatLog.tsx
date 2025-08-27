@@ -823,7 +823,109 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
                   <div className="flex justify-end">
                     <div className="max-w-[80%] bg-gray-100 dark:bg-gray-800 rounded-lg px-4 py-3">
                       <div className="text-sm text-gray-900 dark:text-white break-words">
-                        {shortenPath(cleanUserMessage(message.content))}
+                        {(() => {
+                          const cleanedMessage = cleanUserMessage(message.content);
+                          
+                          // Check if message contains image paths
+                          const imagePattern = /Image #\d+ path: ([^\n]+)/g;
+                          const imagePaths: string[] = [];
+                          let match;
+                          
+                          while ((match = imagePattern.exec(cleanedMessage)) !== null) {
+                            imagePaths.push(match[1]);
+                          }
+                          
+                          // Remove image paths from message
+                          const messageWithoutPaths = cleanedMessage.replace(/\n*Image #\d+ path: [^\n]+/g, '').trim();
+                          
+                          return (
+                            <>
+                              {messageWithoutPaths && (
+                                <div>{shortenPath(messageWithoutPaths)}</div>
+                              )}
+                              {(() => {
+                                // Use attachments from metadata if available, otherwise fallback to parsed paths
+                                const attachments = message.metadata_json?.attachments || [];
+                                console.log('🖼️ Message metadata:', message.metadata_json);
+                                console.log('🖼️ Attachments found:', attachments);
+                                if (attachments.length > 0) {
+                                  return (
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      {attachments.map((attachment: any, idx: number) => {
+                                        const imageUrl = `${API_BASE}${attachment.url}`;
+                                        console.log('🔗 Image URL:', imageUrl, 'for attachment:', attachment);
+                                        return (
+                                        <div key={idx} className="relative group">
+                                          <div className="w-40 h-40 bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600">
+                                            <img 
+                                              src={imageUrl}
+                                              alt={`Image ${idx + 1}`}
+                                              className="w-full h-full object-cover"
+                                              onError={(e) => {
+                                                // Fallback to icon if image fails to load
+                                                const target = e.target as HTMLImageElement;
+                                                console.error('❌ Image failed to load:', target.src, 'Error:', e);
+                                                target.style.display = 'none';
+                                                const parent = target.parentElement;
+                                                if (parent) {
+                                                  parent.innerHTML = `
+                                                    <div class="w-full h-full flex items-center justify-center">
+                                                      <svg class="w-16 h-16 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                      </svg>
+                                                    </div>
+                                                  `;
+                                                }
+                                              }}
+                                            />
+                                          </div>
+                                          <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 rounded-lg transition-opacity flex items-center justify-center">
+                                            <span className="text-white text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-60 px-2 py-1 rounded">
+                                              #{idx + 1}
+                                            </span>
+                                          </div>
+                                          {/* Tooltip with filename */}
+                                          <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                                            {attachment.name}
+                                          </div>
+                                        </div>
+                                        );
+                                      })}
+                                    </div>
+                                  );
+                                } else if (imagePaths.length > 0) {
+                                  // Fallback to old method for backward compatibility
+                                  return (
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      {imagePaths.map((path, idx) => {
+                                        const filename = path.split('/').pop() || 'image';
+                                        return (
+                                          <div key={idx} className="relative group">
+                                            <div className="w-40 h-40 bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600 flex items-center justify-center">
+                                              <svg className="w-16 h-16 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                              </svg>
+                                            </div>
+                                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 rounded-lg transition-opacity flex items-center justify-center">
+                                              <span className="text-white text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-60 px-2 py-1 rounded">
+                                                #{idx + 1}
+                                              </span>
+                                            </div>
+                                            {/* Tooltip with filename */}
+                                            <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                                              {filename}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })()}
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
