@@ -161,13 +161,55 @@ export function useChat({ projectId, conversationId }: UseChatOptions) {
       
       // ★ NEW: request_id 생성
       const requestId = crypto.randomUUID();
+
+      // ★ NEW: Upload images first to get server URLs and absolute paths
+      let preparedImages: any[] | undefined = undefined;
+      if (options?.images && options.images.length > 0) {
+        const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '';
+        preparedImages = [];
+        for (const img of options.images) {
+          try {
+            // If we only have a data URL, convert to Blob for upload
+            let blob: Blob | null = null;
+            if (img.url && img.url.startsWith('data:')) {
+              const res = await fetch(img.url);
+              blob = await res.blob();
+            }
+
+            // Upload via multipart/form-data
+            const form = new FormData();
+            if (blob) {
+              const filename = img.name || 'image.png';
+              form.append('file', blob, filename);
+            } else {
+              // If no blob (unexpected), skip this image gracefully
+              continue;
+            }
+            const uploadResp = await fetch(`${API_BASE}/api/assets/${projectId}/upload`, {
+              method: 'POST',
+              body: form
+            });
+            if (uploadResp.ok) {
+              const data = await uploadResp.json();
+              // Provide absolute path for CLI to Read, and filename for display
+              preparedImages.push({
+                path: data.absolute_path,
+                name: data.filename,
+              });
+            }
+          } catch (e) {
+            console.error('Image upload failed:', e);
+          }
+        }
+      }
       
       const request: ActRequest = {
         instruction,
         conversation_id: conversationId,
         cli_preference: options?.cliPreference,
         fallback_enabled: options?.fallbackEnabled,
-        images: options?.images,
+        // Send only server-side prepared images (absolute paths)
+        images: preparedImages as any,
         request_id: requestId
       };
       
@@ -195,6 +237,78 @@ export function useChat({ projectId, conversationId }: UseChatOptions) {
       setIsLoading(false);
     }
   }, [projectId, conversationId, createRequest]);
+
+  // Execute Chat (same pipeline as Act but different endpoint and event semantics)
+  const executeChat = useCallback(async (
+    instruction: string,
+    options?: {
+      cliPreference?: string;
+      fallbackEnabled?: boolean;
+      images?: ImageAttachment[];
+    }
+  ) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      // Upload images first (same as ACT)
+      let preparedImages: any[] | undefined = undefined;
+      if (options?.images && options.images.length > 0) {
+        const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '';
+        preparedImages = [];
+        for (const img of options.images) {
+          try {
+            let blob: Blob | null = null;
+            if (img.url && img.url.startsWith('data:')) {
+              const res = await fetch(img.url);
+              blob = await res.blob();
+            }
+            const form = new FormData();
+            if (blob) {
+              const filename = img.name || 'image.png';
+              form.append('file', blob, filename);
+            } else {
+              continue;
+            }
+            const uploadResp = await fetch(`${API_BASE}/api/assets/${projectId}/upload`, {
+              method: 'POST',
+              body: form
+            });
+            if (uploadResp.ok) {
+              const data = await uploadResp.json();
+              preparedImages.push({ path: data.absolute_path, name: data.filename });
+            }
+          } catch (e) {
+            console.error('Image upload failed:', e);
+          }
+        }
+      }
+
+      const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '';
+      const response = await fetch(`${API_BASE}/api/chat/${projectId}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instruction,
+          conversation_id: conversationId,
+          cli_preference: options?.cliPreference,
+          fallback_enabled: options?.fallbackEnabled,
+          images: preparedImages
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to execute chat');
+      const result = await response.json();
+      setCurrentSession(result);
+      return result;
+    } catch (error) {
+      console.error('Failed to execute chat:', error);
+      setError('Failed to execute chat');
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [projectId, conversationId]);
 
   // Clear messages
   const clearMessages = useCallback(async () => {
@@ -230,6 +344,7 @@ export function useChat({ projectId, conversationId }: UseChatOptions) {
     hasActiveRequests, // ★ NEW: 활성 요청 여부
     sendMessage,
     executeAct,
+    executeChat,
     clearMessages,
     loadMessages
   };
