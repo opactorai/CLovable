@@ -36,6 +36,7 @@ class CLIStatusResponse(BaseModel):
 class AllCLIStatusResponse(BaseModel):
     claude: CLIStatusResponse
     cursor: CLIStatusResponse
+    codex: CLIStatusResponse
     preferred_cli: str
 
 
@@ -184,8 +185,17 @@ async def get_all_cli_status(project_id: str, db: Session = Depends(get_db)):
         models=[]
     )
     
+    codex_status = CLIStatusResponse(
+        cli_type="codex",
+        available=True,
+        configured=True,
+        error=None,
+        models=["gpt-5"]
+    )
+    
     return AllCLIStatusResponse(
         claude=claude_status,
         cursor=cursor_status,
+        codex=codex_status,
         preferred_cli=preferred_cli
     )

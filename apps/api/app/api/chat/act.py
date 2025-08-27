@@ -27,7 +27,9 @@ router = APIRouter()
 
 class ImageAttachment(BaseModel):
     name: str
-    base64_data: str
+    # Either base64_data or path must be provided
+    base64_data: Optional[str] = None
+    path: Optional[str] = None  # Absolute path to image file
     mime_type: str = "image/jpeg"
 
 
@@ -516,18 +518,79 @@ async def run_act(
     fallback_enabled = body.fallback_enabled if body.fallback_enabled is not None else project.fallback_enabled
     conversation_id = body.conversation_id or str(uuid.uuid4())
     
-    # Save user instruction as message
+    # 🔍 DEBUG: Log incoming request data
+    print(f"📥 ACT Request - Project: {project_id}")
+    print(f"📥 Instruction: {body.instruction[:100]}...")
+    print(f"📥 Images count: {len(body.images)}")
+    print(f"📥 Images data: {body.images}")
+    for i, img in enumerate(body.images):
+        print(f"📥 Image {i+1}: {img}")
+        if hasattr(img, '__dict__'):
+            print(f"📥 Image {i+1} dict: {img.__dict__}")
+    
+    # Extract image paths and build attachments for metadata/WS
+    image_paths = []
+    attachments = []
+    import os as _os
+    
+    print(f"🔍 Processing {len(body.images)} images...")
+    for i, img in enumerate(body.images):
+        print(f"🔍 Processing image {i+1}: {img}")
+        
+        img_dict = img if isinstance(img, dict) else img.__dict__ if hasattr(img, '__dict__') else {}
+        print(f"🔍 Image {i+1} converted to dict: {img_dict}")
+        
+        p = img_dict.get('path')
+        n = img_dict.get('name')
+        print(f"🔍 Image {i+1} - path: {p}, name: {n}")
+        
+        if p:
+            print(f"🔍 Adding path to image_paths: {p}")
+            image_paths.append(p)
+            try:
+                fname = _os.path.basename(p)
+                print(f"🔍 Processing path: {p}")
+                print(f"🔍 Extracted filename: {fname}")
+                if fname and fname.strip():
+                    attachment = {
+                        "name": n or fname,
+                        "url": f"/api/assets/{project_id}/{fname}"
+                    }
+                    print(f"🔍 Created attachment: {attachment}")
+                    attachments.append(attachment)
+                else:
+                    print(f"❌ Failed to extract filename from: {p}")
+            except Exception as e:
+                print(f"❌ Exception processing path {p}: {e}")
+                pass
+        elif n:
+            print(f"🔍 Adding name to image_paths: {n}")
+            image_paths.append(n)
+        else:
+            print(f"❌ Image {i+1} has neither path nor name!")
+    
+    print(f"🔍 Final image_paths: {image_paths}")
+    print(f"🔍 Final attachments: {attachments}")
+    
+    # Save user instruction as message (with image paths in content for display)
+    message_content = body.instruction
+    if image_paths:
+        image_refs = [f"Image #{i+1} path: {path}" for i, path in enumerate(image_paths)]
+        message_content = f"{body.instruction}\n\n{chr(10).join(image_refs)}"
+    
     user_message = Message(
         id=str(uuid.uuid4()),
         project_id=project_id,
         role="user",
         message_type="chat",
-        content=body.instruction,
+        content=message_content,
         metadata_json={
             "type": "act_instruction",
             "cli_preference": cli_preference.value,
             "fallback_enabled": fallback_enabled,
-            "has_images": len(body.images) > 0
+            "has_images": len(body.images) > 0,
+            "image_paths": image_paths,
+            "attachments": attachments
         },
         conversation_id=conversation_id,
         created_at=datetime.utcnow()
@@ -572,7 +635,7 @@ async def run_act(
                 "id": user_message.id,
                 "role": "user",
                 "message_type": "chat",
-                "content": body.instruction,
+                "content": message_content,
                 "metadata_json": user_message.metadata_json,
                 "parent_message_id": None,
                 "session_id": session.id,
@@ -636,18 +699,54 @@ async def run_chat(
     fallback_enabled = body.fallback_enabled if body.fallback_enabled is not None else project.fallback_enabled
     conversation_id = body.conversation_id or str(uuid.uuid4())
     
-    # Save user instruction as message
+    # Extract image paths and build attachments for metadata/WS
+    image_paths = []
+    attachments = []
+    import os as _os2
+    for img in body.images:
+        img_dict = img if isinstance(img, dict) else img.__dict__ if hasattr(img, '__dict__') else {}
+        p = img_dict.get('path')
+        n = img_dict.get('name')
+        if p:
+            image_paths.append(p)
+            try:
+                fname = _os2.path.basename(p)
+                print(f"🔍 [CHAT] Processing path: {p}")
+                print(f"🔍 [CHAT] Extracted filename: {fname}")
+                if fname and fname.strip():
+                    attachment = {
+                        "name": n or fname,
+                        "url": f"/api/assets/{project_id}/{fname}"
+                    }
+                    print(f"🔍 [CHAT] Created attachment: {attachment}")
+                    attachments.append(attachment)
+                else:
+                    print(f"❌ [CHAT] Failed to extract filename from: {p}")
+            except Exception as e:
+                print(f"❌ [CHAT] Exception processing path {p}: {e}")
+                pass
+        elif n:
+            image_paths.append(n)
+    
+    # Save user instruction as message (with image paths in content for display)
+    message_content = body.instruction
+    if image_paths:
+        image_refs = [f"Image #{i+1} path: {path}" for i, path in enumerate(image_paths)]
+        message_content = f"{body.instruction}\n\n{chr(10).join(image_refs)}"
+    
     user_message = Message(
         id=str(uuid.uuid4()),
         project_id=project_id,
         role="user",
         message_type="chat",
-        content=body.instruction,
+        content=message_content,
         metadata_json={
             "type": "chat_instruction",
             "cli_preference": cli_preference.value,
             "fallback_enabled": fallback_enabled,
-            "has_images": len(body.images) > 0
+            "has_images": len(body.images) > 0,
+            "image_paths": image_paths,
+            "attachments": attachments
         },
         conversation_id=conversation_id,
         created_at=datetime.utcnow()
@@ -679,7 +778,7 @@ async def run_chat(
                 "id": user_message.id,
                 "role": "user",
                 "message_type": "chat",
-                "content": body.instruction,
+                "content": message_content,
                 "metadata_json": user_message.metadata_json,
                 "parent_message_id": None,
                 "session_id": session.id,

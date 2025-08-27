@@ -28,6 +28,27 @@ async def upload_logo(project_id: str, body: LogoRequest, db: Session = Depends(
     return {"path": f"assets/logo.png"}
 
 
+@router.get("/{project_id}/{filename}")
+async def get_image(project_id: str, filename: str, db: Session = Depends(get_db)):
+    """Get an image file from project assets directory"""
+    from fastapi.responses import FileResponse
+    
+    # Verify project exists
+    row = db.get(ProjectModel, project_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Build file path
+    file_path = os.path.join(settings.projects_root, project_id, "assets", filename)
+    
+    # Check if file exists
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Image not found")
+    
+    # Return the image file
+    return FileResponse(file_path)
+
+
 @router.post("/{project_id}/upload")
 async def upload_image(project_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
     """Upload an image file to project assets directory"""
