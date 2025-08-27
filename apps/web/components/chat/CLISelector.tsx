@@ -50,8 +50,13 @@ export function CLISelector({ options, selected, onSelect, onClose }: CLISelecto
             >
               <div className="flex items-start justify-between">
                 <div className="text-left">
-                  <div className="font-medium text-gray-900 dark:text-white">
-                    {option.name}
+                  <div className="flex items-center gap-3">
+                    {option.icon && (
+                      <img src={option.icon} alt={option.name} className="w-6 h-6" />
+                    )}
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      {option.name}
+                    </span>
                   </div>
                   <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                     {option.description}

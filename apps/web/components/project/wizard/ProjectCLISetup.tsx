@@ -50,6 +50,9 @@ export function ProjectCLISetup({
               />
               <div className="flex-1">
                 <div className="flex items-center gap-2">
+                  {option.icon && (
+                    <img src={option.icon} alt={option.name} className="w-5 h-5" />
+                  )}
                   <span className="font-medium text-gray-900 dark:text-white">
                     {option.name}
                   </span>

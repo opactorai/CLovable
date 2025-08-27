@@ -95,15 +95,13 @@ export const CLI_OPTIONS: CLIOption[] = [
   {
     id: 'codex',
     name: 'Codex',
-    description: '(Coming Soon)',
+    description: 'Advanced AI coding assistant with autonomous development capabilities',
+    icon: '/oai.png',
     available: true,
     configured: false,
-    enabled: false,
+    enabled: true,
     models: [
-      { id: 'gpt-5', name: 'GPT-5' },
-      { id: 'gpt-4.1', name: 'GPT-4.1' },
-      { id: 'o3-mini', name: 'OpenAI o3-mini' },
-      { id: 'code-davinci-002', name: 'Code Davinci 002' }
+      { id: 'gpt-5', name: 'GPT-5' }
     ]
   }
 ];
