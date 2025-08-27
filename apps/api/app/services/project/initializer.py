@@ -71,27 +71,86 @@ async def initialize_project(project_id: str, name: str) -> str:
 
 async def cleanup_project(project_id: str) -> bool:
     """
-    Clean up project files and directories
-    
+    Clean up project files and directories. Be robust against running preview
+    processes, transient filesystem locks, and read-only files.
+
     Args:
         project_id: Project identifier to clean up
-    
+
     Returns:
         bool: True if cleanup was successful
     """
-    
-    try:
-        project_root = os.path.join(settings.projects_root, project_id)
-        
-        if os.path.exists(project_root):
-            import shutil
-            shutil.rmtree(project_root)
-            return True
-        
+
+    project_root = os.path.join(settings.projects_root, project_id)
+
+    # Nothing to do
+    if not os.path.exists(project_root):
         return False
-    
+
+    # 1) Ensure any running preview processes for this project are terminated
+    try:
+        from app.services.local_runtime import cleanup_project_resources
+        cleanup_project_resources(project_id)
     except Exception as e:
-        print(f"Error cleaning up project {project_id}: {e}")
+        # Do not fail cleanup because of process stop errors
+        print(f"[cleanup] Warning: failed stopping preview process for {project_id}: {e}")
+
+    # 2) Robust recursive deletion with retries
+    import time
+    import errno
+    import stat
+    import shutil
+
+    def _onerror(func, path, exc_info):
+        # Try to chmod and retry if permission error
+        try:
+            if not os.path.exists(path):
+                return
+            os.chmod(path, stat.S_IWUSR | stat.S_IRUSR | stat.S_IXUSR)
+            func(path)
+        except Exception:
+            pass
+
+    attempts = 0
+    max_attempts = 5
+    last_err = None
+    while attempts < max_attempts:
+        try:
+            shutil.rmtree(project_root, onerror=_onerror)
+            return True
+        except OSError as e:
+            last_err = e
+            # On macOS, ENOTEMPTY (66) or EBUSY can happen if watchers are active
+            if e.errno in (errno.ENOTEMPTY, errno.EBUSY, 66):
+                time.sleep(0.25 * (attempts + 1))
+                attempts += 1
+                continue
+            else:
+                print(f"Error cleaning up project {project_id}: {e}")
+                return False
+        except Exception as e:
+            last_err = e
+            print(f"Error cleaning up project {project_id}: {e}")
+            return False
+
+    # Final attempt to handle lingering dotfiles
+    try:
+        # Remove remaining leaf entries then rmdir tree if any
+        for root, dirs, files in os.walk(project_root, topdown=False):
+            for name in files:
+                try:
+                    os.remove(os.path.join(root, name))
+                except Exception:
+                    pass
+            for name in dirs:
+                try:
+                    os.rmdir(os.path.join(root, name))
+                except Exception:
+                    pass
+        os.rmdir(project_root)
+        return True
+    except Exception as e:
+        print(f"Error cleaning up project {project_id}: {e if e else last_err}")
         return False
 
 
