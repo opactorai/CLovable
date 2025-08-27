@@ -86,15 +86,14 @@ const CLI_OPTIONS: CLIOption[] = [
   {
     id: 'codex',
     name: 'Codex CLI',
-    icon: '',
-    description: 'OpenAI Codex with GPT-5 integration (Coming Soon)',
+    icon: '/oai.png',
+    description: 'OpenAI Codex with GPT-5 integration',
     color: 'from-green-500 to-teal-600',
     downloadUrl: 'https://github.com/openai/codex',
-    installCommand: 'npm install -g openai-codex-cli',
-    enabled: false,
+    installCommand: 'npm install -g @openai/codex',
+    enabled: true,
     models: [
-      { id: 'gpt-5', name: 'GPT-5' },
-      { id: 'gpt-4.1', name: 'GPT-4.1' },
+      { id: 'gpt-5', name: 'GPT-5' }
     ]
   }
 ];
@@ -553,6 +552,9 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                                 {cli.id === 'cursor' && (
                                   <img src="/cursor.png" alt="Cursor" className="w-5 h-5" />
                                 )}
+                                {cli.id === 'codex' && (
+                                  <img src="/oai.png" alt="Codex" className="w-5 h-5" />
+                                )}
                                 <h4 className="font-medium text-gray-900 dark:text-white">{cli.name}</h4>
                                 {isChecking ? (
                                   <span className="text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 px-2 py-1 rounded-full">
@@ -633,6 +635,9 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                                       )}
                                       {cli.id === 'cursor' && (
                                         <img src="/cursor.png" alt="Cursor" className="w-5 h-5" />
+                                      )}
+                                      {cli.id === 'codex' && (
+                                        <img src="/oai.png" alt="Codex" className="w-5 h-5" />
                                       )}
                                       <h4 className="font-medium text-gray-900 dark:text-white">{cli.name}</h4>
                                       {isChecking ? (

@@ -1409,31 +1409,31 @@ class CodexCLI(BaseCLI):
     
     async def check_availability(self) -> Dict[str, Any]:
         """Check if Codex CLI is available"""
+        print(f"[DEBUG] CodexCLI.check_availability called")
         try:
             # Check if codex is installed and working
+            print(f"[DEBUG] Running command: codex --version")
             result = await asyncio.create_subprocess_shell(
-                "codex --help",
+                "codex --version",
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
             stdout, stderr = await result.communicate()
             
+            print(f"[DEBUG] Command result: returncode={result.returncode}")
+            print(f"[DEBUG] stdout: {stdout.decode().strip()}")
+            print(f"[DEBUG] stderr: {stderr.decode().strip()}")
+            
             if result.returncode != 0:
+                error_msg = f"Codex CLI not installed or not working (returncode: {result.returncode}). stderr: {stderr.decode().strip()}"
+                print(f"[DEBUG] {error_msg}")
                 return {
                     "available": False,
                     "configured": False,
-                    "error": "Codex CLI not installed or not working.\\n\\nTo install:\\n1. Install Codex CLI\\n2. Setup your API keys\\n3. Try running your prompt again"
+                    "error": error_msg
                 }
             
-            # Check if help output contains expected content
-            help_output = stdout.decode() + stderr.decode()
-            if "codex" not in help_output.lower():
-                return {
-                    "available": False,
-                    "configured": False,
-                    "error": "Codex CLI not responding correctly.\\n\\nPlease try:\\n1. Reinstall Codex CLI\\n2. Check installation: codex --help"
-                }
-            
+            print(f"[DEBUG] Codex CLI available!")
             return {
                 "available": True,
                 "configured": True,
@@ -1441,10 +1441,12 @@ class CodexCLI(BaseCLI):
                 "default_models": ["gpt-5", "gpt-4o", "claude-3.5-sonnet"]
             }
         except Exception as e:
+            error_msg = f"Failed to check Codex CLI: {str(e)}"
+            print(f"[DEBUG] Exception in check_availability: {error_msg}")
             return {
                 "available": False,
                 "configured": False,
-                "error": f"Failed to check Codex CLI: {str(e)}\\n\\nTo install Codex CLI and setup API keys"
+                "error": error_msg
             }
     
     async def execute_with_streaming(

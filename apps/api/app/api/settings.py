@@ -83,17 +83,21 @@ async def get_cli_status() -> Dict[str, Any]:
     results = {}
     
     # 새로운 UnifiedCLIManager의 CLI 인스턴스 사용
-    from app.services.cli.unified_manager import ClaudeCodeCLI, CursorAgentCLI
+    from app.services.cli.unified_manager import ClaudeCodeCLI, CursorAgentCLI, CodexCLI
     cli_instances = {
         "claude": ClaudeCodeCLI(),
-        "cursor": CursorAgentCLI()
+        "cursor": CursorAgentCLI(),
+        "codex": CodexCLI()
     }
     
     # 모든 CLI를 병렬로 확인
     tasks = []
     for cli_id, cli_instance in cli_instances.items():
+        print(f"[DEBUG] Setting up check for CLI: {cli_id}")
         async def check_cli(cli_id, cli_instance):
+            print(f"[DEBUG] Checking CLI: {cli_id}")
             status = await cli_instance.check_availability()
+            print(f"[DEBUG] CLI {cli_id} status: {status}")
             return cli_id, status
         
         tasks.append(check_cli(cli_id, cli_instance))
