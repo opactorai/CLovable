@@ -20,6 +20,7 @@ interface ChatInputProps {
   onModeChange?: (mode: 'act' | 'chat') => void;
   projectId?: string;
   preferredCli?: string;
+  selectedModel?: string;
   thinkingMode?: boolean;
   onThinkingModeChange?: (enabled: boolean) => void;
 }
@@ -32,11 +33,11 @@ export default function ChatInput({
   onModeChange,
   projectId,
   preferredCli = 'claude',
+  selectedModel = '',
   thinkingMode = false,
   onThinkingModeChange
 }: ChatInputProps) {
   const [message, setMessage] = useState('');
-  const [showModeDropdown, setShowModeDropdown] = useState(false);
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -234,21 +235,6 @@ export default function ChatInput({
     };
   }, [projectId, preferredCli]);
 
-  // Close menus when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Element;
-      if (!target.closest('.mode-dropdown-container')) {
-        setShowModeDropdown(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
   return (
     <div className="flex max-h-[calc(100%-37px)] shrink-0 flex-col overflow-visible">
       <div className="relative top-6">
@@ -289,7 +275,7 @@ export default function ChatInput({
         className={`group flex flex-col gap-2 rounded-3xl border transition-all duration-150 ease-in-out relative mr-2 md:mr-0 p-3 ${
           isDragOver 
             ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-lg' 
-            : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 hover:border-gray-300 dark:hover:border-gray-600 focus-within:border-gray-400 dark:focus-within:border-gray-500 focus-within:shadow-lg'
+            : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'
         }`}
       >
         <div data-state="closed" style={{ cursor: 'text' }}>
@@ -352,60 +338,67 @@ export default function ChatInput({
                 </label>
               )
             )}
+            
+            {/* Agent and Model Display */}
+            {preferredCli && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-full">
+                {/* Agent Icon */}
+                <img 
+                  src={preferredCli === 'claude' ? '/claude.png' : 
+                       preferredCli === 'cursor' ? '/cursor.png' : 
+                       '/oai.png'} 
+                  alt={preferredCli}
+                  className="w-4 h-4"
+                />
+                <span>
+                  {preferredCli === 'claude' ? 'Claude Code' : 
+                   preferredCli === 'cursor' ? 'Cursor Agent' : 
+                   'Codex CLI'}
+                </span>
+                {selectedModel && (
+                  <>
+                    <span className="text-gray-400 dark:text-gray-600">•</span>
+                    <span className="text-gray-500 dark:text-gray-500">
+                      {selectedModel === 'claude-sonnet-4' ? 'Sonnet 4' : 
+                       selectedModel === 'claude-opus-4.1' ? 'Opus 4.1' :
+                       selectedModel === 'gpt-5' ? 'GPT-5' :
+                       selectedModel}
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
           </div>
           
           <div className="ml-auto flex items-center gap-2">
-            {/* Mode Selector - Similar to main page design */}
-            <div className="mode-dropdown-container relative">
+            {/* Mode Toggle Switch */}
+            <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-full p-0.5">
               <button
                 type="button"
-                onClick={() => setShowModeDropdown(!showModeDropdown)}
-                className="whitespace-nowrap text-sm font-medium transition-colors duration-100 ease-in-out focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 shadow-sm hover:bg-gray-100 dark:hover:bg-white/10 hover:border-gray-300 dark:hover:border-white/20 px-3 py-2 flex h-8 items-center justify-center gap-1.5 rounded-full text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white focus-visible:ring-0"
-                title={mode === 'act' ? 'Act Mode: AI can modify code and create/delete files' : 'Chat Mode: AI provides answers without modifying code'}
+                onClick={() => onModeChange?.('act')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                  mode === 'act'
+                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+                title="Act Mode: AI can modify code and create/delete files"
               >
-                {mode === 'act' ? <Wrench className="h-4 w-4" /> : <MessageSquare className="h-4 w-4" />}
-                <span className="text-xs">{mode === 'act' ? 'Act' : 'Chat'}</span>
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 -960 960 960" className={`shrink-0 transition-transform ${showModeDropdown ? 'rotate-180' : ''}`} fill="currentColor">
-                  <path d="M480-345 240-585l43-43 197 198 197-197 43 43-240 239Z"/>
-                </svg>
+                <Wrench className="h-3.5 w-3.5" />
+                <span>Act</span>
               </button>
-              
-              {showModeDropdown && (
-                <div className="absolute bottom-full mb-1 right-0 z-50 min-w-[150px] rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-gray-900 backdrop-blur-xl shadow-lg">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onModeChange?.('act');
-                      setShowModeDropdown(false);
-                    }}
-                    className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-white/10 first:rounded-t-lg transition-colors ${
-                      mode === 'act' 
-                        ? 'text-gray-900 dark:text-white bg-gray-50 dark:bg-white/5' 
-                        : 'text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white'
-                    }`}
-                    title="Act Mode: AI can modify code and create/delete files directly"
-                  >
-                    <Wrench className="h-4 w-4" />
-                    <span className="text-xs">Act</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onModeChange?.('chat');
-                      setShowModeDropdown(false);
-                    }}
-                    className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-white/10 last:rounded-b-lg transition-colors ${
-                      mode === 'chat' 
-                        ? 'text-gray-900 dark:text-white bg-gray-50 dark:bg-white/5' 
-                        : 'text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white'
-                    }`}
-                    title="Chat Mode: AI provides answers and explanations without modifying code"
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                    <span className="text-xs">Chat</span>
-                  </button>
-                </div>
-              )}
+              <button
+                type="button"
+                onClick={() => onModeChange?.('chat')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                  mode === 'chat'
+                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+                title="Chat Mode: AI provides answers without modifying code"
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+                <span>Chat</span>
+              </button>
             </div>
             
             

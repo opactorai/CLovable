@@ -5,6 +5,7 @@ import { MotionDiv } from '@/lib/motion';
 import { useTheme } from '@/components/ThemeProvider';
 import ServiceConnectionModal from '@/components/ServiceConnectionModal';
 import { FaCog } from 'react-icons/fa';
+import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
 
@@ -35,7 +36,7 @@ const CLI_OPTIONS: CLIOption[] = [
     description: 'Anthropic Claude with advanced reasoning',
     color: 'from-orange-500 to-red-600',
     brandColor: '#DE7356',
-    downloadUrl: 'https://www.anthropic.com/claude-code',
+    downloadUrl: 'https://docs.anthropic.com/en/docs/claude-code/overview',
     installCommand: 'npm install -g @anthropic-ai/claude-code',
     enabled: true,
     models: [
@@ -51,7 +52,7 @@ const CLI_OPTIONS: CLIOption[] = [
     color: 'from-gray-500 to-gray-600',
     brandColor: '#6B7280',
     downloadUrl: 'https://cursor.com/cli',
-    installCommand: 'curl https://cursor.com/install -fsS | bash',
+    installCommand: '# See official guide: https://cursor.com/cli',
     enabled: true,
     models: [
       { id: 'gpt-5', name: 'GPT-5' },
@@ -66,7 +67,7 @@ const CLI_OPTIONS: CLIOption[] = [
     color: 'from-red-500 to-pink-600',
     brandColor: '#EF4444',
     downloadUrl: 'https://github.com/QwenLM/qwen-code',
-    installCommand: 'npm install -g @qwen-code/qwen-code',
+    installCommand: 'npm install -g @qwen-code/qwen-code@latest',
     enabled: true,
     models: []
   },
@@ -77,7 +78,7 @@ const CLI_OPTIONS: CLIOption[] = [
     description: 'Gemini 2.5 CLI (ACP)',
     color: 'from-[#DE7356] to-[#e88a6f]',
     downloadUrl: 'https://github.com/google-gemini/gemini-cli',
-    installCommand: 'npm install -g @google/generative-ai-cli',
+    installCommand: 'npm install -g @google/gemini-cli',
     enabled: true,
     models: [
       { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
@@ -109,14 +110,7 @@ interface CLIStatus {
   };
 }
 
-interface GlobalAISettings {
-  default_cli: string;
-  cli_settings: {
-    [key: string]: {
-      model?: string;
-    };
-  };
-}
+// Global settings are provided by context
 
 interface ServiceToken {
   id: string;
@@ -139,10 +133,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
   });
   const [cliStatus, setCLIStatus] = useState<CLIStatus>({});
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [globalSettings, setGlobalSettings] = useState<GlobalAISettings>({
-    default_cli: 'claude',
-    cli_settings: {}
-  });
+  const { settings: globalSettings, setSettings: setGlobalSettings, refresh: refreshGlobalSettings } = useGlobalSettings();
   const [isLoading, setIsLoading] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [installModalOpen, setInstallModalOpen] = useState(false);
@@ -266,6 +257,10 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
         type: 'success', 
         text: 'Settings saved successfully!' 
       });
+      // make sure context stays in sync
+      try {
+        await refreshGlobalSettings();
+      } catch {}
       
       // Clear message after 3 seconds
       setTimeout(() => setSaveMessage(null), 3000);
@@ -544,42 +539,51 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                     const isDefault = globalSettings.default_cli === cli.id;
 
                     return (
-                      <div key={cli.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                        <div className="flex items-start justify-between mb-3">
-                          <div>
-                              <div className="flex items-center gap-2">
-                                {cli.id === 'claude' && (
-                                  <img src="/claude.png" alt="Claude" className="w-5 h-5" />
-                                )}
-                                {cli.id === 'cursor' && (
-                                  <img src="/cursor.png" alt="Cursor" className="w-5 h-5" />
-                                )}
-                                {cli.id === 'codex' && (
-                                  <img src="/oai.png" alt="Codex" className="w-5 h-5" />
-                                )}
-                                {cli.id === 'qwen' && (
-                                  <img src="/qwen.svg" alt="Qwen" className="w-5 h-5" />
-                                )}
-                                {cli.id === 'gemini' && (
-                                  <img src="/gemini.png" alt="Gemini" className="w-5 h-5" />
-                                )}
-                                <h4 className="font-medium text-gray-900 dark:text-white">{cli.name}</h4>
-                                {isChecking ? (
-                                  <span className="text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 px-2 py-1 rounded-full">
-                                    Checking...
-                                  </span>
-                                ) : (
-                                  <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 px-2 py-1 rounded-full">
-                                    ✓ Installed {status?.version && `(v${status.version})`}
-                                  </span>
-                                )}
-                                {globalSettings.default_cli === cli.id && (
-                                  <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-1 rounded-full">
-                                    Default
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-sm text-gray-600 dark:text-gray-400">{cli.description}</p>
+                      <div 
+                        key={cli.id} 
+                        onClick={() => isInstalled && setDefaultCLI(cli.id)}
+                        className={`border rounded-xl pl-4 pr-8 py-4 transition-all ${
+                          !isInstalled 
+                            ? 'border-gray-200/50 dark:border-white/5 cursor-not-allowed bg-gray-50/50 dark:bg-white/[0.02]' 
+                            : isDefault 
+                              ? 'cursor-pointer' 
+                              : 'border-gray-200/50 dark:border-white/5 hover:border-gray-300/50 dark:hover:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer'
+                        }`}
+                        style={isDefault && isInstalled ? {
+                          borderColor: cli.brandColor,
+                          backgroundColor: `${cli.brandColor}08`
+                        } : {}}
+                      >
+                        <div className="flex items-start gap-3 mb-3">
+                          <div className={`flex-shrink-0 ${!isInstalled ? 'opacity-40' : ''}`}>
+                            {cli.id === 'claude' && (
+                              <img src="/claude.png" alt="Claude" className="w-8 h-8" />
+                            )}
+                            {cli.id === 'cursor' && (
+                              <img src="/cursor.png" alt="Cursor" className="w-8 h-8" />
+                            )}
+                            {cli.id === 'codex' && (
+                              <img src="/oai.png" alt="Codex" className="w-8 h-8" />
+                            )}
+                            {cli.id === 'qwen' && (
+                              <img src="/qwen.svg" alt="Qwen" className="w-8 h-8" />
+                            )}
+                            {cli.id === 'gemini' && (
+                              <img src="/gemini.png" alt="Gemini" className="w-8 h-8" />
+                            )}
+                          </div>
+                          <div className={`flex-1 min-w-0 ${!isInstalled ? 'opacity-40' : ''}`}>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-medium text-gray-900 dark:text-white text-sm">{cli.name}</h4>
+                              {isDefault && isInstalled && (
+                                <span className="text-xs font-medium" style={{ color: cli.brandColor }}>
+                                  Default
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">
+                              {cli.description}
+                            </p>
                           </div>
                         </div>
 
@@ -608,7 +612,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                               }}
                               className="w-full px-3 py-1.5 border-2 border-gray-900 dark:border-white rounded-full bg-gray-900 dark:bg-white hover:bg-gray-800 dark:hover:bg-gray-100 text-white dark:text-gray-900 text-xs font-semibold transition-all transform hover:scale-105"
                             >
-                              Install Guide
+                              View Guide
                             </button>
                           </div>
                         )}
@@ -616,90 +620,6 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                     );
                   })}
                   
-                  {/* Show not installed CLIs separately */}
-                  {CLI_OPTIONS.filter(cli => {
-                    const status = cliStatus[cli.id];
-                    return !(status?.installed || false) && cli.enabled !== false;
-                  }).length > 0 && (
-                    <div className="mt-8">
-                      <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4">Not Installed</h4>
-                      <div className="space-y-3">
-                        {CLI_OPTIONS.filter(cli => {
-                          const status = cliStatus[cli.id];
-                          return !(status?.installed || false) && cli.enabled !== false;
-                        }).map((cli) => {
-                          const status = cliStatus[cli.id];
-                          const isChecking = status?.checking || false;
-                          const hasError = status?.error;
-
-                          return (
-                            <div key={cli.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 opacity-75">
-                              <div className="flex items-start justify-between">
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                      {cli.id === 'claude' && (
-                                        <img src="/claude.png" alt="Claude" className="w-5 h-5" />
-                                      )}
-                                      {cli.id === 'cursor' && (
-                                        <img src="/cursor.png" alt="Cursor" className="w-5 h-5" />
-                                      )}
-                                      {cli.id === 'codex' && (
-                                        <img src="/oai.png" alt="Codex" className="w-5 h-5" />
-                                      )}
-                                      {cli.id === 'qwen' && (
-                                        <img src="/qwen.svg" alt="Qwen" className="w-5 h-5" />
-                                      )}
-                                      {cli.id === 'gemini' && (
-                                        <img src="/gemini.png" alt="Gemini" className="w-5 h-5" />
-                                      )}
-                                      <h4 className="font-medium text-gray-900 dark:text-white">{cli.name}</h4>
-                                      {isChecking ? (
-                                        <span className="text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 px-2 py-1 rounded-full">
-                                          Checking...
-                                        </span>
-                                      ) : (
-                                        <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-2 py-1 rounded-full">
-                                          ✗ Not Installed
-                                        </span>
-                                      )}
-                                    </div>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400">{cli.description}</p>
-                                    {hasError && (
-                                      <p className="text-xs text-red-600 dark:text-red-400 mt-1">{hasError}</p>
-                                    )}
-                                </div>
-                              </div>
-
-                              {/* Installation Instructions */}
-                              {!isChecking && (
-                                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
-                                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
-                                    <h5 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Installation</h5>
-                                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                                      Install command:
-                                    </p>
-                                    <code className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-2 py-1 rounded block">
-                                      {cli.installCommand}
-                                    </code>
-                                    <div className="flex items-center gap-2 mt-2">
-                                      <a
-                                        href={cli.downloadUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                                      >
-                                        Download & Instructions →
-                                      </a>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
@@ -949,29 +869,37 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                 </div>
               </div>
 
-              {/* Step 2: Login */}
+              {/* Step 2: Authenticate */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
                   <span className="flex items-center justify-center w-6 h-6 rounded-full text-white text-xs" style={{ backgroundColor: selectedCLI.brandColor }}>
                     2
                   </span>
-                  Login to your account
+                  {selectedCLI.id === 'gemini' && 'Authenticate (OAuth or API Key)'}
+                  {selectedCLI.id === 'qwen' && 'Authenticate (Qwen OAuth or API Key)'}
+                  {selectedCLI.id === 'codex' && 'Start Codex and sign in'}
+                  {selectedCLI.id === 'claude' && 'Start Claude and sign in'}
+                  {selectedCLI.id === 'cursor' && 'Start Cursor CLI and sign in'}
                 </div>
                 <div className="ml-8 flex items-center gap-2 bg-gray-100 dark:bg-gray-900 rounded-lg px-3 py-2">
                   <code className="text-sm text-gray-800 dark:text-gray-200 flex-1">
-                    {selectedCLI.id === 'claude' ? 'claude login' : 
-                     selectedCLI.id === 'cursor' ? 'cursor-agent login' : 
-                     'codex login'}
+                    {selectedCLI.id === 'claude' ? 'claude' :
+                     selectedCLI.id === 'cursor' ? 'cursor-agent' :
+                     selectedCLI.id === 'codex' ? 'codex' :
+                     selectedCLI.id === 'qwen' ? 'qwen' :
+                     selectedCLI.id === 'gemini' ? 'gemini' : ''}
                   </code>
                   <button
                     type="button"
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      const loginCmd = selectedCLI.id === 'claude' ? 'claude login' : 
-                                     selectedCLI.id === 'cursor' ? 'cursor-agent login' : 
-                                     'codex login';
-                      navigator.clipboard.writeText(loginCmd);
+                      const authCmd = selectedCLI.id === 'claude' ? 'claude' :
+                                      selectedCLI.id === 'cursor' ? 'cursor-agent' :
+                                      selectedCLI.id === 'codex' ? 'codex' :
+                                      selectedCLI.id === 'qwen' ? 'qwen' :
+                                      selectedCLI.id === 'gemini' ? 'gemini' : '';
+                      if (authCmd) navigator.clipboard.writeText(authCmd);
                       showToast('Command copied to clipboard', 'success');
                     }}
                     className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
@@ -994,19 +922,23 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                 </div>
                 <div className="ml-8 flex items-center gap-2 bg-gray-100 dark:bg-gray-900 rounded-lg px-3 py-2">
                   <code className="text-sm text-gray-800 dark:text-gray-200 flex-1">
-                    {selectedCLI.id === 'claude' ? 'claude "Hello, Claude!"' : 
-                     selectedCLI.id === 'cursor' ? 'cursor-agent "Hello, Cursor!"' : 
-                     'codex "Hello, Codex!"'}
+                    {selectedCLI.id === 'claude' ? 'claude --version' :
+                     selectedCLI.id === 'cursor' ? 'cursor-agent --version' :
+                     selectedCLI.id === 'codex' ? 'codex --version' :
+                     selectedCLI.id === 'qwen' ? 'qwen --version' :
+                     selectedCLI.id === 'gemini' ? 'gemini --version' : ''}
                   </code>
                   <button
                     type="button"
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      const testCmd = selectedCLI.id === 'claude' ? 'claude "Hello, Claude!"' : 
-                                    selectedCLI.id === 'cursor' ? 'cursor-agent "Hello, Cursor!"' : 
-                                    'codex "Hello, Codex!"';
-                      navigator.clipboard.writeText(testCmd);
+                      const versionCmd = selectedCLI.id === 'claude' ? 'claude --version' :
+                                        selectedCLI.id === 'cursor' ? 'cursor-agent --version' :
+                                        selectedCLI.id === 'codex' ? 'codex --version' :
+                                        selectedCLI.id === 'qwen' ? 'qwen --version' :
+                                        selectedCLI.id === 'gemini' ? 'gemini --version' : '';
+                      if (versionCmd) navigator.clipboard.writeText(versionCmd);
                       showToast('Command copied to clipboard', 'success');
                     }}
                     className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"

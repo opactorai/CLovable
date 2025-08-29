@@ -4,13 +4,14 @@ import { AnimatePresence } from 'framer-motion';
 import { MotionDiv, MotionH3, MotionP, MotionButton } from '../../../lib/motion';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { FaCode, FaDesktop, FaMobileAlt, FaPlay, FaStop, FaSync, FaCog, FaRocket, FaFolder, FaFolderOpen, FaFile, FaFileCode, FaCss3Alt, FaHtml5, FaJs, FaReact, FaPython, FaDocker, FaGitAlt, FaMarkdown, FaDatabase, FaPhp, FaJava, FaRust, FaVuejs, FaLock, FaHome, FaChevronUp, FaChevronRight, FaChevronDown } from 'react-icons/fa';
+import { FaCode, FaDesktop, FaMobileAlt, FaPlay, FaStop, FaSync, FaCog, FaRocket, FaFolder, FaFolderOpen, FaFile, FaFileCode, FaCss3Alt, FaHtml5, FaJs, FaReact, FaPython, FaDocker, FaGitAlt, FaMarkdown, FaDatabase, FaPhp, FaJava, FaRust, FaVuejs, FaLock, FaHome, FaChevronUp, FaChevronRight, FaChevronDown, FaArrowLeft, FaArrowRight } from 'react-icons/fa';
 import { SiTypescript, SiGo, SiRuby, SiSvelte, SiJson, SiYaml, SiCplusplus } from 'react-icons/si';
 import { VscJson } from 'react-icons/vsc';
 import ChatLog from '../../../components/ChatLog';
 import { ProjectSettings } from '../../../components/settings/ProjectSettings';
 import ChatInput from '../../../components/chat/ChatInput';
 import { useUserRequests } from '../../../hooks/useUserRequests';
+import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
 
 // 더 이상 ProjectSettings을 로드하지 않음 (메인 페이지에서 글로벌 설정으로 관리)
 
@@ -176,7 +177,12 @@ export default function ChatPage({ params }: Params) {
   const [isStartingPreview, setIsStartingPreview] = useState(false);
   const [previewInitializationMessage, setPreviewInitializationMessage] = useState('Starting development server...');
   const [preferredCli, setPreferredCli] = useState<string>('claude');
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [usingGlobalDefaults, setUsingGlobalDefaults] = useState<boolean>(true);
   const [thinkingMode, setThinkingMode] = useState<boolean>(false);
+  const [currentRoute, setCurrentRoute] = useState<string>('/');
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [isFileUpdating, setIsFileUpdating] = useState(false);
 
   // Guarded trigger that can be called from multiple places safely
   const triggerInitialPromptIfNeeded = useCallback(() => {
@@ -373,6 +379,7 @@ export default function ChatPage({ params }: Params) {
       setTimeout(() => {
         setPreviewUrl(data.url);
         setIsStartingPreview(false);
+        setCurrentRoute('/'); // Reset to root route when starting
       }, 1000);
     } catch (error) {
       console.error('Error starting preview:', error);
@@ -380,6 +387,19 @@ export default function ChatPage({ params }: Params) {
       setTimeout(() => setIsStartingPreview(false), 2000);
     }
   }
+
+  // Navigate to specific route in iframe
+  const navigateToRoute = (route: string) => {
+    if (previewUrl && iframeRef.current) {
+      const baseUrl = previewUrl.split('?')[0]; // Remove any query params
+      // Ensure route starts with /
+      const normalizedRoute = route.startsWith('/') ? route : `/${route}`;
+      const newUrl = `${baseUrl}${normalizedRoute}`;
+      iframeRef.current.src = newUrl;
+      setCurrentRoute(normalizedRoute);
+    }
+  };
+
 
   async function stop() {
     try {
@@ -521,6 +541,27 @@ export default function ChatPage({ params }: Params) {
       console.error('Error opening file:', error);
       setContent('// Error loading file');
       setSelectedFile(path);
+    }
+  }
+
+  // Reload currently selected file
+  async function reloadCurrentFile() {
+    if (selectedFile && !showPreview) {
+      try {
+        const r = await fetch(`${API_BASE}/api/repo/${projectId}/file?path=${encodeURIComponent(selectedFile)}`);
+        if (r.ok) {
+          const data = await r.json();
+          const newContent = data.content || '';
+          // Only update if content actually changed
+          if (newContent !== content) {
+            setIsFileUpdating(true);
+            setContent(newContent);
+            setTimeout(() => setIsFileUpdating(false), 500);
+          }
+        }
+      } catch (error) {
+        // Silently fail - this is a background refresh
+      }
     }
   }
 
@@ -693,16 +734,62 @@ export default function ChatPage({ params }: Params) {
     }
   }
 
-  async function loadSettings() {
+  async function loadSettings(projectSettings?: { cli?: string; model?: string }) {
     try {
-      const response = await fetch(`${API_BASE}/api/settings`);
-      if (response.ok) {
-        const settings = await response.json();
-        setPreferredCli(settings.preferred_cli || 'claude');
+      console.log('🔧 loadSettings called with project settings:', projectSettings);
+      
+      // Use project settings if available, otherwise check state
+      const hasCliSet = projectSettings?.cli || preferredCli;
+      const hasModelSet = projectSettings?.model || selectedModel;
+      
+      // Only load global settings if project doesn't have CLI/model settings
+      if (!hasCliSet || !hasModelSet) {
+        console.log('⚠️ Missing CLI or model, loading global settings');
+        const globalResponse = await fetch(`${API_BASE}/api/settings/global`);
+        if (globalResponse.ok) {
+          const globalSettings = await globalResponse.json();
+          const defaultCli = globalSettings.default_cli || 'claude';
+          
+          // Only set if not already set by project
+          if (!hasCliSet) {
+            console.log('🔄 Setting CLI from global:', defaultCli);
+            setPreferredCli(defaultCli);
+          }
+          
+          // Set the model for the CLI if not already set
+          if (!hasModelSet) {
+            const cliSettings = globalSettings.cli_settings?.[hasCliSet || defaultCli];
+            if (cliSettings?.model) {
+              setSelectedModel(cliSettings.model);
+            } else {
+              // Set default model based on CLI
+              const currentCli = hasCliSet || defaultCli;
+              if (currentCli === 'claude') {
+                setSelectedModel('claude-sonnet-4');
+              } else if (currentCli === 'cursor') {
+                setSelectedModel('gpt-5');
+              } else if (currentCli === 'codex') {
+                setSelectedModel('gpt-5');
+              }
+            }
+          }
+        } else {
+          // Fallback to project settings
+          const response = await fetch(`${API_BASE}/api/settings`);
+          if (response.ok) {
+            const settings = await response.json();
+            if (!hasCliSet) setPreferredCli(settings.preferred_cli || 'claude');
+            if (!hasModelSet) setSelectedModel(settings.preferred_cli === 'claude' ? 'claude-sonnet-4' : 'gpt-5');
+          }
+        }
       }
     } catch (error) {
       console.error('Failed to load settings:', error);
-      setPreferredCli('claude'); // fallback
+      // Only set fallback if not already set
+      const hasCliSet = projectSettings?.cli || preferredCli;
+      const hasModelSet = projectSettings?.model || selectedModel;
+      if (!hasCliSet) setPreferredCli('claude');
+      if (!hasModelSet) setSelectedModel('claude-sonnet-4');
     }
   }
 
@@ -711,8 +798,31 @@ export default function ChatPage({ params }: Params) {
       const r = await fetch(`${API_BASE}/api/projects/${projectId}`);
       if (r.ok) {
         const project = await r.json();
+        console.log('📋 Loading project info:', {
+          preferred_cli: project.preferred_cli,
+          selected_model: project.selected_model
+        });
         setProjectName(project.name || `Project ${projectId.slice(0, 8)}`);
+        
+        // Set CLI and model from project settings if available
+        if (project.preferred_cli) {
+          console.log('✅ Setting CLI from project:', project.preferred_cli);
+          setPreferredCli(project.preferred_cli);
+        }
+        if (project.selected_model) {
+          console.log('✅ Setting model from project:', project.selected_model);
+          setSelectedModel(project.selected_model);
+        }
+        // Determine if we should follow global defaults (no project-specific prefs)
+        const followGlobal = !project.preferred_cli && !project.selected_model;
+        setUsingGlobalDefaults(followGlobal);
         setProjectDescription(project.description || '');
+        
+        // Return project settings for use in loadSettings
+        return {
+          cli: project.preferred_cli,
+          model: project.selected_model
+        };
         
         // Check if project has initial prompt
         if (project.initial_prompt) {
@@ -752,6 +862,8 @@ export default function ChatPage({ params }: Params) {
         localStorage.setItem(`project_${projectId}_hasInitialPrompt`, 'false');
         setProjectStatus('active');
         setIsInitializing(false);
+        setUsingGlobalDefaults(true);
+        return {}; // Return empty object if no project found
       }
     } catch (error) {
       console.error('Failed to load project info:', error);
@@ -762,6 +874,8 @@ export default function ChatPage({ params }: Params) {
       localStorage.setItem(`project_${projectId}_hasInitialPrompt`, 'false');
       setProjectStatus('active');
       setIsInitializing(false);
+      setUsingGlobalDefaults(true);
+      return {}; // Return empty object on error
     }
   }
 
@@ -849,6 +963,8 @@ export default function ChatPage({ params }: Params) {
         instruction: finalMessage, 
         images: processedImages,
         is_initial_prompt: false, // Mark as continuation message
+        cli_preference: preferredCli, // Add CLI preference
+        selected_model: selectedModel, // Add selected model
         request_id: requestId // ★ NEW: request_id 추가
       };
       
@@ -1063,6 +1179,18 @@ export default function ChatPage({ params }: Params) {
     previousActiveState.current = hasActiveRequests;
   }, [hasActiveRequests, previewUrl]);
 
+  // Poll for file changes in code view
+  useEffect(() => {
+    if (!showPreview && selectedFile) {
+      const interval = setInterval(() => {
+        reloadCurrentFile();
+      }, 2000); // Check every 2 seconds
+
+      return () => clearInterval(interval);
+    }
+  }, [showPreview, selectedFile, projectId]);
+
+
   useEffect(() => { 
     let mounted = true;
     let timer: NodeJS.Timeout | null = null;
@@ -1070,11 +1198,11 @@ export default function ChatPage({ params }: Params) {
     const initializeChat = async () => {
       if (!mounted) return;
       
-      // Load settings first
-      await loadSettings();
+      // Load project info first to get project-specific settings
+      const projectSettings = await loadProjectInfo();
       
-      // Load project info first to check status
-      await loadProjectInfo();
+      // Then load global settings as fallback, passing project settings
+      await loadSettings(projectSettings);
       
       // Always load the file tree regardless of project status
       await loadTree('.');
@@ -1120,6 +1248,27 @@ export default function ChatPage({ params }: Params) {
       }
     };
   }, [projectId, previewUrl, loadDeployStatus, checkCurrentDeployment]);
+
+  // React to global settings changes when using global defaults
+  const { settings: globalSettings } = useGlobalSettings();
+  useEffect(() => {
+    if (!usingGlobalDefaults) return;
+    if (!globalSettings) return;
+
+    const cli = globalSettings.default_cli || 'claude';
+    setPreferredCli(cli);
+
+    const modelFromGlobal = globalSettings.cli_settings?.[cli]?.model;
+    if (modelFromGlobal) {
+      setSelectedModel(modelFromGlobal);
+    } else {
+      // Fallback per CLI
+      if (cli === 'claude') setSelectedModel('claude-sonnet-4');
+      else if (cli === 'cursor') setSelectedModel('gpt-5');
+      else if (cli === 'codex') setSelectedModel('gpt-5');
+      else setSelectedModel('');
+    }
+  }, [globalSettings, usingGlobalDefaults]);
 
 
   // Show loading UI if project is initializing
@@ -1294,6 +1443,7 @@ export default function ChatPage({ params }: Params) {
                 onModeChange={setMode}
                 projectId={projectId}
                 preferredCli={preferredCli}
+                selectedModel={selectedModel}
                 thinkingMode={thinkingMode}
                 onThinkingModeChange={setThinkingMode}
               />
@@ -1334,34 +1484,6 @@ export default function ChatPage({ params }: Params) {
                   {/* Preview Controls */}
                   {showPreview && (
                     <div className="flex items-center gap-2">
-                      {/* Device Mode Toggle */}
-                      {previewUrl && (
-                        <div className="flex items-center bg-gray-100 dark:bg-gray-900 rounded-lg p-1 mr-2">
-                          <button
-                            aria-label="Desktop preview"
-                            className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
-                              deviceMode === 'desktop' 
-                                ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white' 
-                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                            }`}
-                            onClick={() => setDeviceMode('desktop')}
-                          >
-                            <span className="w-4 h-4 flex items-center justify-center"><FaDesktop size={14} /></span>
-                          </button>
-                          <button
-                            aria-label="Mobile preview"
-                            className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
-                              deviceMode === 'mobile' 
-                                ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white' 
-                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                            }`}
-                            onClick={() => setDeviceMode('mobile')}
-                          >
-                            <span className="w-4 h-4 flex items-center justify-center"><FaMobileAlt size={14} /></span>
-                          </button>
-                        </div>
-                      )}
-                      
                       {previewUrl ? (
                         <>
                           <button 
@@ -1593,30 +1715,86 @@ export default function ChatPage({ params }: Params) {
                     style={{ height: '100%' }}
                   >
                 {previewUrl ? (
-                  <div className="relative w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800">
-                    <div 
-                      className={`bg-white dark:bg-gray-900 ${
-                        deviceMode === 'mobile' 
-                          ? 'w-[375px] h-[667px] rounded-[25px] border-8 border-gray-800 shadow-2xl' 
-                          : 'w-full h-full'
-                      } overflow-hidden`}
-                    >
-                      <iframe 
-                        className="w-full h-full border-none bg-white dark:bg-gray-800"
-                        src={previewUrl}
-                      onError={() => {
-                        // Show error overlay
-                        const overlay = document.getElementById('iframe-error-overlay');
-                        if (overlay) overlay.style.display = 'flex';
-                      }}
-                      onLoad={() => {
-                        // Hide error overlay when loaded successfully
-                        const overlay = document.getElementById('iframe-error-overlay');
-                        if (overlay) overlay.style.display = 'none';
-                      }}
-                    />
+                  <div className="relative w-full h-full flex flex-col bg-gray-100 dark:bg-gray-800">
+                    {/* Route Navigation Bar */}
+                    <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 py-2 flex items-center gap-2">
+                      {/* URL Bar */}
+                      <div className="flex-1 flex items-center bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-1.5">
+                        <span className="text-sm text-gray-500 dark:text-gray-400 mr-1">/</span>
+                        <input
+                          type="text"
+                          value={currentRoute.startsWith('/') ? currentRoute.slice(1) : currentRoute}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setCurrentRoute(value ? `/${value}` : '/');
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              navigateToRoute(currentRoute);
+                            }
+                          }}
+                          className="flex-1 bg-transparent text-sm text-gray-700 dark:text-gray-300 outline-none"
+                          placeholder="Enter route (e.g., about, contact)"
+                        />
+                        <button
+                          onClick={() => navigateToRoute(currentRoute)}
+                          className="ml-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                        >
+                          <FaArrowRight size={12} />
+                        </button>
+                      </div>
+                      
+                      {/* Device Mode Toggle */}
+                      <button
+                        aria-label="Desktop preview"
+                        className={`p-1.5 rounded transition-colors ${
+                          deviceMode === 'desktop' 
+                            ? 'text-blue-600 dark:text-blue-400' 
+                            : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
+                        }`}
+                        onClick={() => setDeviceMode('desktop')}
+                      >
+                        <FaDesktop size={16} />
+                      </button>
+                      <button
+                        aria-label="Mobile preview"
+                        className={`p-1.5 rounded transition-colors ${
+                          deviceMode === 'mobile' 
+                            ? 'text-blue-600 dark:text-blue-400' 
+                            : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
+                        }`}
+                        onClick={() => setDeviceMode('mobile')}
+                      >
+                        <FaMobileAlt size={16} />
+                      </button>
+                    </div>
                     
-                    {/* Error overlay */}
+                    {/* Iframe Container */}
+                    <div className="flex-1 relative flex items-center justify-center">
+                      <div 
+                        className={`bg-white dark:bg-gray-900 ${
+                          deviceMode === 'mobile' 
+                            ? 'w-[375px] h-[667px] rounded-[25px] border-8 border-gray-800 shadow-2xl' 
+                            : 'w-full h-full'
+                        } overflow-hidden`}
+                      >
+                        <iframe 
+                          ref={iframeRef}
+                          className="w-full h-full border-none bg-white dark:bg-gray-800"
+                          src={previewUrl}
+                        onError={() => {
+                          // Show error overlay
+                          const overlay = document.getElementById('iframe-error-overlay');
+                          if (overlay) overlay.style.display = 'flex';
+                        }}
+                        onLoad={() => {
+                          // Hide error overlay when loaded successfully
+                          const overlay = document.getElementById('iframe-error-overlay');
+                          if (overlay) overlay.style.display = 'none';
+                        }}
+                      />
+                      
+                      {/* Error overlay */}
                     <div 
                       id="iframe-error-overlay"
                       className="absolute inset-0 bg-gray-50 dark:bg-gray-900 flex items-center justify-center z-10"
@@ -1649,6 +1827,7 @@ export default function ChatPage({ params }: Params) {
                         </button>
                       </div>
                     </div>
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -1659,12 +1838,19 @@ export default function ChatPage({ params }: Params) {
                         animate={{ opacity: 1, scale: 1 }}
                         className="text-center"
                       >
-                        {/* Claudable Symbol */}
-                        <img 
-                          src="/Claudable_simbol.png" 
-                          alt="Claudable" 
-                          className="w-40 h-40 opacity-90 object-contain mx-auto mb-8"
-                        />
+                        {/* Claudable Symbol with loading spinner */}
+                        <div className="w-40 h-40 mx-auto mb-6 relative">
+                          <img 
+                            src="/Claudable_simbol.png" 
+                            alt="Claudable" 
+                            className="w-full h-full opacity-80 object-contain"
+                          />
+                          
+                          {/* Loading spinner in center */}
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <div className="w-14 h-14 border-4 border-[#DE7356] border-t-transparent rounded-full animate-spin" />
+                          </div>
+                        </div>
                         
                         {/* Content */}
                         <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
@@ -1727,31 +1913,39 @@ export default function ChatPage({ params }: Params) {
                           </>
                         ) : (
                           <>
-                            <img 
-                              src="/Claudable_simbol.png" 
-                              alt="Claudable" 
-                              className="w-40 h-40 opacity-80 object-contain mx-auto mb-6"
-                            />
-                            
-                            <MotionButton
-                              onClick={!isRunning ? start : undefined}
-                              className="group relative inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium mb-6 transition-all duration-300 
-                                bg-gray-900 dark:bg-white text-white dark:text-gray-900 
-                                shadow-md hover:shadow-lg"
-                              whileHover={{ 
-                                scale: 1.03,
-                              }}
-                              whileTap={{ scale: 0.98 }}
-                              title="Start preview server"
+                            <div
+                              onClick={!isRunning && !isStartingPreview ? start : undefined}
+                              className={`w-40 h-40 mx-auto mb-6 relative ${!isRunning && !isStartingPreview ? 'cursor-pointer group' : ''}`}
                             >
-                              <FaPlay size={12} />
-                              <span className="text-sm">Start Preview</span>
-                            </MotionButton>
-                          </>
-                        )}
-                        
-                        {!hasActiveRequests && (
-                          <>
+                              {/* Claudable Symbol with rotating animation when starting */}
+                              <MotionDiv
+                                className="w-full h-full"
+                                animate={isStartingPreview ? { rotate: 360 } : {}}
+                                transition={{ duration: 2, repeat: isStartingPreview ? Infinity : 0, ease: "linear" }}
+                              >
+                                <img 
+                                  src="/Claudable_simbol.png" 
+                                  alt="Claudable" 
+                                  className="w-full h-full opacity-80 object-contain"
+                                />
+                              </MotionDiv>
+                              
+                              {/* Icon in Center - Play or Loading */}
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                {isStartingPreview ? (
+                                  <div className="w-14 h-14 border-4 border-[#DE7356] border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                  <MotionDiv
+                                    className="flex items-center justify-center"
+                                    whileHover={{ scale: 1.2 }}
+                                    whileTap={{ scale: 0.9 }}
+                                  >
+                                    <FaPlay size={32} className="text-[#DE7356] ml-1 drop-shadow-lg" />
+                                  </MotionDiv>
+                                )}
+                              </div>
+                            </div>
+                            
                             <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
                               Preview Not Running
                             </h3>
@@ -1814,6 +2008,11 @@ export default function ChatPage({ params }: Params) {
                             <span className="text-[13px] text-gray-700 dark:text-[#cccccc]" style={{ fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
                               {selectedFile.split('/').pop()}
                             </span>
+                            {isFileUpdating && (
+                              <span className="text-[11px] text-green-600 dark:text-green-400 ml-auto mr-2">
+                                Updated
+                              </span>
+                            )}
                             <button 
                               className="text-gray-700 dark:text-[#cccccc] hover:bg-gray-200 dark:hover:bg-[#383838] ml-2 px-1 rounded"
                               onClick={() => {

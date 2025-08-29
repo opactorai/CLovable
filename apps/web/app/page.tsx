@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import CreateProjectModal from '@/components/CreateProjectModal';
 import DeleteProjectModal from '@/components/DeleteProjectModal';
 import GlobalSettings from '@/components/GlobalSettings';
+import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
 import Image from 'next/image';
 import { Image as ImageIcon } from 'lucide-react';
 
@@ -43,6 +44,7 @@ export default function HomePage() {
   const [prompt, setPrompt] = useState('');
   const [selectedAssistant, setSelectedAssistant] = useState('claude');
   const [selectedModel, setSelectedModel] = useState('claude-sonnet-4');
+  const [usingGlobalDefaults, setUsingGlobalDefaults] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [cliStatus, setCLIStatus] = useState<{ [key: string]: { installed: boolean; checking: boolean; version?: string; error?: string; } }>({});
   
@@ -71,6 +73,23 @@ export default function HomePage() {
   
   // Get available models based on current assistant
   const availableModels = modelsByAssistant[selectedAssistant as keyof typeof modelsByAssistant] || [];
+  
+  // Sync with Global Settings (until user overrides locally)
+  const { settings: globalSettings } = useGlobalSettings();
+  useEffect(() => {
+    if (!usingGlobalDefaults) return;
+    const cli = globalSettings?.default_cli || 'claude';
+    setSelectedAssistant(cli);
+    const modelFromGlobal = globalSettings?.cli_settings?.[cli]?.model;
+    if (modelFromGlobal) {
+      setSelectedModel(modelFromGlobal);
+    } else {
+      // Fallback per CLI
+      if (cli === 'claude') setSelectedModel('claude-sonnet-4');
+      else if (cli === 'cursor') setSelectedModel('gpt-5');
+      else if (cli === 'codex') setSelectedModel('gpt-5');
+    }
+  }, [globalSettings, usingGlobalDefaults]);
   const [showAssistantDropdown, setShowAssistantDropdown] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
@@ -589,6 +608,7 @@ export default function HomePage() {
     if (!cliStatus[assistant]?.installed) return;
     
     console.log('🔧 Assistant changing from', selectedAssistant, 'to', assistant);
+    setUsingGlobalDefaults(false);
     setSelectedAssistant(assistant);
     
     // Set default model for each assistant
@@ -605,6 +625,12 @@ export default function HomePage() {
     }
     
     setShowAssistantDropdown(false);
+  };
+
+  const handleModelChange = (modelId: string) => {
+    setUsingGlobalDefaults(false);
+    setSelectedModel(modelId);
+    setShowModelDropdown(false);
   };
 
   const assistantOptions = [
@@ -993,9 +1019,9 @@ export default function HomePage() {
                       setShowModelDropdown(newState);
                       setShowAssistantDropdown(false);
                     }}
-                    className="justify-center whitespace-nowrap text-sm font-medium transition-colors duration-100 ease-in-out focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border border-gray-200/50 dark:border-white/5 bg-transparent shadow-sm hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300/50 dark:hover:border-white/10 px-3 py-2 flex h-8 items-center gap-1 rounded-full text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white focus-visible:ring-0"
+                    className="justify-center whitespace-nowrap text-sm font-medium transition-colors duration-100 ease-in-out focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border border-gray-200/50 dark:border-white/5 bg-transparent shadow-sm hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300/50 dark:hover:border-white/10 px-3 py-2 flex h-8 items-center gap-1 rounded-full text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white focus-visible:ring-0 min-w-[140px]"
                   >
-                    <span className="text-xs">{(() => {
+                    <span className="text-xs whitespace-nowrap">{(() => {
                       const found = availableModels.find(m => m.id === selectedModel);
                       console.log('🔍 Button display - selectedModel:', selectedModel, 'availableModels:', availableModels.map(m => m.id), 'found:', found);
                       
@@ -1010,7 +1036,7 @@ export default function HomePage() {
                       
                       return found?.name || 'Select Model';
                     })()}</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 -960 960 960" className="shrink-0 h-3 w-3 rotate-90" fill="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 -960 960 960" className="shrink-0 h-3 w-3 rotate-90 ml-auto" fill="currentColor">
                       <path d="M530-481 353-658q-9-9-8.5-21t9.5-21 21.5-9 21.5 9l198 198q5 5 7 10t2 11-2 11-7 10L396-261q-9 9-21 8.5t-21-9.5-9-21.5 9-21.5z"/>
                     </svg>
                   </button>
@@ -1028,8 +1054,7 @@ export default function HomePage() {
                             onClick={() => {
                               console.log('🎯 Model selected:', model.id, 'from assistant:', selectedAssistant);
                               console.log('🎯 Before - availableModels:', availableModels);
-                              setSelectedModel(model.id);
-                              setShowModelDropdown(false);
+                              handleModelChange(model.id);
                               console.log('🎯 After - availableModels should still be:', availableModels);
                             }}
                             className={`w-full px-3 py-2 text-left first:rounded-t-2xl last:rounded-b-2xl transition-colors ${

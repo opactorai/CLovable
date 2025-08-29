@@ -303,7 +303,9 @@ async def get_project(project_id: str, db: Session = Depends(get_db)) -> Project
             features=ai_info.get('features'),
             tech_stack=ai_info.get('tech_stack'),
             ai_generated=ai_info.get('ai_generated', False),
-            initial_prompt=project.initial_prompt
+            initial_prompt=project.initial_prompt,
+            preferred_cli=project.preferred_cli,
+            selected_model=project.selected_model
         )
     except HTTPException:
         raise
