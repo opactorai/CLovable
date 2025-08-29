@@ -770,6 +770,10 @@ export default function ChatPage({ params }: Params) {
                 setSelectedModel('gpt-5');
               } else if (currentCli === 'codex') {
                 setSelectedModel('gpt-5');
+              } else if (currentCli === 'qwen') {
+                setSelectedModel('qwen-coder');
+              } else if (currentCli === 'gemini') {
+                setSelectedModel('gemini-2.5-pro');
               }
             }
           }

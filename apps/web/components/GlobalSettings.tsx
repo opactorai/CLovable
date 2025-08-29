@@ -62,10 +62,10 @@ const CLI_OPTIONS: CLIOption[] = [
   {
     id: 'qwen',
     name: 'Qwen Coder',
-    icon: '/qwen.svg',
+    icon: '/qwen.png',
     description: 'Alibaba Qwen Coder (ACP)',
-    color: 'from-red-500 to-pink-600',
-    brandColor: '#EF4444',
+    color: 'from-purple-500 to-pink-500',
+    brandColor: '#A855F7',
     downloadUrl: 'https://github.com/QwenLM/qwen-code',
     installCommand: 'npm install -g @qwen-code/qwen-code@latest',
     enabled: true,
@@ -76,7 +76,8 @@ const CLI_OPTIONS: CLIOption[] = [
     name: 'Gemini CLI',
     icon: '/gemini.png',
     description: 'Gemini 2.5 CLI (ACP)',
-    color: 'from-[#DE7356] to-[#e88a6f]',
+    color: 'from-blue-400 to-purple-600',
+    brandColor: '#4285F4',
     downloadUrl: 'https://github.com/google-gemini/gemini-cli',
     installCommand: 'npm install -g @google/gemini-cli',
     enabled: true,
@@ -566,7 +567,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                               <img src="/oai.png" alt="Codex" className="w-8 h-8" />
                             )}
                             {cli.id === 'qwen' && (
-                              <img src="/qwen.svg" alt="Qwen" className="w-8 h-8" />
+                              <img src="/qwen.png" alt="Qwen" className="w-8 h-8" />
                             )}
                             {cli.id === 'gemini' && (
                               <img src="/gemini.png" alt="Gemini" className="w-8 h-8" />
@@ -951,21 +952,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                 </div>
               </div>
 
-              {/* Additional Info */}
-              <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Need more help? Check out the{' '}
-                  <a
-                    href={selectedCLI.downloadUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 dark:text-blue-400 hover:underline"
-                  >
-                    official setup guide
-                  </a>
-                  {' '}for detailed instructions.
-                </p>
-              </div>
+              {/* Minimal guide only; removed extra info */}
             </div>
 
             {/* Footer */}

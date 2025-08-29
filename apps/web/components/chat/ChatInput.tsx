@@ -346,6 +346,8 @@ export default function ChatInput({
                 <img 
                   src={preferredCli === 'claude' ? '/claude.png' : 
                        preferredCli === 'cursor' ? '/cursor.png' : 
+                       preferredCli === 'qwen' ? '/qwen.png' :
+                       preferredCli === 'gemini' ? '/gemini.png' :
                        '/oai.png'} 
                   alt={preferredCli}
                   className="w-4 h-4"
@@ -353,6 +355,8 @@ export default function ChatInput({
                 <span>
                   {preferredCli === 'claude' ? 'Claude Code' : 
                    preferredCli === 'cursor' ? 'Cursor Agent' : 
+                   preferredCli === 'qwen' ? 'Qwen Coder' :
+                   preferredCli === 'gemini' ? 'Gemini CLI' :
                    'Codex CLI'}
                 </span>
                 {selectedModel && (
@@ -362,6 +366,9 @@ export default function ChatInput({
                       {selectedModel === 'claude-sonnet-4' ? 'Sonnet 4' : 
                        selectedModel === 'claude-opus-4.1' ? 'Opus 4.1' :
                        selectedModel === 'gpt-5' ? 'GPT-5' :
+                       selectedModel === 'qwen-coder' ? 'Qwen Coder' :
+                       selectedModel === 'gemini-2.5-pro' ? 'Gemini 2.5 Pro' :
+                       selectedModel === 'gemini-2.5-flash' ? 'Gemini 2.5 Flash' :
                        selectedModel}
                     </span>
                   </>
