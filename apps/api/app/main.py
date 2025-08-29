@@ -18,6 +18,7 @@ from sqlalchemy import inspect
 from app.db.base import Base
 import app.models  # noqa: F401 ensures models are imported for metadata
 from app.db.session import engine
+from app.db.migrations import run_sqlite_migrations
 import os
 
 configure_logging()
@@ -79,6 +80,8 @@ def on_startup() -> None:
     inspector = inspect(engine)
     Base.metadata.create_all(bind=engine)
     ui.success("Database initialization complete")
+    # Run lightweight SQLite migrations for additive changes
+    run_sqlite_migrations(engine)
     
     # Show available endpoints
     ui.info("API server ready")

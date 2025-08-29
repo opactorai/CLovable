@@ -4,7 +4,8 @@ import json
 from typing import Dict, Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from app.services.cli.unified_manager import CLIType, CursorAgentCLI
+from app.services.cli.unified_manager import CursorAgentCLI
+from app.services.cli.base import CLIType
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 

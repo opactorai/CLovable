@@ -9,7 +9,8 @@ from typing import Optional, Dict, Any
 
 from app.api.deps import get_db
 from app.models.projects import Project
-from app.services.cli import UnifiedCLIManager, CLIType
+from app.services.cli import UnifiedCLIManager
+from app.services.cli.base import CLIType
 
 
 router = APIRouter()
@@ -37,6 +38,8 @@ class AllCLIStatusResponse(BaseModel):
     claude: CLIStatusResponse
     cursor: CLIStatusResponse
     codex: CLIStatusResponse
+    qwen: CLIStatusResponse
+    gemini: CLIStatusResponse
     preferred_cli: str
 
 
@@ -165,37 +168,37 @@ async def get_all_cli_status(project_id: str, db: Session = Depends(get_db)):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    # For now, return mock status data to avoid CLI manager issues
     preferred_cli = getattr(project, 'preferred_cli', 'claude')
-    
-    # Create mock status responses
-    claude_status = CLIStatusResponse(
-        cli_type="claude",
-        available=True,
-        configured=True,
-        error=None,
-        models=["claude-3.5-sonnet", "claude-3-opus"]
+
+    # Build real status for each CLI using UnifiedCLIManager
+    manager = UnifiedCLIManager(
+        project_id=project.id,
+        project_path=project.repo_path,
+        session_id="status_check",
+        conversation_id="status_check",
+        db=db,
     )
-    
-    cursor_status = CLIStatusResponse(
-        cli_type="cursor", 
-        available=False,
-        configured=False,
-        error="Not configured",
-        models=[]
-    )
-    
-    codex_status = CLIStatusResponse(
-        cli_type="codex",
-        available=True,
-        configured=True,
-        error=None,
-        models=["gpt-5"]
-    )
-    
+
+    def to_resp(cli_key: str, status: Dict[str, Any]) -> CLIStatusResponse:
+        return CLIStatusResponse(
+            cli_type=cli_key,
+            available=status.get("available", False),
+            configured=status.get("configured", False),
+            error=status.get("error"),
+            models=status.get("models"),
+        )
+
+    claude_status = await manager.check_cli_status(CLIType.CLAUDE)
+    cursor_status = await manager.check_cli_status(CLIType.CURSOR)
+    codex_status = await manager.check_cli_status(CLIType.CODEX)
+    qwen_status = await manager.check_cli_status(CLIType.QWEN)
+    gemini_status = await manager.check_cli_status(CLIType.GEMINI)
+
     return AllCLIStatusResponse(
-        claude=claude_status,
-        cursor=cursor_status,
-        codex=codex_status,
-        preferred_cli=preferred_cli
+        claude=to_resp("claude", claude_status),
+        cursor=to_resp("cursor", cursor_status),
+        codex=to_resp("codex", codex_status),
+        qwen=to_resp("qwen", qwen_status),
+        gemini=to_resp("gemini", gemini_status),
+        preferred_cli=preferred_cli,
     )

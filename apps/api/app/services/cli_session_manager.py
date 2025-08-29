@@ -5,7 +5,7 @@ Handles session persistence and continuity across different CLI agents
 from typing import Dict, Optional, Any
 from sqlalchemy.orm import Session
 from app.models.projects import Project
-from app.services.cli.unified_manager import CLIType
+from app.services.cli.base import CLIType
 
 
 class CLISessionManager:

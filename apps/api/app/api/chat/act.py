@@ -16,7 +16,8 @@ from app.models.messages import Message
 from app.models.sessions import Session as ChatSession
 from app.models.commits import Commit
 from app.models.user_requests import UserRequest
-from app.services.cli.unified_manager import UnifiedCLIManager, CLIType
+from app.services.cli.unified_manager import UnifiedCLIManager
+from app.services.cli.base import CLIType
 from app.services.git_ops import commit_all
 from app.core.websocket.manager import manager
 from app.core.terminal_ui import ui
@@ -158,11 +159,14 @@ async def execute_chat_task(
             db=db
         )
         
+        # Qwen Coder does not support images yet; drop them to prevent errors
+        safe_images = [] if cli_preference == CLIType.QWEN else images
+
         result = await cli_manager.execute_instruction(
             instruction=instruction,
             cli_type=cli_preference,
             fallback_enabled=project_fallback_enabled,
-            images=images,
+            images=safe_images,
             model=project_selected_model,
             is_initial_prompt=is_initial_prompt
         )
@@ -320,11 +324,14 @@ async def execute_act_task(
             db=db
         )
         
+        # Qwen Coder does not support images yet; drop them to prevent errors
+        safe_images = [] if cli_preference == CLIType.QWEN else images
+
         result = await cli_manager.execute_instruction(
             instruction=instruction,
             cli_type=cli_preference,
             fallback_enabled=project_fallback_enabled,
-            images=images,
+            images=safe_images,
             model=project_selected_model,
             is_initial_prompt=is_initial_prompt
         )
