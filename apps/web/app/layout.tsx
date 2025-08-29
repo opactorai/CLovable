@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   title: 'Claudable',
   description: 'Claudable Application',
   icons: {
-    icon: '/favicon.png',
+    icon: '/Claudable_Icon.png',
   },
 }
 

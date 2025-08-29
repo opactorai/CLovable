@@ -21,6 +21,7 @@ interface CLIOption {
   description: string;
   models: { id: string; name: string; }[];
   color: string;
+  brandColor: string;
   downloadUrl: string;
   installCommand: string;
   enabled?: boolean;
@@ -33,7 +34,8 @@ const CLI_OPTIONS: CLIOption[] = [
     icon: '',
     description: 'Anthropic Claude with advanced reasoning',
     color: 'from-orange-500 to-red-600',
-    downloadUrl: 'https://github.com/anthropics/claude-code',
+    brandColor: '#DE7356',
+    downloadUrl: 'https://www.anthropic.com/claude-code',
     installCommand: 'npm install -g @anthropic-ai/claude-code',
     enabled: true,
     models: [
@@ -46,9 +48,10 @@ const CLI_OPTIONS: CLIOption[] = [
     name: 'Cursor Agent',
     icon: '',
     description: 'AI-powered code editor with frontier models',
-    color: 'from-[#DE7356] to-[#c95940]',
-    downloadUrl: 'https://cursor.com',
-    installCommand: 'Download from cursor.com',
+    color: 'from-gray-500 to-gray-600',
+    brandColor: '#6B7280',
+    downloadUrl: 'https://cursor.com/cli',
+    installCommand: 'curl https://cursor.com/install -fsS | bash',
     enabled: true,
     models: [
       { id: 'gpt-5', name: 'GPT-5' },
@@ -61,6 +64,7 @@ const CLI_OPTIONS: CLIOption[] = [
     icon: '',
     description: 'Alibaba Qwen with agentic coding (Coming Soon)',
     color: 'from-red-500 to-pink-600',
+    brandColor: '#EF4444',
     downloadUrl: 'https://github.com/QwenLM/qwen-code',
     installCommand: 'npm install -g @qwen-code/qwen-code',
     enabled: false,
@@ -74,7 +78,8 @@ const CLI_OPTIONS: CLIOption[] = [
     name: 'Gemini CLI',
     icon: '',
     description: 'Google Gemini with thinking capabilities (Coming Soon)',
-    color: 'from-[#DE7356] to-[#e88a6f]',
+    color: 'from-blue-500 to-blue-600',
+    brandColor: '#3B82F6',
     downloadUrl: 'https://github.com/google-gemini/gemini-cli',
     installCommand: 'npm install -g @google/generative-ai-cli',
     enabled: false,
@@ -88,8 +93,9 @@ const CLI_OPTIONS: CLIOption[] = [
     name: 'Codex CLI',
     icon: '/oai.png',
     description: 'OpenAI Codex with GPT-5 integration',
-    color: 'from-green-500 to-teal-600',
-    downloadUrl: 'https://github.com/openai/codex',
+    color: 'from-gray-900 to-black',
+    brandColor: '#000000',
+    downloadUrl: 'https://developers.openai.com/codex/cli/',
     installCommand: 'npm install -g @openai/codex',
     enabled: true,
     models: [
@@ -136,12 +142,21 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
     vercel: null
   });
   const [cliStatus, setCLIStatus] = useState<CLIStatus>({});
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [globalSettings, setGlobalSettings] = useState<GlobalAISettings>({
     default_cli: 'claude',
     cli_settings: {}
   });
   const [isLoading, setIsLoading] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [installModalOpen, setInstallModalOpen] = useState(false);
+  const [selectedCLI, setSelectedCLI] = useState<CLIOption | null>(null);
+
+  // Show toast function
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   // Load all service tokens and CLI data
   useEffect(() => {
@@ -463,11 +478,28 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
             {activeTab === 'ai-agents' && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">CLI Agents</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Manage your AI coding assistants and their configurations
-                    </p>
+                  <div className="flex items-center gap-4">
+                    <div>
+                      <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">CLI Agents</h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Manage your AI coding assistants
+                      </p>
+                    </div>
+                    {/* Inline Default CLI Selector */}
+                    <div className="flex items-center gap-2 ml-6 pl-6 border-l border-gray-200 dark:border-gray-700">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Default:</span>
+                      <select
+                        value={globalSettings.default_cli}
+                        onChange={(e) => setDefaultCLI(e.target.value)}
+                        className="pl-3 pr-8 py-1.5 text-xs font-medium border border-gray-200/50 dark:border-white/5 rounded-full bg-transparent hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300/50 dark:hover:border-white/10 text-gray-700 dark:text-white/80 focus:outline-none focus:ring-0 transition-colors cursor-pointer"
+                      >
+                        {CLI_OPTIONS.filter(cli => cliStatus[cli.id]?.installed && cli.enabled !== false).map(cli => (
+                          <option key={cli.id} value={cli.id}>
+                            {cli.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   <div className="flex items-center gap-3">
                     {saveMessage && (
@@ -491,14 +523,14 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                     <div className="flex items-center gap-2">
                       <button
                         onClick={checkCLIStatus}
-                        className="px-3 py-1.5 text-sm bg-gray-900 dark:bg-white hover:bg-gray-800 dark:hover:bg-gray-100 text-white dark:text-gray-900 rounded-md transition-colors"
+                        className="px-3 py-1.5 text-xs font-medium border border-gray-200/50 dark:border-white/5 rounded-full bg-transparent hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300/50 dark:hover:border-white/10 text-gray-700 dark:text-white/80 transition-colors"
                       >
                         Refresh Status
                       </button>
                       <button
                         onClick={saveGlobalSettings}
                         disabled={isLoading}
-                        className="px-3 py-1.5 text-sm bg-gray-900 dark:bg-white hover:bg-gray-800 dark:hover:bg-gray-100 text-white dark:text-gray-900 rounded-md transition-colors disabled:opacity-50"
+                        className="px-3 py-1.5 text-xs font-medium bg-gray-900 dark:bg-white hover:bg-gray-800 dark:hover:bg-gray-100 text-white dark:text-gray-900 rounded-full transition-colors disabled:opacity-50"
                       >
                         {isLoading ? 'Saving...' : 'Save Settings'}
                       </button>
@@ -506,97 +538,67 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                   </div>
                 </div>
 
-                {/* Global Settings */}
-                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 space-y-4">
-                  <h4 className="font-medium text-gray-900 dark:text-white">Global Preferences</h4>
-                  
-                  <div>
-                    {/* Default CLI Selection */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Default CLI Agent
-                      </label>
-                      <select
-                        value={globalSettings.default_cli}
-                        onChange={(e) => setDefaultCLI(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                      >
-                        {CLI_OPTIONS.filter(cli => cliStatus[cli.id]?.installed && cli.enabled !== false).map(cli => (
-                          <option key={cli.id} value={cli.id}>
-                            {cli.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* CLI Agents List */}
-                <div className="space-y-4">
-                  {CLI_OPTIONS.filter(cli => {
-                    const status = cliStatus[cli.id];
-                    return (status?.installed || false) && cli.enabled !== false;
-                  }).map((cli) => {
+                {/* CLI Agents Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {CLI_OPTIONS.filter(cli => cli.enabled !== false).map((cli) => {
                     const status = cliStatus[cli.id];
                     const settings = globalSettings.cli_settings[cli.id] || {};
                     const isChecking = status?.checking || false;
+                    const isInstalled = status?.installed || false;
+                    const isDefault = globalSettings.default_cli === cli.id;
 
                     return (
-                      <div key={cli.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                        <div className="flex items-start justify-between mb-3">
-                          <div>
-                              <div className="flex items-center gap-2">
-                                {cli.id === 'claude' && (
-                                  <img src="/claude.png" alt="Claude" className="w-5 h-5" />
-                                )}
-                                {cli.id === 'cursor' && (
-                                  <img src="/cursor.png" alt="Cursor" className="w-5 h-5" />
-                                )}
-                                {cli.id === 'codex' && (
-                                  <img src="/oai.png" alt="Codex" className="w-5 h-5" />
-                                )}
-                                <h4 className="font-medium text-gray-900 dark:text-white">{cli.name}</h4>
-                                {isChecking ? (
-                                  <span className="text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 px-2 py-1 rounded-full">
-                                    Checking...
-                                  </span>
-                                ) : (
-                                  <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 px-2 py-1 rounded-full">
-                                    ✓ Installed {status?.version && `(v${status.version})`}
-                                  </span>
-                                )}
-                                {globalSettings.default_cli === cli.id && (
-                                  <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-1 rounded-full">
-                                    Default
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-sm text-gray-600 dark:text-gray-400">{cli.description}</p>
+                      <div 
+                        key={cli.id} 
+                        onClick={() => isInstalled && setDefaultCLI(cli.id)}
+                        className={`border rounded-xl pl-4 pr-8 py-4 transition-all ${
+                          !isInstalled 
+                            ? 'border-gray-200/50 dark:border-white/5 cursor-not-allowed bg-gray-50/50 dark:bg-white/[0.02]' 
+                            : isDefault 
+                              ? 'cursor-pointer border-2' 
+                              : 'border-gray-200/50 dark:border-white/5 hover:border-gray-300/50 dark:hover:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer'
+                        }`}
+                        style={isDefault && isInstalled ? {
+                          borderColor: cli.brandColor,
+                          backgroundColor: `${cli.brandColor}08`
+                        } : {}}
+                      >
+                        <div className="flex items-start gap-3 mb-3">
+                          <div className={`flex-shrink-0 ${!isInstalled ? 'opacity-40' : ''}`}>
+                            {cli.id === 'claude' && (
+                              <img src="/claude.png" alt="Claude" className="w-8 h-8" />
+                            )}
+                            {cli.id === 'cursor' && (
+                              <img src="/cursor.png" alt="Cursor" className="w-8 h-8" />
+                            )}
+                            {cli.id === 'codex' && (
+                              <img src="/oai.png" alt="Codex" className="w-8 h-8" />
+                            )}
                           </div>
-
-                          {/* Make Default Button */}
-                          {globalSettings.default_cli !== cli.id && (
-                            <button
-                              onClick={() => setDefaultCLI(cli.id)}
-                              className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 rounded-md transition-colors"
-                            >
-                              Make Default
-                            </button>
-                          )}
+                          <div className={`flex-1 min-w-0 ${!isInstalled ? 'opacity-40' : ''}`}>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-medium text-gray-900 dark:text-white text-sm">{cli.name}</h4>
+                              {isDefault && isInstalled && (
+                                <span className="text-xs font-medium" style={{ color: cli.brandColor }}>
+                                  Default
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">
+                              {cli.description}
+                            </p>
+                          </div>
                         </div>
 
-                        {/* Default Model Selection */}
-                        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                              Default Model
-                            </label>
+                        {/* Model Selection or Not Installed */}
+                        {isInstalled ? (
+                          <div onClick={(e) => e.stopPropagation()}>
                             <select
                               value={settings.model || ''}
                               onChange={(e) => setDefaultModel(cli.id, e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
+                              className="w-full px-3 py-1.5 border border-gray-200/50 dark:border-white/5 rounded-full bg-transparent hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-white/80 text-xs font-medium transition-colors focus:outline-none focus:ring-0"
                             >
-                              <option value="">Select a model...</option>
+                              <option value="">Select model</option>
                               {cli.models.map(model => (
                                 <option key={model.id} value={model.id}>
                                   {model.name}
@@ -604,89 +606,22 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                               ))}
                             </select>
                           </div>
-                        </div>
+                        ) : (
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => {
+                                setSelectedCLI(cli);
+                                setInstallModalOpen(true);
+                              }}
+                              className="w-full px-3 py-1.5 border-2 border-gray-900 dark:border-white rounded-full bg-gray-900 dark:bg-white hover:bg-gray-800 dark:hover:bg-gray-100 text-white dark:text-gray-900 text-xs font-semibold transition-all transform hover:scale-105"
+                            >
+                              Install Guide
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
-                  
-                  {/* Show not installed CLIs separately */}
-                  {CLI_OPTIONS.filter(cli => {
-                    const status = cliStatus[cli.id];
-                    return !(status?.installed || false) && cli.enabled !== false;
-                  }).length > 0 && (
-                    <div className="mt-8">
-                      <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4">Not Installed</h4>
-                      <div className="space-y-3">
-                        {CLI_OPTIONS.filter(cli => {
-                          const status = cliStatus[cli.id];
-                          return !(status?.installed || false) && cli.enabled !== false;
-                        }).map((cli) => {
-                          const status = cliStatus[cli.id];
-                          const isChecking = status?.checking || false;
-                          const hasError = status?.error;
-
-                          return (
-                            <div key={cli.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 opacity-75">
-                              <div className="flex items-start justify-between">
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                      {cli.id === 'claude' && (
-                                        <img src="/claude.png" alt="Claude" className="w-5 h-5" />
-                                      )}
-                                      {cli.id === 'cursor' && (
-                                        <img src="/cursor.png" alt="Cursor" className="w-5 h-5" />
-                                      )}
-                                      {cli.id === 'codex' && (
-                                        <img src="/oai.png" alt="Codex" className="w-5 h-5" />
-                                      )}
-                                      <h4 className="font-medium text-gray-900 dark:text-white">{cli.name}</h4>
-                                      {isChecking ? (
-                                        <span className="text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 px-2 py-1 rounded-full">
-                                          Checking...
-                                        </span>
-                                      ) : (
-                                        <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-2 py-1 rounded-full">
-                                          ✗ Not Installed
-                                        </span>
-                                      )}
-                                    </div>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400">{cli.description}</p>
-                                    {hasError && (
-                                      <p className="text-xs text-red-600 dark:text-red-400 mt-1">{hasError}</p>
-                                    )}
-                                </div>
-                              </div>
-
-                              {/* Installation Instructions */}
-                              {!isChecking && (
-                                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
-                                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
-                                    <h5 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Installation</h5>
-                                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                                      Install command:
-                                    </p>
-                                    <code className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-2 py-1 rounded block">
-                                      {cli.installCommand}
-                                    </code>
-                                    <div className="flex items-center gap-2 mt-2">
-                                      <a
-                                        href={cli.downloadUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                                      >
-                                        Download & Instructions →
-                                      </a>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
@@ -762,41 +697,64 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
             {activeTab === 'about' && (
               <div className="space-y-6">
                 <div className="text-center">
-                  <div className="w-16 h-16 mx-auto mb-4">
+                  <div className="w-20 h-20 mx-auto mb-4 relative">
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#DE7356]/20 to-[#DE7356]/5 blur-xl rounded-2xl" />
                     <img 
-                      src="/Claudable_simbol.png" 
-                      alt="Claudable Symbol" 
-                      className="w-full h-full object-contain"
+                      src="/Claudable_Icon.png" 
+                      alt="Claudable Icon" 
+                      className="relative z-10 w-full h-full object-contain rounded-2xl shadow-lg"
                     />
                   </div>
-                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Claudable</h3>
-                  <p className="text-gray-600 dark:text-gray-400 mt-1">Version 1.0.0</p>
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Claudable</h3>
+                  <p className="text-gray-600 dark:text-gray-400 mt-2 font-medium">Version 1.0.0</p>
                 </div>
                 
                 <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
                   <div className="text-center">
-                    <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                    <p className="text-base text-gray-700 dark:text-gray-300 leading-relaxed max-w-2xl mx-auto">
                       Claudable is an AI-powered development platform that integrates with GitHub, Supabase, and Vercel 
                       to streamline your web development workflow.
                     </p>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4 text-center">
-                    <div className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                      <p className="text-xs text-gray-600 dark:text-gray-400">Fast Deploy</p>
+                    <div className="p-3 rounded-xl border border-gray-200/50 dark:border-white/5 bg-transparent">
+                      <div className="flex items-center justify-center mb-2">
+                        <svg className="w-5 h-5 text-[#DE7356]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                      </div>
+                      <p className="text-xs font-medium text-gray-700 dark:text-white/80">Fast Deploy</p>
                     </div>
-                    <div className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                      <p className="text-xs text-gray-600 dark:text-gray-400">AI Powered</p>
+                    <div className="p-3 rounded-xl border border-gray-200/50 dark:border-white/5 bg-transparent">
+                      <div className="flex items-center justify-center mb-2">
+                        <svg className="w-5 h-5 text-[#DE7356]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                        </svg>
+                      </div>
+                      <p className="text-xs font-medium text-gray-700 dark:text-white/80">AI Powered</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="text-center text-sm text-gray-600 dark:text-gray-400 space-y-2">
-                  <p>Built with love for developers</p>
-                  <div className="flex justify-center gap-4">
-                    <a href="#" className="text-[#DE7356] hover:text-[#c95940] transition-colors">Documentation</a>
-                    <a href="#" className="text-[#DE7356] hover:text-[#c95940] transition-colors">GitHub</a>
-                    <a href="#" className="text-[#DE7356] hover:text-[#c95940] transition-colors">Support</a>
+                <div className="text-center">
+                  <div className="flex justify-center gap-6">
+                    <a 
+                      href="https://github.com/opactorai/Claudable" 
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-[#DE7356] hover:text-[#c95940] transition-colors"
+                    >
+                      GitHub
+                    </a>
+                    <a 
+                      href="https://discord.gg/NJNbafHNQC" 
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-[#DE7356] hover:text-[#c95940] transition-colors"
+                    >
+                      Discord
+                    </a>
                   </div>
                 </div>
               </div>
@@ -812,6 +770,214 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
           onClose={handleServiceModalClose}
           provider={selectedProvider}
         />
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div className={`fixed bottom-4 right-4 z-[80] px-4 py-3 rounded-lg shadow-2xl transition-all transform animate-slide-in-up ${
+          toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+        }`}>
+          <div className="flex items-center gap-2">
+            {toast.type === 'success' && (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+            <span className="font-medium">{toast.message}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Install Guide Modal */}
+      {installModalOpen && selectedCLI && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" key={`modal-${selectedCLI.id}`}>
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-md"
+            onClick={() => {
+              setInstallModalOpen(false);
+              setSelectedCLI(null);
+            }}
+          />
+          
+          <div 
+            className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg border border-gray-200 dark:border-gray-700 transform"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-5 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  {selectedCLI.id === 'claude' && (
+                    <img src="/claude.png" alt="Claude" className="w-8 h-8" />
+                  )}
+                  {selectedCLI.id === 'cursor' && (
+                    <img src="/cursor.png" alt="Cursor" className="w-8 h-8" />
+                  )}
+                  {selectedCLI.id === 'codex' && (
+                    <img src="/oai.png" alt="Codex" className="w-8 h-8" />
+                  )}
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      Install {selectedCLI.name}
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Follow these steps to get started
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setInstallModalOpen(false);
+                    setSelectedCLI(null);
+                  }}
+                  className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4">
+              {/* Step 1: Install */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full text-white text-xs" style={{ backgroundColor: selectedCLI.brandColor }}>
+                    1
+                  </span>
+                  Install CLI
+                </div>
+                <div className="ml-8 flex items-center gap-2 bg-gray-100 dark:bg-gray-900 rounded-lg px-3 py-2">
+                  <code className="text-sm text-gray-800 dark:text-gray-200 flex-1">
+                    {selectedCLI.installCommand}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      navigator.clipboard.writeText(selectedCLI.installCommand);
+                      showToast('Command copied to clipboard', 'success');
+                    }}
+                    className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    title="Copy command"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M9 3h10a2 2 0 012 2v10M9 3H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-2M9 3v2a2 2 0 002 2h6a2 2 0 002-2V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Step 2: Login */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full text-white text-xs" style={{ backgroundColor: selectedCLI.brandColor }}>
+                    2
+                  </span>
+                  Login to your account
+                </div>
+                <div className="ml-8 flex items-center gap-2 bg-gray-100 dark:bg-gray-900 rounded-lg px-3 py-2">
+                  <code className="text-sm text-gray-800 dark:text-gray-200 flex-1">
+                    {selectedCLI.id === 'claude' ? 'claude login' : 
+                     selectedCLI.id === 'cursor' ? 'cursor-agent login' : 
+                     'codex login'}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const loginCmd = selectedCLI.id === 'claude' ? 'claude login' : 
+                                     selectedCLI.id === 'cursor' ? 'cursor-agent login' : 
+                                     'codex login';
+                      navigator.clipboard.writeText(loginCmd);
+                      showToast('Command copied to clipboard', 'success');
+                    }}
+                    className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    title="Copy command"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M9 3h10a2 2 0 012 2v10M9 3H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-2M9 3v2a2 2 0 002 2h6a2 2 0 002-2V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Step 3: Test */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full text-white text-xs" style={{ backgroundColor: selectedCLI.brandColor }}>
+                    3
+                  </span>
+                  Test your installation
+                </div>
+                <div className="ml-8 flex items-center gap-2 bg-gray-100 dark:bg-gray-900 rounded-lg px-3 py-2">
+                  <code className="text-sm text-gray-800 dark:text-gray-200 flex-1">
+                    {selectedCLI.id === 'claude' ? 'claude "Hello, Claude!"' : 
+                     selectedCLI.id === 'cursor' ? 'cursor-agent "Hello, Cursor!"' : 
+                     'codex "Hello, Codex!"'}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const testCmd = selectedCLI.id === 'claude' ? 'claude "Hello, Claude!"' : 
+                                    selectedCLI.id === 'cursor' ? 'cursor-agent "Hello, Cursor!"' : 
+                                    'codex "Hello, Codex!"';
+                      navigator.clipboard.writeText(testCmd);
+                      showToast('Command copied to clipboard', 'success');
+                    }}
+                    className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    title="Copy command"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M9 3h10a2 2 0 012 2v10M9 3H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-2M9 3v2a2 2 0 002 2h6a2 2 0 002-2V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Additional Info */}
+              <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Need more help? Check out the{' '}
+                  <a
+                    href={selectedCLI.downloadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    official setup guide
+                  </a>
+                  {' '}for detailed instructions.
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex justify-between">
+              <button
+                onClick={() => checkCLIStatus()}
+                className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+              >
+                Refresh Status
+              </button>
+              <button
+                onClick={() => {
+                  setInstallModalOpen(false);
+                  setSelectedCLI(null);
+                }}
+                className="px-4 py-2 text-sm bg-gray-900 dark:bg-white hover:bg-gray-800 dark:hover:bg-gray-100 text-white dark:text-gray-900 rounded-lg transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </AnimatePresence>
   );

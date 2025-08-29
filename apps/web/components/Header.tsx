@@ -42,7 +42,7 @@ export default function Header() {
             )}
             <div className="h-8">
               <Image 
-                src={theme.theme === 'dark' ? '/logo-white.png' : '/logo.png'}
+                src="/Claudable_logo.svg"
                 alt="Claudable"
                 width={120}
                 height={32}

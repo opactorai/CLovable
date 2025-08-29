@@ -586,7 +586,7 @@ class ClaudeCodeCLI(BaseCLI):
                 return {
                     "available": False,
                     "configured": False,
-                    "error": "Claude Code CLI not installed or not working.\n\nTo install:\n1. Install Claude Code: npm install -g @anthropic-ai/claude-code\n2. Login to Claude: claude login\n3. Try running your prompt again"
+                    "error": "Install CLI and login:\n\n• npm install -g @anthropic-ai/claude-code\n• claude login"
                 }
             
             # Check if help output contains expected content
@@ -595,7 +595,7 @@ class ClaudeCodeCLI(BaseCLI):
                 return {
                     "available": False,
                     "configured": False,
-                    "error": "Claude Code CLI not responding correctly.\n\nPlease try:\n1. Reinstall: npm install -g @anthropic-ai/claude-code\n2. Login: claude login\n3. Check installation: claude -h"
+                    "error": "Reinstall and login:\n\n• npm install -g @anthropic-ai/claude-code\n• claude login"
                 }
             
             return {
@@ -609,7 +609,7 @@ class ClaudeCodeCLI(BaseCLI):
             return {
                 "available": False,
                 "configured": False,
-                "error": f"Failed to check Claude Code CLI: {str(e)}\n\nTo install:\n1. Install Claude Code: npm install -g @anthropic-ai/claude-code\n2. Login to Claude: claude login"
+                "error": "Install CLI and login:\n\n• npm install -g @anthropic-ai/claude-code\n• claude login"
             }
     
     async def execute_with_streaming(
@@ -943,7 +943,7 @@ class CursorAgentCLI(BaseCLI):
                 return {
                     "available": False,
                     "configured": False,
-                    "error": "Cursor Agent CLI not installed or not working.\n\nTo install:\n1. Install Cursor: curl https://cursor.com/install -fsS | bash\n2. Login to Cursor: cursor-agent login\n3. Try running your prompt again"
+                    "error": "Install CLI and login:\n\n• curl https://cursor.com/install -fsS | bash\n• cursor-agent login"
                 }
             
             # Check if help output contains expected content
@@ -952,7 +952,7 @@ class CursorAgentCLI(BaseCLI):
                 return {
                     "available": False,
                     "configured": False,
-                    "error": "Cursor Agent CLI not responding correctly.\n\nPlease try:\n1. Reinstall: curl https://cursor.com/install -fsS | bash\n2. Login: cursor-agent login\n3. Check installation: cursor-agent -h"
+                    "error": "Reinstall and login:\n\n• curl https://cursor.com/install -fsS | bash\n• cursor-agent login"
                 }
             
             return {
@@ -965,7 +965,7 @@ class CursorAgentCLI(BaseCLI):
             return {
                 "available": False,
                 "configured": False,
-                "error": f"Failed to check Cursor Agent: {str(e)}\n\nTo install:\n1. Install Cursor: curl https://cursor.com/install -fsS | bash\n2. Login to Cursor: cursor-agent login"
+                "error": "Install CLI and login:\n\n• curl https://cursor.com/install -fsS | bash\n• cursor-agent login"
             }
     
     def _handle_cursor_stream_json(self, event: Dict[str, Any], project_path: str, session_id: str) -> Optional[Message]:
@@ -1425,7 +1425,7 @@ class CodexCLI(BaseCLI):
             print(f"[DEBUG] stderr: {stderr.decode().strip()}")
             
             if result.returncode != 0:
-                error_msg = f"Codex CLI not installed or not working (returncode: {result.returncode}). stderr: {stderr.decode().strip()}"
+                error_msg = "Install CLI and login:\n\n• npm install -g @openai/codex\n• codex login"
                 print(f"[DEBUG] {error_msg}")
                 return {
                     "available": False,
@@ -2176,9 +2176,20 @@ class UnifiedCLIManager:
                     "cli_attempted": cli_type.value
                 }
         
+        # Provide helpful error messages for unimplemented CLIs
+        error_messages = {
+            "qwen": "Qwen Code coming soon.\n\n• Visit: https://github.com/QwenLM/qwen-code",
+            "gemini": "Gemini CLI coming soon.\n\n• Visit: https://github.com/google-gemini/gemini-cli"
+        }
+        
+        error_msg = error_messages.get(
+            cli_type.value, 
+            f"{cli_type.value.title()} CLI coming soon."
+        )
+        
         return {
             "success": False,
-            "error": f"CLI type {cli_type.value} not implemented",
+            "error": error_msg,
             "cli_attempted": cli_type.value
         }
     

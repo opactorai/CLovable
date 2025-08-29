@@ -44,6 +44,7 @@ export default function HomePage() {
   const [selectedAssistant, setSelectedAssistant] = useState('claude');
   const [selectedModel, setSelectedModel] = useState('claude-sonnet-4');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [cliStatus, setCLIStatus] = useState<{ [key: string]: { installed: boolean; checking: boolean; version?: string; error?: string; } }>({});
   
   // Define models for each assistant statically
   const modelsByAssistant = {
@@ -72,6 +73,70 @@ export default function HomePage() {
   const router = useRouter();
   const prefetchTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const assistantDropdownRef = useRef<HTMLDivElement>(null);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Check CLI installation status
+  useEffect(() => {
+    const checkCLIStatus = async () => {
+      // Initialize with checking status
+      const checkingStatus: { [key: string]: { installed: boolean; checking: boolean; } } = {};
+      assistantOptions.forEach(cli => {
+        checkingStatus[cli.id] = { installed: false, checking: true };
+      });
+      setCLIStatus(checkingStatus);
+      
+      try {
+        const response = await fetch(`${API_BASE}/api/settings/cli-status`);
+        if (response.ok) {
+          const data = await response.json();
+          setCLIStatus(data);
+        } else {
+          // Fallback if API endpoint doesn't exist
+          const fallbackStatus: { [key: string]: { installed: boolean; checking: boolean; error: string; } } = {};
+          assistantOptions.forEach(cli => {
+            fallbackStatus[cli.id] = {
+              installed: cli.id === 'claude' || cli.id === 'cursor' || cli.id === 'codex', // Default installed for known CLIs
+              checking: false,
+              error: 'Unable to check installation status'
+            };
+          });
+          setCLIStatus(fallbackStatus);
+        }
+      } catch (error) {
+        console.error('Failed to check CLI status:', error);
+        // Error fallback
+        const errorStatus: { [key: string]: { installed: boolean; checking: boolean; error: string; } } = {};
+        assistantOptions.forEach(cli => {
+          errorStatus[cli.id] = {
+            installed: cli.id === 'claude' || cli.id === 'cursor' || cli.id === 'codex', // Default installed for known CLIs
+            checking: false,
+            error: 'Network error'
+          };
+        });
+        setCLIStatus(errorStatus);
+      }
+    };
+
+    checkCLIStatus();
+  }, []);
+
+  // Click outside handler
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (assistantDropdownRef.current && !assistantDropdownRef.current.contains(event.target as Node)) {
+        setShowAssistantDropdown(false);
+      }
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) {
+        setShowModelDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   // Format time for display
   const formatTime = (dateString: string | null) => {
@@ -513,6 +578,9 @@ export default function HomePage() {
 
   // Update models when assistant changes
   const handleAssistantChange = (assistant: string) => {
+    // Don't allow selecting uninstalled CLIs
+    if (!cliStatus[assistant]?.installed) return;
+    
     console.log('🔧 Assistant changing from', selectedAssistant, 'to', assistant);
     setSelectedAssistant(assistant);
     
@@ -531,7 +599,7 @@ export default function HomePage() {
   const assistantOptions = [
     { id: 'claude', name: 'Claude Code', icon: '/claude.png' },
     { id: 'cursor', name: 'Cursor Agent', icon: '/cursor.png' },
-    { id: 'codex', name: 'Codex', icon: '/oai.png' }
+    { id: 'codex', name: 'Codex CLI', icon: '/oai.png' }
   ];
 
   return (
@@ -564,7 +632,7 @@ export default function HomePage() {
       {/* Content wrapper */}
       <div className="relative z-10 flex h-full w-full">
         {/* Thin sidebar bar when closed */}
-        <div className={`${sidebarOpen ? 'w-0' : 'w-12'} fixed inset-y-0 left-0 z-40 bg-white/95 dark:bg-black/30 backdrop-blur-xl border-r border-gray-200 dark:border-white/5 transition-all duration-300`}>
+        <div className={`${sidebarOpen ? 'w-0' : 'w-12'} fixed inset-y-0 left-0 z-40 bg-transparent border-r border-gray-200/20 dark:border-white/5 transition-all duration-300 flex flex-col`}>
           <button
             onClick={() => setSidebarOpen(true)}
             className="w-full h-12 flex items-center justify-center text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
@@ -574,6 +642,20 @@ export default function HomePage() {
               <path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
+          
+          {/* Settings button when sidebar is closed */}
+          <div className="mt-auto mb-2">
+            <button
+              onClick={() => setShowGlobalSettings(true)}
+              className="w-full h-12 flex items-center justify-center text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+              title="Settings"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
         </div>
         
         {/* Sidebar - Overlay style */}
@@ -718,24 +800,16 @@ export default function HomePage() {
             <div className="text-center mb-12">
               <div className="flex justify-center mb-6">
                 <Image 
-                  src="/logo-white.png"
+                  src="/Claudable_logo.svg"
                   alt="Claudable"
                   width={200}
                   height={56}
-                  className="h-14 w-auto dark:block hidden"
-                  priority
-                />
-                <Image 
-                  src="/logo.png"
-                  alt="Claudable"
-                  width={200}
-                  height={56}
-                  className="h-14 w-auto block dark:hidden"
+                  className="h-14 w-auto"
                   priority
                 />
               </div>
               <p className="text-xl text-gray-700 dark:text-white/80 font-light tracking-tight">
-                Connect Claude Code. Build what you want. Deploy instantly.
+                Connect CLI Agent • Build what you want • Deploy instantly
               </p>
             </div>
             
@@ -771,10 +845,10 @@ export default function HomePage() {
               onDragLeave={handleDragLeave}
               onDragOver={handleDragOver}
               onDrop={handleDrop}
-              className={`group flex flex-col gap-4 p-4 w-full rounded-[28px] border backdrop-blur-xl text-base shadow-xl transition-all duration-150 ease-in-out mb-6 relative ${
+              className={`group flex flex-col gap-4 p-4 w-full rounded-[28px] border backdrop-blur-xl text-base shadow-xl transition-all duration-150 ease-in-out mb-6 relative overflow-visible ${
                 isDragOver 
                   ? 'border-[#DE7356] bg-[#DE7356]/10 dark:bg-[#DE7356]/20' 
-                  : 'border-gray-200 dark:border-white/10 bg-white dark:bg-black/20 focus-within:border-gray-300 dark:focus-within:border-white/20 hover:border-gray-300 dark:hover:border-white/15 focus-within:hover:border-gray-400 dark:focus-within:hover:border-white/20'
+                  : 'border-gray-200 dark:border-white/10 bg-white dark:bg-black/20'
               }`}
             >
               <div className="relative flex flex-1 items-center">
@@ -843,37 +917,44 @@ export default function HomePage() {
                   )}
                 </div>
                 {/* Agent Selector */}
-                <div className="relative">
+                <div className="relative z-[200]" ref={assistantDropdownRef}>
                   <button
                     type="button"
                     onClick={() => {
                       setShowAssistantDropdown(!showAssistantDropdown);
                       setShowModelDropdown(false);
                     }}
-                    className="whitespace-nowrap text-sm font-medium transition-colors duration-100 ease-in-out focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 shadow-sm hover:bg-gray-100 dark:hover:bg-white/10 hover:border-gray-300 dark:hover:border-white/20 px-3 py-2 flex h-8 items-center justify-center gap-1.5 rounded-full text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white focus-visible:ring-0"
+                    className="justify-center whitespace-nowrap text-sm font-medium transition-colors duration-100 ease-in-out focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border border-gray-200/50 dark:border-white/5 bg-transparent shadow-sm hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300/50 dark:hover:border-white/10 px-3 py-2 flex h-8 items-center gap-1 rounded-full text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white focus-visible:ring-0"
                   >
                     <div className="w-4 h-4 rounded overflow-hidden">
                       <img 
                         src={selectedAssistant === 'claude' ? '/claude.png' : selectedAssistant === 'cursor' ? '/cursor.png' : '/oai.png'} 
-                        alt={selectedAssistant === 'claude' ? 'Claude' : selectedAssistant === 'cursor' ? 'Cursor' : 'Codex'}
+                        alt={selectedAssistant === 'claude' ? 'Claude' : selectedAssistant === 'cursor' ? 'Cursor' : 'Codex CLI'}
                         className="w-full h-full object-contain"
                       />
                     </div>
                     <span className="hidden md:flex text-xs">
-                      {selectedAssistant === 'claude' ? 'Claude Code' : selectedAssistant === 'cursor' ? 'Cursor Agent' : 'Codex'}
+                      {selectedAssistant === 'claude' ? 'Claude Code' : selectedAssistant === 'cursor' ? 'Cursor Agent' : 'Codex CLI'}
                     </span>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 -960 960 960" className={`shrink-0 transition-transform ${showAssistantDropdown ? 'rotate-0' : 'rotate-90'}`} fill="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 -960 960 960" className="shrink-0 h-3 w-3 rotate-90" fill="currentColor">
                       <path d="M530-481 353-658q-9-9-8.5-21t9.5-21 21.5-9 21.5 9l198 198q5 5 7 10t2 11-2 11-7 10L396-261q-9 9-21 8.5t-21-9.5-9-21.5 9-21.5z"/>
                     </svg>
                   </button>
                   
                   {showAssistantDropdown && (
-                    <div className="absolute top-full mt-1 left-0 z-50 min-w-[200px] rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-gray-900 backdrop-blur-xl shadow-lg">
+                    <div className="absolute top-full mt-1 left-0 z-[300] min-w-full whitespace-nowrap rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-gray-900 backdrop-blur-xl shadow-lg">
                       {assistantOptions.map((option) => (
                         <button
                           key={option.id}
                           onClick={() => handleAssistantChange(option.id)}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-left text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 first:rounded-t-lg last:rounded-b-lg transition-colors"
+                          disabled={!cliStatus[option.id]?.installed}
+                          className={`w-full flex items-center gap-2 px-3 py-2 text-left first:rounded-t-2xl last:rounded-b-2xl transition-colors ${
+                            !cliStatus[option.id]?.installed
+                              ? 'opacity-50 cursor-not-allowed text-gray-400 dark:text-gray-500'
+                              : selectedAssistant === option.id 
+                              ? 'bg-gray-100 dark:bg-white/10 text-black dark:text-white font-medium' 
+                              : 'text-gray-900 dark:text-white hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10'
+                          }`}
                         >
                           <div className="w-4 h-4 rounded overflow-hidden">
                             <img 
@@ -890,7 +971,7 @@ export default function HomePage() {
                 </div>
                 
                 {/* Model Selector */}
-                <div className="relative">
+                <div className="relative z-[200]" ref={modelDropdownRef}>
                   <button
                     type="button"
                     onClick={() => {
@@ -899,7 +980,7 @@ export default function HomePage() {
                       setShowModelDropdown(newState);
                       setShowAssistantDropdown(false);
                     }}
-                    className="whitespace-nowrap text-sm font-medium transition-colors duration-100 ease-in-out focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 shadow-sm hover:bg-gray-100 dark:hover:bg-white/10 hover:border-gray-300 dark:hover:border-white/20 px-3 py-2 flex h-8 items-center justify-center gap-1.5 rounded-full text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white focus-visible:ring-0"
+                    className="justify-center whitespace-nowrap text-sm font-medium transition-colors duration-100 ease-in-out focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border border-gray-200/50 dark:border-white/5 bg-transparent shadow-sm hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300/50 dark:hover:border-white/10 px-3 py-2 flex h-8 items-center gap-1 rounded-full text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white focus-visible:ring-0"
                   >
                     <span className="text-xs">{(() => {
                       const found = availableModels.find(m => m.id === selectedModel);
@@ -916,13 +997,13 @@ export default function HomePage() {
                       
                       return found?.name || 'Select Model';
                     })()}</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 -960 960 960" className={`shrink-0 transition-transform ${showModelDropdown ? 'rotate-0' : 'rotate-90'}`} fill="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 -960 960 960" className="shrink-0 h-3 w-3 rotate-90" fill="currentColor">
                       <path d="M530-481 353-658q-9-9-8.5-21t9.5-21 21.5-9 21.5 9l198 198q5 5 7 10t2 11-2 11-7 10L396-261q-9 9-21 8.5t-21-9.5-9-21.5 9-21.5z"/>
                     </svg>
                   </button>
                   
                   {showModelDropdown && (
-                    <div className="absolute top-full mt-1 left-0 z-[9999] min-w-[200px] max-h-[300px] overflow-y-auto rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-gray-900 backdrop-blur-xl shadow-lg">
+                    <div className="absolute top-full mt-1 left-0 z-[300] min-w-full max-h-[300px] overflow-y-auto rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-gray-900 backdrop-blur-xl shadow-lg">
                       {(() => {
                         console.log('🔍 Dropdown is OPEN, availableModels:', availableModels);
                         console.log('🔍 availableModels.length:', availableModels.length);
@@ -938,7 +1019,11 @@ export default function HomePage() {
                               setShowModelDropdown(false);
                               console.log('🎯 After - availableModels should still be:', availableModels);
                             }}
-                            className="w-full px-3 py-2 text-left text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 first:rounded-t-lg last:rounded-b-lg transition-colors"
+                            className={`w-full px-3 py-2 text-left first:rounded-t-2xl last:rounded-b-2xl transition-colors ${
+                              selectedModel === model.id 
+                                ? 'bg-gray-100 dark:bg-white/10 text-black dark:text-white font-medium' 
+                                : 'text-gray-900 dark:text-white hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10'
+                            }`}
                           >
                             <span className="text-xs">{model.name}</span>
                           </button>
@@ -999,7 +1084,7 @@ export default function HomePage() {
                   key={example.text}
                   onClick={() => setPrompt(example.prompt)}
                   disabled={isCreatingProject}
-                  className="px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-500 bg-transparent border border-gray-200 dark:border-gray-700 rounded-full hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-700 dark:hover:text-gray-300 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-500 bg-transparent border border-[#DE7356]/10 dark:border-[#DE7356]/10 rounded-full hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-[#DE7356]/15 dark:hover:border-[#DE7356]/15 hover:text-gray-700 dark:hover:text-gray-300 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {example.text}
                 </button>
