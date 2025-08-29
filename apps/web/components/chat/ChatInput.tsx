@@ -366,7 +366,7 @@ export default function ChatInput({
                       {selectedModel === 'claude-sonnet-4' ? 'Sonnet 4' : 
                        selectedModel === 'claude-opus-4.1' ? 'Opus 4.1' :
                        selectedModel === 'gpt-5' ? 'GPT-5' :
-                       selectedModel === 'qwen-coder' ? 'Qwen Coder' :
+                       selectedModel === 'qwen3-coder-plus' ? 'Qwen3 Coder Plus' :
                        selectedModel === 'gemini-2.5-pro' ? 'Gemini 2.5 Pro' :
                        selectedModel === 'gemini-2.5-flash' ? 'Gemini 2.5 Flash' :
                        selectedModel}

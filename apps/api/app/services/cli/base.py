@@ -89,7 +89,10 @@ MODEL_MAPPING: Dict[str, Dict[str, str]] = {
         "claude-haiku-3.5": "claude-3-haiku",
     },
     "qwen": {
-        # Keep minimal; agent handles internal model
+        # Unified name → provider mapping
+        "qwen3-coder-plus": "qwen-coder",
+        "Qwen3 Coder Plus": "qwen-coder",
+        # Allow direct
         "qwen-coder": "qwen-coder",
     },
     "gemini": {

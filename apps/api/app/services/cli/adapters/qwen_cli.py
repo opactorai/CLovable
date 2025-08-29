@@ -12,6 +12,7 @@ import json
 import os
 import uuid
 from dataclasses import dataclass
+import shutil
 from datetime import datetime
 from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, List, Optional
 
@@ -226,7 +227,22 @@ class QwenCLI(BaseCLI):
     async def _ensure_client(self) -> _ACPClient:
         # Use shared client across adapter instances
         if QwenCLI._SHARED_CLIENT is None:
-            cmd = ["qwen", "--experimental-acp"]
+            # Resolve command: env(QWEN_CMD) -> qwen -> qwen-code
+            candidates = []
+            env_cmd = os.getenv("QWEN_CMD")
+            if env_cmd:
+                candidates.append(env_cmd)
+            candidates.extend(["qwen", "qwen-code"])
+            resolved = None
+            for c in candidates:
+                if shutil.which(c):
+                    resolved = c
+                    break
+            if not resolved:
+                raise RuntimeError(
+                    "Qwen CLI not found. Set QWEN_CMD or install 'qwen' CLI in PATH."
+                )
+            cmd = [resolved, "--experimental-acp"]
             # Prefer device-code / no-browser flow to avoid launching windows
             env = os.environ.copy()
             env.setdefault("NO_BROWSER", "1")
@@ -262,6 +278,19 @@ class QwenCLI(BaseCLI):
             QwenCLI._SHARED_CLIENT.on_request("fs/write_text_file", _fs_write)
 
             await QwenCLI._SHARED_CLIENT.start()
+            # Attach simple stderr logger
+            try:
+                proc = QwenCLI._SHARED_CLIENT._proc
+                if proc and proc.stderr:
+                    async def _log_stderr(stream):
+                        while True:
+                            line = await stream.readline()
+                            if not line:
+                                break
+                            ui.warning(line.decode(errors="ignore").strip(), "Qwen STDERR")
+                    asyncio.create_task(_log_stderr(proc.stderr))
+            except Exception:
+                pass
 
         self._client = QwenCLI._SHARED_CLIENT
 
@@ -478,11 +507,7 @@ class QwenCLI(BaseCLI):
             for task in done:
                 if task is not prompt_task:
                     update = task.result()
-                    try:
-                        kind = update.get("sessionUpdate") or update.get("type")
-                        ui.debug(f"[{turn_id}] processing update kind={kind}", "Qwen")
-                    except Exception:
-                        pass
+                    # Suppress verbose per-chunk logs; log only tool calls below
                     async for m in self._update_to_messages(update, project_path, session_id, thought_buffer, text_buffer):
                         if m:
                             yield m
@@ -576,6 +601,15 @@ class QwenCLI(BaseCLI):
                 session_id=session_id,
                 created_at=now,
             )
+            # Concise server-side log
+            try:
+                path = tool_input.get("path")
+                ui.info(
+                    f"TOOL {tool_name.upper()}" + (f" {path}" if path else ""),
+                    "Qwen",
+                )
+            except Exception:
+                pass
         elif kind == "plan":
             entries = update.get("entries") or []
             lines = []

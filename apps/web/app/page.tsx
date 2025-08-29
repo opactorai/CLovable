@@ -63,7 +63,7 @@ export default function HomePage() {
       { id: 'gpt-5', name: 'GPT-5' }
     ],
     qwen: [
-      { id: 'qwen-coder', name: 'Qwen Coder' }
+      { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus' }
     ],
     gemini: [
       { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
@@ -88,7 +88,7 @@ export default function HomePage() {
       if (cli === 'claude') setSelectedModel('claude-sonnet-4');
       else if (cli === 'cursor') setSelectedModel('gpt-5');
       else if (cli === 'codex') setSelectedModel('gpt-5');
-      else if (cli === 'qwen') setSelectedModel('qwen-coder');
+      else if (cli === 'qwen') setSelectedModel('qwen3-coder-plus');
       else if (cli === 'gemini') setSelectedModel('gemini-2.5-pro');
     }
   }, [globalSettings, usingGlobalDefaults]);
@@ -621,7 +621,7 @@ export default function HomePage() {
     } else if (assistant === 'codex') {
       setSelectedModel('gpt-5');
     } else if (assistant === 'qwen') {
-      setSelectedModel('qwen-coder');
+      setSelectedModel('qwen3-coder-plus');
     } else if (assistant === 'gemini') {
       setSelectedModel('gemini-2.5-pro');
     }
@@ -639,8 +639,8 @@ export default function HomePage() {
     { id: 'claude', name: 'Claude Code', icon: '/claude.png' },
     { id: 'cursor', name: 'Cursor Agent', icon: '/cursor.png' },
     { id: 'qwen', name: 'Qwen Coder', icon: '/qwen.png' },
-    { id: 'gemini', name: 'Gemini', icon: '/gemini.png' },
-    { id: 'codex', name: 'Codex', icon: '/oai.png' }
+    { id: 'gemini', name: 'Gemini CLI', icon: '/gemini.png' },
+    { id: 'codex', name: 'Codex CLI', icon: '/oai.png' }
   ];
 
   return (
@@ -975,7 +975,7 @@ export default function HomePage() {
                       />
                     </div>
                     <span className="hidden md:flex text-xs">
-                      {selectedAssistant === 'claude' ? 'Claude Code' : selectedAssistant === 'cursor' ? 'Cursor Agent' : selectedAssistant === 'qwen' ? 'Qwen Coder' : selectedAssistant === 'gemini' ? 'Gemini' : 'Codex'}
+                      {selectedAssistant === 'claude' ? 'Claude Code' : selectedAssistant === 'cursor' ? 'Cursor Agent' : selectedAssistant === 'qwen' ? 'Qwen Coder' : selectedAssistant === 'gemini' ? 'Gemini CLI' : 'Codex CLI'}
                     </span>
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 -960 960 960" className="shrink-0 h-3 w-3 rotate-90" fill="currentColor">
                       <path d="M530-481 353-658q-9-9-8.5-21t9.5-21 21.5-9 21.5 9l198 198q5 5 7 10t2 11-2 11-7 10L396-261q-9 9-21 8.5t-21-9.5-9-21.5 9-21.5z"/>
@@ -1035,8 +1035,8 @@ export default function HomePage() {
                           return 'Claude Sonnet 4';
                         } else if (selectedAssistant === 'codex' && selectedModel === 'gpt-5') {
                           return 'GPT-5';
-                        } else if (selectedAssistant === 'qwen' && selectedModel === 'qwen-coder') {
-                          return 'Qwen Coder';
+                        } else if (selectedAssistant === 'qwen' && selectedModel === 'qwen3-coder-plus') {
+                          return 'Qwen3 Coder Plus';
                         } else if (selectedAssistant === 'gemini' && selectedModel === 'gemini-2.5-pro') {
                           return 'Gemini 2.5 Pro';
                         } else if (selectedAssistant === 'gemini' && selectedModel === 'gemini-2.5-flash') {

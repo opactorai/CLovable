@@ -61,8 +61,7 @@ const CLI_OPTIONS: CLIOption[] = [
     downloadUrl: 'https://github.com/QwenLM/qwen-code',
     installCommand: 'npm install -g @qwen-code/qwen-code',
     models: [
-      { id: 'qwen3-coder-480b-a35b', name: 'Qwen3-Coder 480B-A35B', description: 'Most agentic coding model with 1M context' },
-      { id: 'qwen2.5-coder-32b', name: 'Qwen2.5-Coder 32B', description: 'SOTA open-source coding model' },
+      { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus', description: 'Agentic coding model (ACP)' },
     ],
     features: ['Agentic coding', '1M context window', 'Apache 2.0 license']
   },

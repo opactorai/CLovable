@@ -63,19 +63,21 @@ const CLI_OPTIONS: CLIOption[] = [
     id: 'qwen',
     name: 'Qwen Coder',
     icon: '/qwen.png',
-    description: 'Alibaba Qwen Coder (ACP)',
+    description: 'Alibaba Qwen Coder',
     color: 'from-purple-500 to-pink-500',
     brandColor: '#A855F7',
     downloadUrl: 'https://github.com/QwenLM/qwen-code',
     installCommand: 'npm install -g @qwen-code/qwen-code@latest',
     enabled: true,
-    models: []
+    models: [
+      { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus' }
+    ]
   },
   {
     id: 'gemini',
     name: 'Gemini CLI',
     icon: '/gemini.png',
-    description: 'Gemini 2.5 CLI (ACP)',
+    description: 'Gemini 2.5 CLI',
     color: 'from-blue-400 to-purple-600',
     brandColor: '#4285F4',
     downloadUrl: 'https://github.com/google-gemini/gemini-cli',

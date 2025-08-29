@@ -67,18 +67,20 @@ export const CLI_OPTIONS: CLIOption[] = [
   {
     id: 'qwen',
     name: 'Qwen Coder',
-    description: 'Qwen code agent with ACP',
-    icon: '/assets/qwen.png',
+    description: 'Alibaba Qwen Coder',
+    icon: '/qwen.png',
     available: true,
     configured: false,
     enabled: true,
-    models: []
+    models: [
+      { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus' }
+    ]
   },
   {
     id: 'gemini',
     name: 'Gemini',
-    description: 'Gemini CLI with ACP',
-    icon: '/assets/gemini.png',
+    description: 'Gemini CLI',
+    icon: '/gemini.png',
     available: true,
     configured: false,
     enabled: true,
