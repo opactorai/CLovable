@@ -59,6 +59,13 @@ export default function HomePage() {
     ],
     codex: [
       { id: 'gpt-5', name: 'GPT-5' }
+    ],
+    qwen: [
+      { id: 'qwen-coder', name: 'Qwen Coder' }
+    ],
+    gemini: [
+      { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' }
     ]
   };
   
@@ -591,6 +598,10 @@ export default function HomePage() {
       setSelectedModel('gpt-5');
     } else if (assistant === 'codex') {
       setSelectedModel('gpt-5');
+    } else if (assistant === 'qwen') {
+      setSelectedModel('qwen-coder');
+    } else if (assistant === 'gemini') {
+      setSelectedModel('gemini-2.5-pro');
     }
     
     setShowAssistantDropdown(false);
@@ -599,7 +610,9 @@ export default function HomePage() {
   const assistantOptions = [
     { id: 'claude', name: 'Claude Code', icon: '/claude.png' },
     { id: 'cursor', name: 'Cursor Agent', icon: '/cursor.png' },
-    { id: 'codex', name: 'Codex CLI', icon: '/oai.png' }
+    { id: 'qwen', name: 'Qwen Coder', icon: '/qwen.svg' },
+    { id: 'gemini', name: 'Gemini', icon: '/gemini.png' },
+    { id: 'codex', name: 'Codex', icon: '/oai.png' }
   ];
 
   return (
@@ -891,10 +904,10 @@ export default function HomePage() {
               <div className="flex gap-1 flex-wrap items-center">
                 {/* Image Upload Button */}
                 <div className="flex items-center gap-2">
-                  {selectedAssistant === 'cursor' ? (
+                  {selectedAssistant === 'cursor' || selectedAssistant === 'qwen' ? (
                     <div 
                       className="flex items-center justify-center w-8 h-8 text-gray-300 dark:text-gray-600 cursor-not-allowed opacity-50 rounded-full"
-                      title="Cursor CLI doesn't support image input"
+                      title={selectedAssistant === 'qwen' ? "Qwen Coder doesn't support image input" : "Cursor CLI doesn't support image input"}
                     >
                       <ImageIcon className="h-4 w-4" />
                     </div>
@@ -928,13 +941,13 @@ export default function HomePage() {
                   >
                     <div className="w-4 h-4 rounded overflow-hidden">
                       <img 
-                        src={selectedAssistant === 'claude' ? '/claude.png' : selectedAssistant === 'cursor' ? '/cursor.png' : '/oai.png'} 
-                        alt={selectedAssistant === 'claude' ? 'Claude' : selectedAssistant === 'cursor' ? 'Cursor' : 'Codex CLI'}
+                        src={selectedAssistant === 'claude' ? '/claude.png' : selectedAssistant === 'cursor' ? '/cursor.png' : selectedAssistant === 'qwen' ? '/qwen.svg' : selectedAssistant === 'gemini' ? '/gemini.png' : '/oai.png'} 
+                        alt={selectedAssistant === 'claude' ? 'Claude' : selectedAssistant === 'cursor' ? 'Cursor' : selectedAssistant === 'qwen' ? 'Qwen' : selectedAssistant === 'gemini' ? 'Gemini' : 'Codex'}
                         className="w-full h-full object-contain"
                       />
                     </div>
                     <span className="hidden md:flex text-xs">
-                      {selectedAssistant === 'claude' ? 'Claude Code' : selectedAssistant === 'cursor' ? 'Cursor Agent' : 'Codex CLI'}
+                      {selectedAssistant === 'claude' ? 'Claude Code' : selectedAssistant === 'cursor' ? 'Cursor Agent' : selectedAssistant === 'qwen' ? 'Qwen Coder' : selectedAssistant === 'gemini' ? 'Gemini' : 'Codex'}
                     </span>
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 -960 960 960" className="shrink-0 h-3 w-3 rotate-90" fill="currentColor">
                       <path d="M530-481 353-658q-9-9-8.5-21t9.5-21 21.5-9 21.5 9l198 198q5 5 7 10t2 11-2 11-7 10L396-261q-9 9-21 8.5t-21-9.5-9-21.5 9-21.5z"/>

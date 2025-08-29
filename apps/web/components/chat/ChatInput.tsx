@@ -91,7 +91,7 @@ export default function ChatInput({
 
   // Handle files (for both drag drop and file input)
   const handleFiles = async (files: FileList) => {
-    if (!projectId || preferredCli === 'cursor') return;
+    if (!projectId || preferredCli === 'cursor' || preferredCli === 'qwen') return;
     
     setIsUploading(true);
     
@@ -145,7 +145,7 @@ export default function ChatInput({
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (projectId && preferredCli !== 'cursor') {
+    if (projectId && preferredCli !== 'cursor' && preferredCli !== 'qwen') {
       setIsDragOver(true);
     }
   };
@@ -162,7 +162,7 @@ export default function ChatInput({
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (projectId && preferredCli !== 'cursor') {
+    if (projectId && preferredCli !== 'cursor' && preferredCli !== 'qwen') {
       e.dataTransfer.dropEffect = 'copy';
     } else {
       e.dataTransfer.dropEffect = 'none';
@@ -174,7 +174,7 @@ export default function ChatInput({
     e.stopPropagation();
     setIsDragOver(false);
 
-    if (!projectId || preferredCli === 'cursor') return;
+    if (!projectId || preferredCli === 'cursor' || preferredCli === 'qwen') return;
 
     const files = e.dataTransfer.files;
     if (files.length > 0) {
@@ -189,7 +189,7 @@ export default function ChatInput({
   // Handle clipboard paste for images
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
-      if (!projectId || preferredCli === 'cursor') return;
+      if (!projectId || preferredCli === 'cursor' || preferredCli === 'qwen') return;
       
       const items = e.clipboardData?.items;
       if (!items) return;
@@ -309,7 +309,7 @@ export default function ChatInput({
         </div>
         
         {/* Drag overlay */}
-        {isDragOver && projectId && preferredCli !== 'cursor' && (
+        {isDragOver && projectId && preferredCli !== 'cursor' && preferredCli !== 'qwen' && (
           <div className="absolute inset-0 bg-blue-50/90 dark:bg-blue-900/30 rounded-3xl flex items-center justify-center z-10 border-2 border-dashed border-blue-500">
             <div className="text-center">
               <div className="text-2xl mb-2">📸</div>
@@ -327,10 +327,10 @@ export default function ChatInput({
           <div className="flex items-center gap-2">
             {/* Image Upload Button */}
             {projectId && (
-              preferredCli === 'cursor' ? (
+              (preferredCli === 'cursor' || preferredCli === 'qwen') ? (
                 <div 
                   className="flex items-center justify-center w-8 h-8 text-gray-300 dark:text-gray-600 cursor-not-allowed opacity-50 rounded-full"
-                  title="Cursor CLI doesn't support image input"
+                  title={preferredCli === 'qwen' ? "Qwen Coder doesn't support image input" : "Cursor CLI doesn't support image input"}
                 >
                   <Image className="h-4 w-4" />
                 </div>

@@ -66,30 +66,25 @@ export const CLI_OPTIONS: CLIOption[] = [
   },
   {
     id: 'qwen',
-    name: 'Qwen',
-    description: '(Coming Soon)',
+    name: 'Qwen Coder',
+    description: 'Qwen code agent with ACP',
+    icon: '/qwen.svg',
     available: true,
     configured: false,
-    enabled: false,
-    models: [
-      { id: 'qwen3-coder-480b-a35b', name: 'Qwen3-Coder 480B-A35B' },
-      { id: 'qwen2.5-coder-32b', name: 'Qwen2.5-Coder 32B' },
-      { id: 'qwen-max', name: 'Qwen Max' },
-      { id: 'qwen-plus', name: 'Qwen Plus' }
-    ]
+    enabled: true,
+    models: []
   },
   {
     id: 'gemini',
     name: 'Gemini',
-    description: '(Coming Soon)',
+    description: 'Gemini CLI with ACP',
+    icon: '/gemini.png',
     available: true,
     configured: false,
-    enabled: false,
+    enabled: true,
     models: [
       { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
-      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-      { id: 'gemini-pro', name: 'Gemini Pro' },
-      { id: 'gemini-ultra', name: 'Gemini Ultra' }
+      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' }
     ]
   },
   {
