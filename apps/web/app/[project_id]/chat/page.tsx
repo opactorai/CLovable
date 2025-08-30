@@ -215,6 +215,17 @@ export default function ChatPage({ params }: Params) {
     // Synchronously guard to prevent double ACT calls
     initialPromptSentRef.current = true;
     setInitialPromptSent(true);
+    
+    // Store the selected model and assistant in sessionStorage when returning
+    const cliFromUrl = searchParams?.get('cli');
+    const modelFromUrl = searchParams?.get('model');
+    if (cliFromUrl) {
+      sessionStorage.setItem('selectedAssistant', cliFromUrl);
+    }
+    if (modelFromUrl) {
+      sessionStorage.setItem('selectedModel', modelFromUrl);
+    }
+    
     // Don't show the initial prompt in the input field
     // setPrompt(initialPromptFromUrl);
     setTimeout(() => {
@@ -1856,7 +1867,34 @@ export default function ChatPage({ params }: Params) {
                     </div>
                   </div>
                 ) : (
-                  <div className="h-full w-full flex items-center justify-center bg-gray-50 dark:bg-black">
+                  <div className="h-full w-full flex items-center justify-center bg-gray-50 dark:bg-black relative">
+                    {/* Gradient background similar to main page */}
+                    <div className="absolute inset-0">
+                      <div className="absolute inset-0 bg-white dark:bg-black" />
+                      <div 
+                        className="absolute inset-0 dark:block hidden transition-all duration-1000 ease-in-out"
+                        style={{
+                          background: `radial-gradient(circle at 50% 100%, 
+                            ${assistantBrandColors[preferredCli] || assistantBrandColors.claude}66 0%, 
+                            ${assistantBrandColors[preferredCli] || assistantBrandColors.claude}4D 25%, 
+                            ${assistantBrandColors[preferredCli] || assistantBrandColors.claude}33 50%, 
+                            transparent 70%)`
+                        }}
+                      />
+                      {/* Light mode gradient - subtle */}
+                      <div 
+                        className="absolute inset-0 block dark:hidden transition-all duration-1000 ease-in-out"
+                        style={{
+                          background: `radial-gradient(circle at 50% 100%, 
+                            ${assistantBrandColors[preferredCli] || assistantBrandColors.claude}40 0%, 
+                            ${assistantBrandColors[preferredCli] || assistantBrandColors.claude}26 25%, 
+                            transparent 50%)`
+                        }}
+                      />
+                    </div>
+                    
+                    {/* Content with z-index to be above gradient */}
+                    <div className="relative z-10 w-full h-full flex items-center justify-center">
                     {isStartingPreview ? (
                       <MotionDiv 
                         initial={{ opacity: 0, scale: 0.9 }}
@@ -2040,6 +2078,7 @@ export default function ChatPage({ params }: Params) {
                       </MotionDiv>
                     </div>
                     )}
+                    </div>
                   </div>
                 )}
                   </MotionDiv>

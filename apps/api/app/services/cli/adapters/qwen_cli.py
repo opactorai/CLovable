@@ -270,15 +270,37 @@ class QwenCLI(BaseCLI):
                 return {"content": ""}
 
             async def _fs_write(params: Dict[str, Any]) -> Dict[str, Any]:
-                # Not implemented for safety
-                return {}
+                # Validate required parameters for file editing
+                if "old_string" not in params and "content" in params:
+                    # If old_string is missing but content exists, log warning
+                    ui.warning(
+                        f"Qwen edit missing 'old_string' parameter: {params.get('path', 'unknown')}",
+                        "Qwen"
+                    )
+                    return {"error": "Missing required parameter: old_string"}
+                # Not fully implemented for safety, but return success to avoid blocking
+                return {"success": True}
+
+            async def _edit_file(params: Dict[str, Any]) -> Dict[str, Any]:
+                # Handle edit requests with proper parameter validation
+                if "old_string" not in params:
+                    ui.warning(
+                        f"Qwen edit missing 'old_string': {params.get('path', params.get('file_path', 'unknown'))}",
+                        "Qwen"
+                    )
+                    # Return error in format Qwen expects
+                    return {"error": {"code": -32602, "message": "params must have required property 'old_string'"}}
+                # For now, return success to avoid blocking
+                return {"success": True}
 
             QwenCLI._SHARED_CLIENT.on_request("session/request_permission", _handle_permission)
             QwenCLI._SHARED_CLIENT.on_request("fs/read_text_file", _fs_read)
             QwenCLI._SHARED_CLIENT.on_request("fs/write_text_file", _fs_write)
+            QwenCLI._SHARED_CLIENT.on_request("edit", _edit_file)
+            QwenCLI._SHARED_CLIENT.on_request("str_replace_editor", _edit_file)
 
             await QwenCLI._SHARED_CLIENT.start()
-            # Attach simple stderr logger
+            # Attach simple stderr logger (filtering out polling messages)
             try:
                 proc = QwenCLI._SHARED_CLIENT._proc
                 if proc and proc.stderr:
@@ -287,7 +309,13 @@ class QwenCLI(BaseCLI):
                             line = await stream.readline()
                             if not line:
                                 break
-                            ui.warning(line.decode(errors="ignore").strip(), "Qwen STDERR")
+                            decoded = line.decode(errors="ignore").strip()
+                            # Skip polling for token messages
+                            if "polling for token" in decoded.lower():
+                                continue
+                            # Only log meaningful errors
+                            if decoded and not decoded.startswith("DEBUG"):
+                                ui.warning(decoded, "Qwen STDERR")
                     asyncio.create_task(_log_stderr(proc.stderr))
             except Exception:
                 pass

@@ -56,6 +56,7 @@ export default function HomePage() {
   const [usingGlobalDefaults, setUsingGlobalDefaults] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [cliStatus, setCLIStatus] = useState<{ [key: string]: { installed: boolean; checking: boolean; version?: string; error?: string; } }>({});
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   
   // Define models for each assistant statically
   const modelsByAssistant = {
@@ -85,8 +86,40 @@ export default function HomePage() {
   
   // Sync with Global Settings (until user overrides locally)
   const { settings: globalSettings } = useGlobalSettings();
+  
+  // Check if this is a fresh page load (not navigation)
   useEffect(() => {
-    if (!usingGlobalDefaults) return;
+    const isPageRefresh = !sessionStorage.getItem('navigationFlag');
+    
+    if (isPageRefresh) {
+      // Fresh page load or refresh - use global defaults
+      sessionStorage.setItem('navigationFlag', 'true');
+      setIsInitialLoad(true);
+      setUsingGlobalDefaults(true);
+    } else {
+      // Navigation within session - check for stored selections
+      const storedAssistant = sessionStorage.getItem('selectedAssistant');
+      const storedModel = sessionStorage.getItem('selectedModel');
+      
+      if (storedAssistant && storedModel) {
+        setSelectedAssistant(storedAssistant);
+        setSelectedModel(storedModel);
+        setUsingGlobalDefaults(false);
+        setIsInitialLoad(false);
+        return;
+      }
+    }
+    
+    // Clean up navigation flag on unmount
+    return () => {
+      // Don't clear on navigation, only on actual page unload
+    };
+  }, []);
+  
+  // Apply global settings when using defaults
+  useEffect(() => {
+    if (!usingGlobalDefaults || !isInitialLoad) return;
+    
     const cli = globalSettings?.default_cli || 'claude';
     setSelectedAssistant(cli);
     const modelFromGlobal = globalSettings?.cli_settings?.[cli]?.model;
@@ -100,7 +133,25 @@ export default function HomePage() {
       else if (cli === 'qwen') setSelectedModel('qwen3-coder-plus');
       else if (cli === 'gemini') setSelectedModel('gemini-2.5-pro');
     }
-  }, [globalSettings, usingGlobalDefaults]);
+  }, [globalSettings, usingGlobalDefaults, isInitialLoad]);
+  
+  // Save selections to sessionStorage when they change
+  useEffect(() => {
+    if (!isInitialLoad && selectedAssistant && selectedModel) {
+      sessionStorage.setItem('selectedAssistant', selectedAssistant);
+      sessionStorage.setItem('selectedModel', selectedModel);
+    }
+  }, [selectedAssistant, selectedModel, isInitialLoad]);
+  
+  // Clear navigation flag on page unload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      sessionStorage.removeItem('navigationFlag');
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
   const [showAssistantDropdown, setShowAssistantDropdown] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
@@ -533,8 +584,11 @@ export default function HomePage() {
         }
       }
       
-      // Navigate to chat page
-      router.push(`/${project.id}/chat`);
+      // Navigate to chat page with model and CLI parameters
+      const params = new URLSearchParams();
+      if (selectedAssistant) params.set('cli', selectedAssistant);
+      if (selectedModel) params.set('model', selectedModel);
+      router.push(`/${project.id}/chat${params.toString() ? '?' + params.toString() : ''}`);
       
     } catch (error) {
       console.error('Failed to create project:', error);
@@ -620,6 +674,7 @@ export default function HomePage() {
     
     console.log('🔧 Assistant changing from', selectedAssistant, 'to', assistant);
     setUsingGlobalDefaults(false);
+    setIsInitialLoad(false);
     setSelectedAssistant(assistant);
     
     // Set default model for each assistant
@@ -640,16 +695,17 @@ export default function HomePage() {
 
   const handleModelChange = (modelId: string) => {
     setUsingGlobalDefaults(false);
+    setIsInitialLoad(false);
     setSelectedModel(modelId);
     setShowModelDropdown(false);
   };
 
   const assistantOptions = [
     { id: 'claude', name: 'Claude Code', icon: '/claude.png' },
+    { id: 'codex', name: 'Codex CLI', icon: '/oai.png' },
     { id: 'cursor', name: 'Cursor Agent', icon: '/cursor.png' },
-    { id: 'qwen', name: 'Qwen Coder', icon: '/qwen.png' },
     { id: 'gemini', name: 'Gemini CLI', icon: '/gemini.png' },
-    { id: 'codex', name: 'Codex CLI', icon: '/oai.png' }
+    { id: 'qwen', name: 'Qwen Coder', icon: '/qwen.png' }
   ];
 
   return (
@@ -782,7 +838,13 @@ export default function HomePage() {
                       <div className="flex items-center justify-between gap-2">
                         <div 
                           className="flex-1 cursor-pointer min-w-0"
-                          onClick={() => router.push(`/${project.id}/chat`)}
+                          onClick={() => {
+                            // Pass current model selection when navigating from sidebar
+                            const params = new URLSearchParams();
+                            if (selectedAssistant) params.set('cli', selectedAssistant);
+                            if (selectedModel) params.set('model', selectedModel);
+                            router.push(`/${project.id}/chat${params.toString() ? '?' + params.toString() : ''}`);
+                          }}
                         >
                           <h3 className="text-gray-900 dark:text-white text-sm group-hover:text-orange-500 dark:group-hover:text-orange-300 transition-colors truncate">
                             {project.name.length > 28 

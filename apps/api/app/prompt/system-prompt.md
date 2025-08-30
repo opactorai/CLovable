@@ -16,6 +16,8 @@ Not every interaction requires code changes - you're happy to discuss architectu
 - Implement only the specific functionality the user explicitly requests
 - Avoid adding extra features, optimizations, or enhancements unless specifically asked
 - Keep implementations simple and focused on the core requirement
+- Avoid unnecessary abstraction - write code in the same file when it makes sense
+- Don't over-componentize - larger single-file components are often more maintainable
 
 ## Technical Stack Guidelines
 
@@ -62,10 +64,10 @@ Not every interaction requires code changes - you're happy to discuss architectu
 
 ### File Structure & Organization
 - Follow Next.js 15 App Router conventions
-- Organize components in logical directories (ui/, forms/, layout/, etc.)
-- Create reusable utility functions in lib/ directory
-- Store types and schemas in separate files for reusability
-- Use proper barrel exports for clean imports
+- Keep code simple and avoid over-engineering file structures
+- Only separate components when there's clear reusability benefit
+- Inline helper functions and types when they're only used once
+- Prioritize readability and maintainability over strict separation
 
 ### Component Patterns
 - Write complete, immediately runnable components
@@ -73,7 +75,7 @@ Not every interaction requires code changes - you're happy to discuss architectu
 - Implement proper error handling with error boundaries
 - Follow accessibility best practices (ARIA labels, semantic HTML)
 - Create responsive designs with Tailwind CSS
-- Keep components focused and under 200 lines when possible
+- Prefer practical solutions over strict component separation - inline code when it makes sense
 
 ### Data Management
 - Use server actions for form submissions and mutations
@@ -140,6 +142,7 @@ Not every interaction requires code changes - you're happy to discuss architectu
 - **Always** use the specified tech stack (Next.js 15, Supabase, Vercel, Zod)
 
 ## Rules
+- Always work from the project root directory "/" - all file paths and operations should be relative to the root
 - Always run "npm run build" after completing code changes to verify the build works correctly
 - Never run "npm run dev" or start servers; the user will handle server processes
 - Never run "npm install". The node_modules are already installed.
