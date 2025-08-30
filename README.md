@@ -1,8 +1,11 @@
 # Claudable
 
-<img src="./assets/Claudable_main.png" alt="CLovable" style="border-radius: 12px; width: 100%;" />
 <div align="center">
-<h3>Connect Claude Code. Build what you want. Deploy instantly.</h3>
+  <img src="./assets/Claudable_promo.png" alt="Claudable Promo" style="width: 48%; display: inline-block; margin-right: 2%;" />
+  <img src="./assets/Claudable_agents.png" alt="Claudable Agents" style="width: 48%; display: inline-block;" />
+</div>
+<div align="center">
+<h3>Connect CLI Agent • Build what you want • Deploy instantly</h3>
 
 <p>Powered by <a href="https://opactor.ai">OPACTOR</a></p>
 </div>
@@ -27,7 +30,7 @@ This open-source project empowers you to build and deploy professional web appli
 How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and describe what you want to build. That's it. There is no additional subscription cost for app builder. 
 
 ## Features
-<img src="./assets/Claudable_short.gif" alt="Claudable Demo" style="width: 100%; max-width: 800px;">
+<img src="./assets/gif/Claudable_v2_cc_4_1080p.gif" alt="Claudable Demo" style="width: 100%; max-width: 800px;">
 
 - **Powerful Agent Performance**: Leverage the full power of Claude Code and Cursor CLI Agent capabilities with native MCP support
 - **Natural Language to Code**: Simply describe what you want to build, and Claudable generates production-ready Next.js code
@@ -39,22 +42,84 @@ How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and 
 - **Supabase Database**: Connect production PostgreSQL with authentication ready to use
 - **Automated Error Detection**: Detect errors in your app and fix them automatically
 
-## Technology Stack
-**AI Cooding Agent:**
-- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup)**: Advanced AI coding agent. We strongly recommend you to use Claude Code for the best experience.
+## Demo Examples
+
+### Codex CLI Example
+<img src="./assets/gif/Claudable_v2_codex_1_1080p.gif" alt="Codex CLI Demo" style="width: 100%; max-width: 800px;">
+
+### Qwen Code Example
+<img src="./assets/gif/Claudable_v2_qwen_1_1080p.gif" alt="Qwen Code Demo" style="width: 100%; max-width: 800px;">
+
+## Supported AI Coding Agents
+
+Claudable supports multiple AI coding agents, giving you the flexibility to choose the best tool for your needs:
+
+- **Claude Code** - Anthropic's advanced AI coding agent
+- **Codex CLI** - OpenAI's lightweight coding agent
+- **Cursor CLI** - Powerful multi-model AI agent
+- **Gemini CLI** - Google's open-source AI agent
+- **Qwen Code** - Alibaba's open-source coding CLI
+
+### Claude Code (Recommended)
+**[Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup)** - Anthropic's advanced AI coding agent with Claude Opus 4.1
+- **Features**: Deep codebase awareness, MCP support, Unix philosophy, direct terminal integration
+- **Context**: Native 256K tokens
+- **Pricing**: Included with ChatGPT Plus/Pro/Team/Edu/Enterprise plans
+- **Installation**:
   ```bash
-  # Install
   npm install -g @anthropic-ai/claude-code
-  # Login
   claude  # then > /login
   ```
-- **[Cursor CLI](https://docs.cursor.com/en/cli/overview)**: Intelligent coding agent for complex coding tasks. It's little bit slower than Claude Code, but it's more powerful.
+
+### Codex CLI
+**[Codex CLI](https://github.com/openai/codex)** - OpenAI's lightweight coding agent with GPT-5 support
+- **Features**: High reasoning capabilities, local execution, multiple operating modes (interactive, auto-edit, full-auto)
+- **Context**: Varies by model
+- **Pricing**: Included with ChatGPT Plus/Pro/Business/Edu/Enterprise plans
+- **Installation**:
   ```bash
-  # Install
+  npm install -g @openai/codex
+  codex  # login with ChatGPT account
+  ```
+
+### Cursor CLI
+**[Cursor CLI](https://cursor.com/en/cli)** - Powerful AI agent with access to cutting-edge models
+- **Features**: Multi-model support (Anthropic, OpenAI, Gemini), MCP integration, AGENTS.md support
+- **Context**: Model dependent
+- **Pricing**: Free tier available, Pro plans for advanced features
+- **Installation**:
+  ```bash
   curl https://cursor.com/install -fsS | bash
-  # Login
   cursor-agent login
   ```
+
+### Gemini CLI
+**[Gemini CLI](https://developers.google.com/gemini-code-assist/docs/gemini-cli)** - Google's open-source AI agent with Gemini 2.5 Pro
+- **Features**: 1M token context window, Google Search grounding, MCP support, extensible architecture
+- **Context**: 1M tokens (with free tier: 60 req/min, 1000 req/day)
+- **Pricing**: Free with Google account, paid tiers for higher limits
+- **Installation**:
+  ```bash
+  npm install -g @google/gemini-cli
+  gemini  # follow authentication flow
+  ```
+
+### Qwen Code
+**[Qwen Code](https://github.com/QwenLM/qwen-code)** - Alibaba's open-source CLI for Qwen3-Coder models
+- **Features**: 256K-1M token context, multiple model sizes (0.5B to 480B), Apache 2.0 license
+- **Context**: 256K native, 1M with extrapolation
+- **Pricing**: Completely free and open-source
+- **Installation**:
+  ```bash
+  npm install -g @qwen-code/qwen-code@latest
+  # Configure API (multiple providers supported)
+  export OPENAI_API_KEY="your_api_key"
+  export OPENAI_BASE_URL="https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+  export OPENAI_MODEL="qwen3-coder-plus"
+  qwen --version
+  ```
+
+## Technology Stack
 
 **Database & Deployment:**
 - **[Supabase](https://supabase.com/)**: Connect production-ready PostgreSQL database directly to your project.
@@ -214,19 +279,6 @@ If you encounter the error: `Error output dangerously skip permissions cannot be
 - Anon Key: Public key for client-side
 - Service Role Key: Secret key for server-side
 
-## Design Comparison
-
-*Same prompt, different results*
-
-### Claudable
-<img src="./assets/Claudable_ex.png" alt="Claudable Design" style="border-radius: 12px; width: 100%;" />
-
-[View Claudable Live Demo →](https://claudable-preview.vercel.app/)
-
-### Lovable
-<img src="./assets/Lovable_ex.png" alt="Lovable Design" style="border-radius: 12px; width: 100%;" />
-
-[View Lovable Live Demo →](https://preview--goal-track-studio.lovable.app/)
 
 ## License
 
