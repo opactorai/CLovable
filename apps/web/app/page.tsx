@@ -1041,7 +1041,7 @@ export default function HomePage() {
                       setShowAssistantDropdown(!showAssistantDropdown);
                       setShowModelDropdown(false);
                     }}
-                    className="justify-center whitespace-nowrap text-sm font-medium transition-colors duration-100 ease-in-out focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border border-gray-200/50 dark:border-white/5 bg-transparent shadow-sm hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300/50 dark:hover:border-white/10 px-3 py-2 flex h-8 items-center gap-1 rounded-full text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white focus-visible:ring-0"
+                    className="justify-center whitespace-nowrap text-sm font-medium transition-colors duration-100 ease-in-out focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border border-gray-200/50 dark:border-white/5 bg-transparent shadow-sm hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300/50 dark:hover:border-white/10 px-3 py-2 flex h-8 items-center gap-1 rounded-full text-gray-700 dark:text-white/80 hover:text-gray-900 dark:hover:text-white focus-visible:ring-0"
                   >
                     <div className="w-4 h-4 rounded overflow-hidden">
                       <img 
@@ -1050,7 +1050,7 @@ export default function HomePage() {
                         className="w-full h-full object-contain"
                       />
                     </div>
-                    <span className="hidden md:flex text-xs">
+                    <span className="hidden md:flex text-sm font-medium">
                       {selectedAssistant === 'claude' ? 'Claude Code' : selectedAssistant === 'cursor' ? 'Cursor Agent' : selectedAssistant === 'qwen' ? 'Qwen Coder' : selectedAssistant === 'gemini' ? 'Gemini CLI' : 'Codex CLI'}
                     </span>
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 -960 960 960" className="shrink-0 h-3 w-3 rotate-90" fill="currentColor">
@@ -1069,8 +1069,8 @@ export default function HomePage() {
                             !cliStatus[option.id]?.installed
                               ? 'opacity-50 cursor-not-allowed text-gray-400 dark:text-gray-500'
                               : selectedAssistant === option.id 
-                              ? 'bg-gray-100 dark:bg-white/10 text-black dark:text-white font-medium' 
-                              : 'text-gray-900 dark:text-white hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10'
+                              ? 'bg-gray-100 dark:bg-white/10 text-black dark:text-white font-semibold' 
+                              : 'text-gray-800 dark:text-gray-200 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10'
                           }`}
                         >
                           <div className="w-4 h-4 rounded overflow-hidden">
@@ -1080,7 +1080,7 @@ export default function HomePage() {
                               className="w-full h-full object-contain"
                             />
                           </div>
-                          <span className="text-xs">{option.name}</span>
+                          <span className="text-sm font-medium">{option.name}</span>
                         </button>
                       ))}
                     </div>
@@ -1097,9 +1097,9 @@ export default function HomePage() {
                       setShowModelDropdown(newState);
                       setShowAssistantDropdown(false);
                     }}
-                    className="justify-center whitespace-nowrap text-sm font-medium transition-colors duration-100 ease-in-out focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border border-gray-200/50 dark:border-white/5 bg-transparent shadow-sm hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300/50 dark:hover:border-white/10 px-3 py-2 flex h-8 items-center gap-1 rounded-full text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white focus-visible:ring-0 min-w-[140px]"
+                    className="justify-center whitespace-nowrap text-sm font-medium transition-colors duration-100 ease-in-out focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border border-gray-200/50 dark:border-white/5 bg-transparent shadow-sm hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300/50 dark:hover:border-white/10 px-3 py-2 flex h-8 items-center gap-1 rounded-full text-gray-700 dark:text-white/80 hover:text-gray-900 dark:hover:text-white focus-visible:ring-0 min-w-[140px]"
                   >
-                    <span className="text-xs whitespace-nowrap">{(() => {
+                    <span className="text-sm font-medium whitespace-nowrap">{(() => {
                       const found = availableModels.find(m => m.id === selectedModel);
                       console.log('🔍 Button display - selectedModel:', selectedModel, 'availableModels:', availableModels.map(m => m.id), 'found:', found);
                       
@@ -1145,11 +1145,11 @@ export default function HomePage() {
                             }}
                             className={`w-full px-3 py-2 text-left first:rounded-t-2xl last:rounded-b-2xl transition-colors ${
                               selectedModel === model.id 
-                                ? 'bg-gray-100 dark:bg-white/10 text-black dark:text-white font-medium' 
-                                : 'text-gray-900 dark:text-white hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10'
+                                ? 'bg-gray-100 dark:bg-white/10 text-black dark:text-white font-semibold' 
+                                : 'text-gray-800 dark:text-gray-200 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10'
                             }`}
                           >
-                            <span className="text-xs">{model.name}</span>
+                            <span className="text-sm font-medium">{model.name}</span>
                           </button>
                           );
                         });
@@ -1184,24 +1184,24 @@ export default function HomePage() {
             <div className="flex flex-wrap gap-2 justify-center mt-8">
               {[
                 { 
-                  text: 'Reporting Dashboard',
-                  prompt: 'Create a dashboard for small business owners. It should be able to track revenue, expenses, and customer growth. Include charts, filters, and the ability to export reports.'
+                  text: 'Landing Page',
+                  prompt: 'Design a modern, elegant, and visually stunning landing page for claudable with a clean, minimalistic aesthetic and a strong focus on user experience and conversion. Use a harmonious color palette, smooth gradients, soft shadows, and subtle animations to create a premium feel. Include a bold hero section with a clear headline and CTA, feature highlights with simple icons, social proof like testimonials or logos, and a final call-to-action at the bottom. Use large, impactful typography, balanced white space, and a responsive grid-based layout for a polished, pixel-perfect design optimized for both desktop and mobile.'
                 },
                 { 
                   text: 'Gaming Platform',
-                  prompt: 'Build a web-based game that helps kids practice math skills through interactive challenges. Include levels, progress tracking, and rewards for completing tasks.'
+                  prompt: 'Design a modern, clean, and visually engaging game platform UI for Lunaris Play, focusing on simplicity, usability, and an immersive user experience. Use a minimalistic yet dynamic aesthetic with smooth gradients, soft shadows, and subtle animations to create a premium, gamer-friendly vibe. Include a hero section highlighting trending and featured games, a game catalog grid with attractive thumbnails, quick-access filter and search options, and a user dashboard for profile, achievements, and recent activity. Typography should be bold yet clean, the layout responsive and intuitive, and the overall design polished, pixel-perfect, and optimized for both desktop and mobile.'
                 },
                 { 
                   text: 'Onboarding Portal',
-                  prompt: 'Design an onboarding portal that guides new employees through key company policies, values, and team introductions. Make it feel welcoming, interactive, and easy to follow.'
+                  prompt: 'Design a modern, intuitive, and visually appealing onboarding portal for new users, focusing on simplicity, clarity, and a smooth step-by-step experience. Use a clean layout with soft gradients, subtle shadows, and minimalistic icons to guide users through the process. Include a welcome hero section, an interactive progress tracker, and easy-to-follow forms. Typography should be bold yet friendly, and the overall design must feel welcoming, polished, and optimized for both desktop and mobile.'
                 },
                 { 
                   text: 'Networking App',
-                  prompt: 'Create a networking app for first-time startup founders to connect based on location, industry, and funding stage. Include profiles, messaging, and event discovery.'
+                  prompt: 'Design a sleek, modern, and user-friendly networking app interface for professionals to connect, chat, and collaborate. Use a vibrant yet minimal aesthetic with smooth animations, clean typography, and an elegant color palette to create an engaging social experience. Include a profile showcase, smart connection recommendations, real-time messaging, and a personalized activity feed. The layout should be intuitive, responsive, and optimized for seamless interaction across devices.'
                 },
                 { 
                   text: 'Room Visualizer',
-                  prompt: 'Build a tool where users can upload a photo of their room and apply different interior design styles using AI. Let them save, compare, and share their styled images.'
+                  prompt: 'Design a modern, immersive, and highly interactive room visualizer platform where users can preview furniture and decor in a 3D virtual environment. Use a clean, minimal design with elegant gradients, realistic visuals, and smooth transitions for a premium feel. Include a drag-and-drop furniture catalog, real-time 3D previews, color and style customization tools, and an intuitive save-and-share feature. Ensure the interface feels intuitive, responsive, and optimized for desktop and mobile experiences.'
                 }
               ].map((example) => (
                 <button
