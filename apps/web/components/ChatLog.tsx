@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { Brain } from 'lucide-react';
 import ToolResultItem from './ToolResultItem';
+import ThinkingSection from './chat/ThinkingSection';
 
 // Tool Message Component - Enhanced with new design
 const ToolMessage = ({ content, metadata }: { content: unknown; metadata?: { tool_name?: string; summary?: string; description?: string; file_path?: string; [key: string]: unknown } }) => {
@@ -440,20 +441,14 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
         }
       }
 
-      // Add the thinking section
+      // Add the thinking section using the new component
       const thinkingText = match[1].trim();
       if (thinkingText) {
         parts.push(
-          <div 
+          <ThinkingSection 
             key={`thinking-${match.index}`}
-            className="thinking-section italic text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg my-2 border-l-4 border-purple-300 dark:border-purple-600"
-          >
-            <div className="text-sm font-medium text-purple-600 dark:text-purple-400 mb-1 not-italic flex items-center gap-2">
-              <Brain className="h-4 w-4 text-gray-500" />
-              <span>Thinking</span>
-            </div>
-            <div className="whitespace-pre-wrap">{thinkingText}</div>
-          </div>
+            content={thinkingText}
+          />
         );
       }
 
