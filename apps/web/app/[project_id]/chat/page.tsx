@@ -4,7 +4,7 @@ import { AnimatePresence } from 'framer-motion';
 import { MotionDiv, MotionH3, MotionP, MotionButton } from '../../../lib/motion';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { FaCode, FaDesktop, FaMobileAlt, FaPlay, FaStop, FaSync, FaCog, FaRocket, FaFolder, FaFolderOpen, FaFile, FaFileCode, FaCss3Alt, FaHtml5, FaJs, FaReact, FaPython, FaDocker, FaGitAlt, FaMarkdown, FaDatabase, FaPhp, FaJava, FaRust, FaVuejs, FaLock, FaHome, FaChevronUp, FaChevronRight, FaChevronDown, FaArrowLeft, FaArrowRight } from 'react-icons/fa';
+import { FaCode, FaDesktop, FaMobileAlt, FaPlay, FaStop, FaSync, FaCog, FaRocket, FaFolder, FaFolderOpen, FaFile, FaFileCode, FaCss3Alt, FaHtml5, FaJs, FaReact, FaPython, FaDocker, FaGitAlt, FaMarkdown, FaDatabase, FaPhp, FaJava, FaRust, FaVuejs, FaLock, FaHome, FaChevronUp, FaChevronRight, FaChevronDown, FaArrowLeft, FaArrowRight, FaRedo } from 'react-icons/fa';
 import { SiTypescript, SiGo, SiRuby, SiSvelte, SiJson, SiYaml, SiCplusplus } from 'react-icons/si';
 import { VscJson } from 'react-icons/vsc';
 import ChatLog from '../../../components/ChatLog';
@@ -16,6 +16,29 @@ import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
 // 더 이상 ProjectSettings을 로드하지 않음 (메인 페이지에서 글로벌 설정으로 관리)
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
+
+// Define assistant brand colors
+const assistantBrandColors: { [key: string]: string } = {
+  claude: '#DE7356',
+  cursor: '#6B7280',
+  qwen: '#A855F7',
+  gemini: '#4285F4',
+  codex: '#000000'
+};
+
+// Function to convert hex to CSS filter for tinting white images
+// Since the original image is white (#FFFFFF), we can apply filters more accurately
+const hexToFilter = (hex: string): string => {
+  // For white source images, we need to invert and adjust
+  const filters: { [key: string]: string } = {
+    '#DE7356': 'brightness(0) saturate(100%) invert(52%) sepia(73%) saturate(562%) hue-rotate(336deg) brightness(95%) contrast(91%)',  // Orange for Claude
+    '#6B7280': 'brightness(0) saturate(100%) invert(47%) sepia(7%) saturate(625%) hue-rotate(174deg) brightness(92%) contrast(82%)',  // Gray for Cursor  
+    '#A855F7': 'brightness(0) saturate(100%) invert(48%) sepia(79%) saturate(1532%) hue-rotate(256deg) brightness(95%) contrast(101%)',  // Purple for Qwen
+    '#4285F4': 'brightness(0) saturate(100%) invert(40%) sepia(97%) saturate(1449%) hue-rotate(198deg) brightness(97%) contrast(101%)',  // Blue for Gemini
+    '#000000': 'brightness(0) saturate(100%)'  // Black for Codex
+  };
+  return filters[hex] || '';
+};
 
 type Entry = { path: string; type: 'file'|'dir'; size?: number };
 type Params = { params: { project_id: string } };
@@ -1393,9 +1416,9 @@ export default function ChatPage({ params }: Params) {
             <div className="bg-white dark:bg-black border-b border-gray-200 dark:border-gray-800 p-4 h-[73px] flex items-center">
               <div className="flex items-center gap-3">
                 <button 
-                  onClick={() => router.back()}
+                  onClick={() => router.push('/')}
                   className="flex items-center justify-center w-8 h-8 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
-                  title="Back to projects"
+                  title="Back to home"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M19 12H5M12 19L5 12L12 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1485,32 +1508,77 @@ export default function ChatPage({ params }: Params) {
                     </button>
                   </div>
                   
-                  {/* Preview Controls */}
-                  {showPreview && (
-                    <div className="flex items-center gap-2">
-                      {previewUrl ? (
-                        <>
-                          <button 
-                            className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-                            onClick={stop}
+                  {/* Center Controls */}
+                  {showPreview && previewUrl && (
+                    <div className="flex items-center gap-3">
+                      {/* Route Navigation */}
+                      <div className="h-9 flex items-center bg-gray-100 dark:bg-gray-900 rounded-lg px-3 border border-gray-200 dark:border-gray-700">
+                        <FaHome size={12} className="text-gray-400 dark:text-gray-500 mr-2" />
+                        <span className="text-sm text-gray-500 dark:text-gray-400 mr-1">/</span>
+                        <input
+                          type="text"
+                          value={currentRoute.startsWith('/') ? currentRoute.slice(1) : currentRoute}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setCurrentRoute(value ? `/${value}` : '/');
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              navigateToRoute(currentRoute);
+                            }
+                          }}
+                          className="bg-transparent text-sm text-gray-700 dark:text-gray-300 outline-none w-40"
+                          placeholder="route"
+                        />
+                        <button
+                          onClick={() => navigateToRoute(currentRoute)}
+                          className="ml-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                        >
+                          <FaArrowRight size={12} />
+                        </button>
+                      </div>
+                      
+                      {/* Action Buttons Group */}
+                      <div className="flex items-center gap-1.5">
+                        <button 
+                          className="h-9 w-9 flex items-center justify-center bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                          onClick={() => {
+                            const iframe = document.querySelector('iframe');
+                            if (iframe) {
+                              iframe.src = iframe.src;
+                            }
+                          }}
+                          title="Refresh preview"
+                        >
+                          <FaRedo size={14} />
+                        </button>
+                        
+                        {/* Device Mode Toggle */}
+                        <div className="h-9 flex items-center gap-1 bg-gray-100 dark:bg-gray-900 rounded-lg px-1 border border-gray-200 dark:border-gray-700">
+                          <button
+                            aria-label="Desktop preview"
+                            className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
+                              deviceMode === 'desktop' 
+                                ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30' 
+                                : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
+                            }`}
+                            onClick={() => setDeviceMode('desktop')}
                           >
-                            <span className="w-3 h-3 flex items-center justify-center"><FaStop size={12} /></span>
-                            Stop
+                            <FaDesktop size={14} />
                           </button>
-                          <button 
-                            className="p-1.5 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg transition-colors"
-                            onClick={() => {
-                              const iframe = document.querySelector('iframe');
-                              if (iframe) {
-                                iframe.src = iframe.src;
-                              }
-                            }}
-                            title="Refresh preview"
+                          <button
+                            aria-label="Mobile preview"
+                            className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
+                              deviceMode === 'mobile' 
+                                ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30' 
+                                : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
+                            }`}
+                            onClick={() => setDeviceMode('mobile')}
                           >
-                            <span className="w-4 h-4 flex items-center justify-center"><FaSync size={16} /></span>
+                            <FaMobileAlt size={14} />
                           </button>
-                        </>
-                      ) : null}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1519,22 +1587,31 @@ export default function ChatPage({ params }: Params) {
                   {/* Settings Button */}
                   <button 
                     onClick={() => setShowGlobalSettings(true)}
-                    className="p-2 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                    className="h-9 w-9 flex items-center justify-center bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg transition-colors"
                     title="Settings"
                   >
-                    <span className="w-4 h-4 flex items-center justify-center"><FaCog size={16} /></span>
+                    <FaCog size={16} />
                   </button>
+                  
+                  {/* Stop Button */}
+                  {showPreview && previewUrl && (
+                    <button 
+                      className="h-9 px-3 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                      onClick={stop}
+                    >
+                      <FaStop size={12} />
+                      Stop
+                    </button>
+                  )}
                   
                   {/* Publish/Update */}
                   {showPreview && previewUrl && (
                     <div className="relative">
                     <button
-                      className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors"
+                      className="h-9 flex items-center gap-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors"
                       onClick={() => setShowPublishPanel(!showPublishPanel)}
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
+                      <FaRocket size={14} />
                       Publish
                       {deploymentStatus === 'deploying' && (
                         <span className="ml-2 inline-block w-2 h-2 rounded-full bg-amber-400"></span>
@@ -1719,73 +1796,18 @@ export default function ChatPage({ params }: Params) {
                     style={{ height: '100%' }}
                   >
                 {previewUrl ? (
-                  <div className="relative w-full h-full flex flex-col bg-gray-100 dark:bg-gray-800">
-                    {/* Route Navigation Bar */}
-                    <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 py-2 flex items-center gap-2">
-                      {/* URL Bar */}
-                      <div className="flex-1 flex items-center bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-1.5">
-                        <span className="text-sm text-gray-500 dark:text-gray-400 mr-1">/</span>
-                        <input
-                          type="text"
-                          value={currentRoute.startsWith('/') ? currentRoute.slice(1) : currentRoute}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setCurrentRoute(value ? `/${value}` : '/');
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              navigateToRoute(currentRoute);
-                            }
-                          }}
-                          className="flex-1 bg-transparent text-sm text-gray-700 dark:text-gray-300 outline-none"
-                          placeholder="Enter route (e.g., about, contact)"
-                        />
-                        <button
-                          onClick={() => navigateToRoute(currentRoute)}
-                          className="ml-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                        >
-                          <FaArrowRight size={12} />
-                        </button>
-                      </div>
-                      
-                      {/* Device Mode Toggle */}
-                      <button
-                        aria-label="Desktop preview"
-                        className={`p-1.5 rounded transition-colors ${
-                          deviceMode === 'desktop' 
-                            ? 'text-blue-600 dark:text-blue-400' 
-                            : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
-                        }`}
-                        onClick={() => setDeviceMode('desktop')}
-                      >
-                        <FaDesktop size={16} />
-                      </button>
-                      <button
-                        aria-label="Mobile preview"
-                        className={`p-1.5 rounded transition-colors ${
-                          deviceMode === 'mobile' 
-                            ? 'text-blue-600 dark:text-blue-400' 
-                            : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
-                        }`}
-                        onClick={() => setDeviceMode('mobile')}
-                      >
-                        <FaMobileAlt size={16} />
-                      </button>
-                    </div>
-                    
-                    {/* Iframe Container */}
-                    <div className="flex-1 relative flex items-center justify-center">
-                      <div 
-                        className={`bg-white dark:bg-gray-900 ${
-                          deviceMode === 'mobile' 
-                            ? 'w-[375px] h-[667px] rounded-[25px] border-8 border-gray-800 shadow-2xl' 
-                            : 'w-full h-full'
-                        } overflow-hidden`}
-                      >
-                        <iframe 
-                          ref={iframeRef}
-                          className="w-full h-full border-none bg-white dark:bg-gray-800"
-                          src={previewUrl}
+                  <div className="relative w-full h-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                    <div 
+                      className={`bg-white dark:bg-gray-900 ${
+                        deviceMode === 'mobile' 
+                          ? 'w-[375px] h-[667px] rounded-[25px] border-8 border-gray-800 shadow-2xl' 
+                          : 'w-full h-full'
+                      } overflow-hidden`}
+                    >
+                      <iframe 
+                        ref={iframeRef}
+                        className="w-full h-full border-none bg-white dark:bg-gray-800"
+                        src={previewUrl}
                         onError={() => {
                           // Show error overlay
                           const overlay = document.getElementById('iframe-error-overlay');
@@ -1831,7 +1853,6 @@ export default function ChatPage({ params }: Params) {
                         </button>
                       </div>
                     </div>
-                      </div>
                     </div>
                   </div>
                 ) : (
@@ -1844,15 +1865,25 @@ export default function ChatPage({ params }: Params) {
                       >
                         {/* Claudable Symbol with loading spinner */}
                         <div className="w-40 h-40 mx-auto mb-6 relative">
-                          <img 
-                            src="/Claudable_simbol.png" 
-                            alt="Claudable" 
-                            className="w-full h-full opacity-80 object-contain"
+                          <div 
+                            className="w-full h-full"
+                            style={{
+                              backgroundColor: assistantBrandColors[preferredCli] || assistantBrandColors.claude,
+                              mask: 'url(/Symbol_white.png) no-repeat center/contain',
+                              WebkitMask: 'url(/Symbol_white.png) no-repeat center/contain',
+                              opacity: 0.9
+                            }}
                           />
                           
                           {/* Loading spinner in center */}
                           <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="w-14 h-14 border-4 border-[#DE7356] border-t-transparent rounded-full animate-spin" />
+                            <div 
+                              className="w-14 h-14 border-4 border-t-transparent rounded-full animate-spin"
+                              style={{
+                                borderColor: assistantBrandColors[preferredCli] || assistantBrandColors.claude,
+                                borderTopColor: 'transparent'
+                              }}
+                            />
                           </div>
                         </div>
                         
@@ -1903,16 +1934,47 @@ export default function ChatPage({ params }: Params) {
                                 style={{ transformOrigin: "center center" }}
                                 className="w-full h-full"
                               >
-                                <img 
-                                  src="/Claudable_simbol.png" 
-                                  alt="Claudable" 
-                                  className="w-full h-full opacity-80 object-contain"
+                                <div 
+                                  className="w-full h-full"
+                                  style={{
+                                    backgroundColor: assistantBrandColors[preferredCli] || assistantBrandColors.claude,
+                                    mask: 'url(/Symbol_white.png) no-repeat center/contain',
+                                    WebkitMask: 'url(/Symbol_white.png) no-repeat center/contain',
+                                    opacity: 0.9
+                                  }}
                                 />
                               </MotionDiv>
                             </div>
                             
-                            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
-                              Building...
+                            <h3 className="text-2xl font-bold mb-3 relative overflow-hidden inline-block">
+                              <span 
+                                className="relative"
+                                style={{
+                                  background: `linear-gradient(90deg, 
+                                    #6b7280 0%, 
+                                    #6b7280 30%, 
+                                    #ffffff 50%, 
+                                    #6b7280 70%, 
+                                    #6b7280 100%)`,
+                                  backgroundSize: '200% 100%',
+                                  WebkitBackgroundClip: 'text',
+                                  backgroundClip: 'text',
+                                  WebkitTextFillColor: 'transparent',
+                                  animation: 'shimmerText 5s linear infinite'
+                                }}
+                              >
+                                Building...
+                              </span>
+                              <style>{`
+                                @keyframes shimmerText {
+                                  0% {
+                                    background-position: 200% center;
+                                  }
+                                  100% {
+                                    background-position: -200% center;
+                                  }
+                                }
+                              `}</style>
                             </h3>
                           </>
                         ) : (
@@ -1925,26 +1987,42 @@ export default function ChatPage({ params }: Params) {
                               <MotionDiv
                                 className="w-full h-full"
                                 animate={isStartingPreview ? { rotate: 360 } : {}}
-                                transition={{ duration: 2, repeat: isStartingPreview ? Infinity : 0, ease: "linear" }}
+                                transition={{ duration: 6, repeat: isStartingPreview ? Infinity : 0, ease: "linear" }}
                               >
-                                <img 
-                                  src="/Claudable_simbol.png" 
-                                  alt="Claudable" 
-                                  className="w-full h-full opacity-80 object-contain"
+                                <div 
+                                  className="w-full h-full"
+                                  style={{
+                                    backgroundColor: assistantBrandColors[preferredCli] || assistantBrandColors.claude,
+                                    mask: 'url(/Symbol_white.png) no-repeat center/contain',
+                                    WebkitMask: 'url(/Symbol_white.png) no-repeat center/contain',
+                                    opacity: 0.9
+                                  }}
                                 />
                               </MotionDiv>
                               
                               {/* Icon in Center - Play or Loading */}
                               <div className="absolute inset-0 flex items-center justify-center">
                                 {isStartingPreview ? (
-                                  <div className="w-14 h-14 border-4 border-[#DE7356] border-t-transparent rounded-full animate-spin" />
+                                  <div 
+                                    className="w-14 h-14 border-4 border-t-transparent rounded-full animate-spin"
+                                    style={{
+                                      borderColor: assistantBrandColors[preferredCli] || assistantBrandColors.claude,
+                                      borderTopColor: 'transparent'
+                                    }}
+                                  />
                                 ) : (
                                   <MotionDiv
                                     className="flex items-center justify-center"
                                     whileHover={{ scale: 1.2 }}
                                     whileTap={{ scale: 0.9 }}
                                   >
-                                    <FaPlay size={32} className="text-[#DE7356] ml-1 drop-shadow-lg" />
+                                    <FaPlay 
+                                      size={32} 
+                                      className="ml-1 drop-shadow-lg" 
+                                      style={{
+                                        color: assistantBrandColors[preferredCli] || assistantBrandColors.claude
+                                      }}
+                                    />
                                   </MotionDiv>
                                 )}
                               </div>

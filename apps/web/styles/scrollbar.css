@@ -1,24 +1,24 @@
-/* Custom scrollbar styles for dark theme */
+/* Custom scrollbar styles for light/dark theme */
 
-/* Global scrollbar styles */
+/* Light mode global scrollbar styles */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(200, 200, 200, 0.2);
   border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(100, 100, 100, 0.4);
+  background: rgba(150, 150, 150, 0.5);
   border-radius: 5px;
-  border: 1px solid rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(150, 150, 150, 0.2);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 100, 100, 0.6);
+  background: rgba(130, 130, 130, 0.7);
 }
 
 /* Dark mode global scrollbar */
@@ -27,22 +27,22 @@
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: rgba(60, 60, 60, 0.8);
-  border: 1px solid rgba(0, 0, 0, 0.5);
+  background: rgba(100, 100, 100, 0.5);
+  border: 1px solid rgba(100, 100, 100, 0.2);
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: rgba(80, 80, 80, 0.9);
+  background: rgba(120, 120, 120, 0.7);
 }
 
 /* Firefox global */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(100, 100, 100, 0.4) transparent;
+  scrollbar-color: rgba(150, 150, 150, 0.5) rgba(200, 200, 200, 0.2);
 }
 
 .dark * {
-  scrollbar-color: rgba(60, 60, 60, 0.8) rgba(0, 0, 0, 0.3);
+  scrollbar-color: rgba(100, 100, 100, 0.5) rgba(0, 0, 0, 0.3);
 }
 
 /* Chrome, Safari, Edge */
@@ -52,38 +52,42 @@
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(200, 200, 200, 0.15);
   border-radius: 4px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #2a2a2a;
+  background: rgba(140, 140, 140, 0.5);
   border-radius: 4px;
-  border: 1px solid #1a1a1a;
+  border: 1px solid rgba(140, 140, 140, 0.2);
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #3a3a3a;
+  background: rgba(120, 120, 120, 0.7);
 }
 
 /* Dark mode specific */
+.dark .custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+
 .dark .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #3a3a3a;
-  border: 1px solid #2a2a2a;
+  background: rgba(100, 100, 100, 0.5);
+  border: 1px solid rgba(100, 100, 100, 0.2);
 }
 
 .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #4a4a4a;
+  background: rgba(120, 120, 120, 0.7);
 }
 
 /* Firefox */
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: #2a2a2a transparent;
+  scrollbar-color: rgba(140, 140, 140, 0.5) rgba(200, 200, 200, 0.15);
 }
 
 .dark .custom-scrollbar {
-  scrollbar-color: #3a3a3a transparent;
+  scrollbar-color: rgba(100, 100, 100, 0.5) rgba(0, 0, 0, 0.2);
 }
 
 /* Chat-specific scrollbar */
@@ -95,14 +99,27 @@
   background: transparent;
 }
 
+/* Light mode chat scrollbar */
 .chat-scrollbar::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #3a3a3a 0%, #2a2a2a 100%);
+  background: linear-gradient(180deg, rgba(140, 140, 140, 0.5) 0%, rgba(160, 160, 160, 0.5) 100%);
   border-radius: 3px;
   opacity: 0.6;
 }
 
 .chat-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #4a4a4a 0%, #3a3a3a 100%);
+  background: linear-gradient(180deg, rgba(120, 120, 120, 0.7) 0%, rgba(140, 140, 140, 0.7) 100%);
+  opacity: 1;
+}
+
+/* Dark mode chat scrollbar */
+.dark .chat-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(100, 100, 100, 0.5) 0%, rgba(80, 80, 80, 0.5) 100%);
+  border-radius: 3px;
+  opacity: 0.6;
+}
+
+.dark .chat-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(120, 120, 120, 0.7) 0%, rgba(100, 100, 100, 0.7) 100%);
   opacity: 1;
 }
 

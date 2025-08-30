@@ -32,6 +32,15 @@ type Project = {
   };
 };
 
+// Define assistant brand colors
+const assistantBrandColors: { [key: string]: string } = {
+  claude: '#DE7356',
+  cursor: '#6B7280',
+  qwen: '#A855F7',
+  gemini: '#4285F4',
+  codex: '#000000'
+};
+
 export default function HomePage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [showCreate, setShowCreate] = useState(false);
@@ -649,22 +658,22 @@ export default function HomePage() {
       <div className="absolute inset-0">
         <div className="absolute inset-0 bg-white dark:bg-black" />
         <div 
-          className="absolute inset-0 dark:block hidden"
+          className="absolute inset-0 dark:block hidden transition-all duration-1000 ease-in-out"
           style={{
             background: `radial-gradient(circle at 50% 100%, 
-              rgba(222, 115, 86, 0.4) 0%, 
-              rgba(222, 115, 86, 0.3) 25%, 
-              rgba(222, 115, 86, 0.2) 50%, 
+              ${assistantBrandColors[selectedAssistant]}66 0%, 
+              ${assistantBrandColors[selectedAssistant]}4D 25%, 
+              ${assistantBrandColors[selectedAssistant]}33 50%, 
               transparent 70%)`
           }}
         />
         {/* Light mode gradient - subtle */}
         <div 
-          className="absolute inset-0 block dark:hidden"
+          className="absolute inset-0 block dark:hidden transition-all duration-1000 ease-in-out"
           style={{
             background: `radial-gradient(circle at 50% 100%, 
-              rgba(222, 115, 86, 0.25) 0%, 
-              rgba(222, 115, 86, 0.15) 25%, 
+              ${assistantBrandColors[selectedAssistant]}40 0%, 
+              ${assistantBrandColors[selectedAssistant]}26 25%, 
               transparent 50%)`
           }}
         />
@@ -840,14 +849,19 @@ export default function HomePage() {
           <div className="w-full max-w-4xl">
             <div className="text-center mb-12">
               <div className="flex justify-center mb-6">
-                <Image 
-                  src="/Claudable_logo.svg"
-                  alt="Claudable"
-                  width={200}
-                  height={56}
-                  className="h-14 w-auto"
-                  priority
-                />
+                <h1 
+                  className="font-extrabold tracking-tight select-none transition-colors duration-1000 ease-in-out"
+                  style={{
+                    fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+                    color: assistantBrandColors[selectedAssistant],
+                    letterSpacing: '-0.06em',
+                    fontWeight: 800,
+                    fontSize: '72px',
+                    lineHeight: '72px'
+                  }}
+                >
+                  Claudable
+                </h1>
               </div>
               <p className="text-xl text-gray-700 dark:text-white/80 font-light tracking-tight">
                 Connect CLI Agent • Build what you want • Deploy instantly
