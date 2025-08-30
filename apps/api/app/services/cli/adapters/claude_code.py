@@ -97,6 +97,35 @@ class ClaudeCodeCLI(BaseCLI):
         ui.debug(f"Project path: {project_path}", "Claude SDK")
         ui.debug(f"Session ID: {session_id}", "Claude SDK")
 
+        # Validate project_path
+        if not project_path:
+            error_msg = "Project path is not available. The project may still be initializing."
+            ui.error(error_msg, "Claude SDK")
+            yield Message(
+                id=str(uuid.uuid4()),
+                project_id="unknown",
+                role="assistant",
+                message_type="error",
+                content=error_msg,
+                metadata_json={"type": "project_path_error"},
+                created_at=datetime.utcnow()
+            )
+            return
+        
+        if not os.path.exists(project_path):
+            error_msg = f"Project directory does not exist: {project_path}. The project may have failed to initialize."
+            ui.error(error_msg, "Claude SDK")
+            yield Message(
+                id=str(uuid.uuid4()),
+                project_id="unknown",
+                role="assistant",
+                message_type="error",
+                content=error_msg,
+                metadata_json={"type": "project_path_error"},
+                created_at=datetime.utcnow()
+            )
+            return
+
         if log_callback:
             await log_callback("Starting execution...")
 

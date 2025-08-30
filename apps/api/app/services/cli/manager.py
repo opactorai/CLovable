@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+import os
 
 from app.core.terminal_ui import ui
 from app.core.websocket.manager import manager as ws_manager
@@ -51,6 +52,25 @@ class UnifiedCLIManager:
         is_initial_prompt: bool = False,
     ) -> Dict[str, Any]:
         """Execute instruction with specified CLI"""
+
+        # Validate project_path before proceeding
+        if not self.project_path:
+            error_msg = "Project path is not available. The project may still be initializing."
+            ui.error(error_msg, "CLI")
+            return {
+                "success": False,
+                "error": error_msg,
+                "cli_attempted": cli_type.value,
+            }
+        
+        if not os.path.exists(self.project_path):
+            error_msg = f"Project directory does not exist: {self.project_path}. The project may have failed to initialize."
+            ui.error(error_msg, "CLI")
+            return {
+                "success": False,
+                "error": error_msg,
+                "cli_attempted": cli_type.value,
+            }
 
         # Try the specified CLI
         if cli_type in self.cli_adapters:

@@ -27,6 +27,9 @@
     "npm": ">=9.0.0"
   },
   "dependencies": {
-    "react-icons": "^5.5.0"
+    "prismjs": "^1.30.0",
+    "react-icons": "^5.5.0",
+    "react-syntax-highlighter": "^5.8.0",
+    "refractor": "^5.0.0"
   }
 }
