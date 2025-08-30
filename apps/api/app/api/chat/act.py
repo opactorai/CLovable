@@ -520,6 +520,16 @@ async def run_act(
         ui.error(f"Project {project_id} not found", "ACT API")
         raise HTTPException(status_code=404, detail="Project not found")
     
+    # Check if project is still initializing
+    if project.status == "initializing":
+        ui.error(f"Project {project_id} is still initializing", "ACT API")
+        raise HTTPException(status_code=400, detail="Project is still initializing. Please wait for initialization to complete.")
+    
+    # Check if project has a valid repo_path
+    if not project.repo_path:
+        ui.error(f"Project {project_id} repository path not available", "ACT API")
+        raise HTTPException(status_code=400, detail="Project repository is not ready. Please wait for initialization to complete.")
+    
     # Determine CLI preference
     cli_preference = CLIType(body.cli_preference or project.preferred_cli)
     fallback_enabled = body.fallback_enabled if body.fallback_enabled is not None else project.fallback_enabled

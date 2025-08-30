@@ -6,6 +6,7 @@ import time
 import hashlib
 import threading
 import re
+import platform
 from contextlib import closing
 from typing import Optional, Dict
 from app.core.config import settings
@@ -14,6 +15,45 @@ from app.core.config import settings
 # Global process registry to track running Next.js processes
 _running_processes: Dict[str, subprocess.Popen] = {}
 _process_logs: Dict[str, list] = {}  # Store process logs for each project
+
+def _is_windows() -> bool:
+    """Check if running on Windows"""
+    return platform.system() == "Windows"
+
+def _terminate_process_windows(process: subprocess.Popen) -> None:
+    """Terminate process on Windows"""
+    try:
+        # On Windows, use taskkill to terminate the process tree
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+            capture_output=True,
+            timeout=10
+        )
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+        # Fallback: try to terminate the process directly
+        try:
+            process.terminate()
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
+def _terminate_process_unix(process: subprocess.Popen) -> None:
+    """Terminate process on Unix-like systems"""
+    try:
+        # Terminate the entire process group
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+        
+        # Wait for process to terminate gracefully
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            # Force kill if it doesn't terminate gracefully
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            process.wait()
+    except (OSError, ProcessLookupError):
+        # Process already terminated
+        pass
 
 def _monitor_preview_errors(project_id: str, process: subprocess.Popen):
     """간단한 Preview 서버 에러 모니터링"""
@@ -326,14 +366,35 @@ def start_preview_process(project_id: str, repo_path: str, port: Optional[int] =
         # Only install dependencies if needed
         if _should_install_dependencies(repo_path):
             print(f"Installing dependencies for project {project_id}...")
-            install_result = subprocess.run(
-                ["npm", "install"],
-                cwd=repo_path,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=120  # 2 minutes timeout for npm install
-            )
+            print(f"Repository path: {repo_path}")
+            print(f"Current working directory: {os.getcwd()}")
+            
+            # Use shell=True on Windows to avoid execution issues
+            if _is_windows():
+                install_result = subprocess.run(
+                    "npm install",
+                    cwd=repo_path,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,  # 2 minutes timeout for npm install
+                    shell=True
+                )
+            else:
+                install_result = subprocess.run(
+                    ["npm", "install"],
+                    cwd=repo_path,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=120  # 2 minutes timeout for npm install
+                )
+            
+            print(f"npm install completed with return code: {install_result.returncode}")
+            if install_result.stdout:
+                print(f"npm install stdout: {install_result.stdout[:500]}...")
+            if install_result.stderr:
+                print(f"npm install stderr: {install_result.stderr[:500]}...")
             
             if install_result.returncode != 0:
                 raise RuntimeError(f"npm install failed: {install_result.stderr}")
@@ -343,26 +404,65 @@ def start_preview_process(project_id: str, repo_path: str, port: Optional[int] =
             print(f"Dependencies installed successfully for project {project_id}")
         else:
             print(f"Dependencies already up to date for project {project_id}, skipping npm install")
+            print(f"Repository path: {repo_path}")
+            print(f"node_modules exists: {os.path.exists(os.path.join(repo_path, 'node_modules'))}")
         
         # Start development server
         print(f"Starting Next.js dev server for project {project_id} on port {port}...")
-        process = subprocess.Popen(
-            ["npm", "run", "dev", "--", "-p", str(port)],
-            cwd=repo_path,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            preexec_fn=os.setsid  # Create new process group for easier cleanup
-        )
+        print(f"Working directory: {repo_path}")
+        print(f"Environment: {env}")
+        
+        # Prepare process creation arguments
+        if _is_windows():
+            # On Windows, use shell=True to avoid execution issues
+            cmd = f'npm run dev -- -p {port}'
+            print(f"Windows command: {cmd}")
+            process = subprocess.Popen(
+                cmd,
+                cwd=repo_path,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                shell=True
+            )
+        else:
+            # On Unix-like systems, use array format with process group
+            cmd = ["npm", "run", "dev", "--", "-p", str(port)]
+            print(f"Unix command: {cmd}")
+            process = subprocess.Popen(
+                cmd,
+                cwd=repo_path,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                preexec_fn=os.setsid  # Create new process group for easier cleanup
+            )
+        
+        print(f"Process created with PID: {process.pid}")
         
         # Wait a moment for the server to start
+        print("Waiting for server to start...")
         time.sleep(2)
         
         # Check if process is still running
         if process.poll() is not None:
             stdout, _ = process.communicate()
+            print(f"Process failed to start. Exit code: {process.returncode}")
+            print(f"Process output: {stdout}")
             raise RuntimeError(f"Next.js server failed to start: {stdout}")
+        
+        print("Process is still running, checking if server is responding...")
+        
+        # Try to connect to the server to verify it's working
+        try:
+            import requests
+            response = requests.get(f"http://localhost:{port}", timeout=5)
+            print(f"Server responded with status: {response.status_code}")
+        except Exception as e:
+            print(f"Warning: Could not verify server response: {e}")
+            print("But process is running, continuing...")
         
         # Start error monitoring thread
         error_thread = threading.Thread(
@@ -377,11 +477,17 @@ def start_preview_process(project_id: str, repo_path: str, port: Optional[int] =
         _running_processes[project_id] = process
         
         print(f"Next.js dev server started for {project_id} on port {port} (PID: {process.pid})")
+        print(f"Preview URL: http://localhost:{port}")
         return process_name, port
         
     except subprocess.TimeoutExpired:
+        print(f"npm install timed out for project {project_id}")
         raise RuntimeError("npm install timed out after 2 minutes")
     except Exception as e:
+        print(f"Unexpected error starting preview for project {project_id}: {e}")
+        print(f"Error type: {type(e).__name__}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         raise RuntimeError(f"Failed to start preview process: {str(e)}")
 
 
@@ -397,16 +503,10 @@ def stop_preview_process(project_id: str, cleanup_cache: bool = False) -> None:
     
     if process:
         try:
-            # Terminate the entire process group
-            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-            
-            # Wait for process to terminate gracefully
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                # Force kill if it doesn't terminate gracefully
-                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-                process.wait()
+            if _is_windows():
+                _terminate_process_windows(process)
+            else:
+                _terminate_process_unix(process)
                 
             print(f"Stopped Next.js dev server for project {project_id} (PID: {process.pid})")
             
@@ -426,12 +526,21 @@ def stop_preview_process(project_id: str, cleanup_cache: bool = False) -> None:
         try:
             repo_path = os.path.join(settings.projects_root, project_id, "repo")
             if os.path.exists(repo_path):
-                subprocess.run(
-                    ["npm", "cache", "clean", "--force"],
-                    cwd=repo_path,
-                    capture_output=True,
-                    timeout=30
-                )
+                if _is_windows():
+                    subprocess.run(
+                        "npm cache clean --force",
+                        cwd=repo_path,
+                        capture_output=True,
+                        timeout=30,
+                        shell=True
+                    )
+                else:
+                    subprocess.run(
+                        ["npm", "cache", "clean", "--force"],
+                        cwd=repo_path,
+                        capture_output=True,
+                        timeout=30
+                    )
                 print(f"Cleaned npm cache for project {project_id}")
         except Exception as e:
             print(f"Failed to clean npm cache for {project_id}: {e}")
