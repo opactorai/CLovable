@@ -112,10 +112,6 @@ Claudable supports multiple AI coding agents, giving you the flexibility to choo
 - **Installation**:
   ```bash
   npm install -g @qwen-code/qwen-code@latest
-  # Configure API (multiple providers supported)
-  export OPENAI_API_KEY="your_api_key"
-  export OPENAI_BASE_URL="https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-  export OPENAI_MODEL="qwen3-coder-plus"
   qwen --version
   ```
 
