@@ -1,3 +1,5 @@
+[![MSeeP.ai Security Assessment Badge](https://mseep.net/pr/opactorai-claudable-badge.png)](https://mseep.ai/app/opactorai-claudable)
+
 # Claudable
 
 <img src="./assets/Claudable_main.png" alt="CLovable" style="border-radius: 12px; width: 100%;" />
