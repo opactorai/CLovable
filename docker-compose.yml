@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  claudable:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"  # next.js frontend
+      - "8080:8080"  # fastapi backend
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+      - API_HOST=0.0.0.0
+      - API_PORT=8080
+      - WEB_PORT=3000
+    volumes:
+      - ./data:/app/data  # persist sqlite database
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

@@ -10,7 +10,12 @@ import ThinkingSection from './chat/ThinkingSection';
 // Tool Message Component - Enhanced with new design
 const ToolMessage = ({ content, metadata }: { content: unknown; metadata?: { tool_name?: string; summary?: string; description?: string; file_path?: string; [key: string]: unknown } }) => {
   // Process tool content to extract action and file path
-  const processToolContent = (rawContent: unknown) => {
+  const processToolContent = (rawContent: unknown): { 
+    action: 'Edited' | 'Created' | 'Read' | 'Deleted' | 'Generated' | 'Searched' | 'Executed';
+    filePath: string;
+    cleanContent: string | undefined;
+    toolName: string;
+  } => {
     let processedContent = '' as string;
     let action: 'Edited' | 'Created' | 'Read' | 'Deleted' | 'Generated' | 'Searched' | 'Executed' = 'Executed';
     let filePath = '';
