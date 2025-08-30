@@ -37,7 +37,7 @@ def scaffold_nextjs_minimal(repo_path: str) -> None:
             "--app",
             "--import-alias", "@/*",
             "--use-npm",
-            "--skip-install",  # We'll install dependencies later
+            "--skip-install",  # We'll install dependencies later (handled by backend)
             "--yes"            # Auto-accept all prompts
         ]
         

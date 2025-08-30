@@ -82,8 +82,20 @@ class CodexCLI(BaseCLI):
     ) -> AsyncGenerator[Message, None]:
         """Execute Codex CLI with auto-approval and message buffering"""
 
-        # Ensure AGENTS.md exists in project repo with system prompt
-        await self._ensure_agent_md(project_path)
+        # Ensure AGENTS.md exists in project repo with system prompt (essential)
+        # If needed, set CLAUDABLE_DISABLE_AGENTS_MD=1 to skip.
+        try:
+            if str(os.getenv("CLAUDABLE_DISABLE_AGENTS_MD", "")).lower() in (
+                "1",
+                "true",
+                "yes",
+                "on",
+            ):
+                ui.debug("AGENTS.md auto-creation disabled by env", "Codex")
+            else:
+                await self._ensure_agent_md(project_path)
+        except Exception as _e:
+            ui.debug(f"AGENTS.md ensure failed (continuing): {_e}", "Codex")
 
         # Get CLI-specific model name
         cli_model = self._get_cli_model_name(model) or "gpt-5"
@@ -127,23 +139,33 @@ class CodexCLI(BaseCLI):
             f"instructions={json.dumps(auto_instructions)}",
         ]
 
-        # Check for existing session/rollout to resume from
-        stored_rollout_path = await self.get_rollout_path(project_id)
-        if stored_rollout_path and os.path.exists(stored_rollout_path):
-            cmd.extend(["-c", f"experimental_resume={stored_rollout_path}"])
-            ui.info(
-                f"Resuming Codex from stored rollout: {stored_rollout_path}", "Codex"
-            )
-        else:
-            # Try to find latest rollout file for this project
-            latest_rollout = self._find_latest_rollout_for_project(project_id)
-            if latest_rollout and os.path.exists(latest_rollout):
-                cmd.extend(["-c", f"experimental_resume={latest_rollout}"])
+        # Optionally resume from a previous rollout. Disabled by default to avoid
+        # stale system prompts or behaviors leaking between runs.
+        enable_resume = str(os.getenv("CLAUDABLE_CODEX_RESUME", "")).lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+        if enable_resume:
+            stored_rollout_path = await self.get_rollout_path(project_id)
+            if stored_rollout_path and os.path.exists(stored_rollout_path):
+                cmd.extend(["-c", f"experimental_resume={stored_rollout_path}"])
                 ui.info(
-                    f"Resuming Codex from latest rollout: {latest_rollout}", "Codex"
+                    f"Resuming Codex from stored rollout: {stored_rollout_path}", "Codex"
                 )
-                # Store this path for future use
-                await self.set_rollout_path(project_id, latest_rollout)
+            else:
+                # Try to find latest rollout file for this project
+                latest_rollout = self._find_latest_rollout_for_project(project_id)
+                if latest_rollout and os.path.exists(latest_rollout):
+                    cmd.extend(["-c", f"experimental_resume={latest_rollout}"])
+                    ui.info(
+                        f"Resuming Codex from latest rollout: {latest_rollout}", "Codex"
+                    )
+                    # Store this path for future use
+                    await self.set_rollout_path(project_id, latest_rollout)
+        else:
+            ui.debug("Codex resume disabled (fresh session)", "Codex")
 
         try:
             # Start Codex process

@@ -152,29 +152,29 @@ async def initialize_project_background(project_id: str, project_name: str, body
 
 
 async def install_dependencies_background(project_id: str, project_path: str):
-    """Install dependencies in background"""
+    """Install dependencies in background (npm)"""
     try:
         import subprocess
         import os
-        
-        # Check if package.json exists
+
         package_json_path = os.path.join(project_path, "package.json")
         if os.path.exists(package_json_path):
             print(f"Installing dependencies for project {project_id}...")
-            
-            # Run npm install in background
+
             process = await asyncio.create_subprocess_exec(
                 "npm", "install",
                 cwd=project_path,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await process.communicate()
-            
+
             if process.returncode == 0:
                 print(f"Dependencies installed successfully for project {project_id}")
             else:
-                print(f"Failed to install dependencies for project {project_id}: {stderr.decode()}")
+                print(
+                    f"Failed to install dependencies for project {project_id}: {stderr.decode()}"
+                )
     except Exception as e:
         print(f"Error installing dependencies: {e}")
 

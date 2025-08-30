@@ -98,7 +98,7 @@ const ToolMessage = ({ content, metadata }: { content: unknown; metadata?: { too
   }
   
   // Use new ToolResultItem for clean display
-  return <ToolResultItem action={action} filePath={filePath} content={cleanContent} />;
+  return <ToolResultItem action={action as "Edited" | "Created" | "Read" | "Deleted" | "Generated" | "Searched" | "Executed"} filePath={filePath} content={cleanContent} />;
 };
 
 const WS_BASE = process.env.NEXT_PUBLIC_WS_BASE || 'ws://localhost:8080';

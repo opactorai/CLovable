@@ -115,7 +115,7 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
                             animate={{ height: "auto", opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
                             transition={{ duration: 0.2 }}
-                            className="overflow-hidden"
+                            style={{ overflow: 'hidden' }}
                           >
                             <div className="mt-2 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
                               <div className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">

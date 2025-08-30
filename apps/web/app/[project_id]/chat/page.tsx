@@ -1524,7 +1524,9 @@ export default function ChatPage({ params }: Params) {
                     <div className="flex items-center gap-3">
                       {/* Route Navigation */}
                       <div className="h-9 flex items-center bg-gray-100 dark:bg-gray-900 rounded-lg px-3 border border-gray-200 dark:border-gray-700">
-                        <FaHome size={12} className="text-gray-400 dark:text-gray-500 mr-2" />
+                        <span className="text-gray-400 dark:text-gray-500 mr-2">
+                          <FaHome size={12} />
+                        </span>
                         <span className="text-sm text-gray-500 dark:text-gray-400 mr-1">/</span>
                         <input
                           type="text"
@@ -1619,8 +1621,8 @@ export default function ChatPage({ params }: Params) {
                   {showPreview && previewUrl && (
                     <div className="relative">
                     <button
-                      className="h-9 flex items-center gap-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors"
-                      onClick={() => setShowPublishPanel(!showPublishPanel)}
+                      className="h-9 flex items-center gap-2 px-3 bg-black text-white rounded-lg text-sm font-medium transition-colors hover:bg-gray-900 border border-black/10 dark:border-white/10 shadow-sm"
+                      onClick={() => setShowPublishPanel(true)}
                     >
                       <FaRocket size={14} />
                       Publish
@@ -1631,7 +1633,7 @@ export default function ChatPage({ params }: Params) {
                         <span className="ml-2 inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
                       )}
                     </button>
-                    {showPublishPanel && (
+                    {false && showPublishPanel && (
                       <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-50 p-5">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Publish Project</h3>
                         
@@ -2055,11 +2057,7 @@ export default function ChatPage({ params }: Params) {
                                     whileTap={{ scale: 0.9 }}
                                   >
                                     <FaPlay 
-                                      size={32} 
-                                      className="ml-1 drop-shadow-lg" 
-                                      style={{
-                                        color: assistantBrandColors[preferredCli] || assistantBrandColors.claude
-                                      }}
+                                      size={32}
                                     />
                                   </MotionDiv>
                                 )}
@@ -2198,6 +2196,141 @@ export default function ChatPage({ params }: Params) {
         </div>
       </div>
       
+
+      {/* Publish Modal */}
+      {showPublishPanel && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowPublishPanel(false)} />
+          <div className="relative w-full max-w-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50/60 dark:bg-white/5">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white bg-black border border-black/10 dark:border-white/10">
+                  <FaRocket size={14} />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">Publish Project</h3>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">Deploy with Vercel, linked to your GitHub repo</p>
+                </div>
+              </div>
+              <button onClick={() => setShowPublishPanel(false)} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {deploymentStatus === 'deploying' && (
+                <div className="p-4 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    <p className="text-sm font-medium text-blue-700 dark:text-blue-400">Deployment in progress…</p>
+                  </div>
+                  <p className="text-xs text-blue-700/80 dark:text-blue-300/80">Building and deploying your project. This may take a few minutes.</p>
+                </div>
+              )}
+
+              {deploymentStatus === 'ready' && publishedUrl && (
+                <div className="p-4 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20">
+                  <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400 mb-2">Published successfully</p>
+                  <div className="flex items-center gap-2">
+                    <a href={publishedUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-mono text-emerald-700 dark:text-emerald-300 underline break-all flex-1">
+                      {publishedUrl}
+                    </a>
+                    <button
+                      onClick={() => navigator.clipboard?.writeText(publishedUrl)}
+                      className="px-2 py-1 text-xs rounded-lg border border-emerald-300/80 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/30"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {deploymentStatus === 'error' && (
+                <div className="p-4 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
+                  <p className="text-sm font-medium text-red-700 dark:text-red-400">Deployment failed. Please try again.</p>
+                </div>
+              )}
+
+              {!githubConnected || !vercelConnected ? (
+                <div className="p-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">Connect the following services:</p>
+                  <div className="space-y-1 text-amber-700 dark:text-amber-400 text-sm">
+                    {!githubConnected && (<div className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"/>GitHub repository not connected</div>)}
+                    {!vercelConnected && (<div className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"/>Vercel project not connected</div>)}
+                  </div>
+                  <button
+                    className="mt-3 w-full px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                    onClick={() => { setShowPublishPanel(false); setShowGlobalSettings(true); }}
+                  >
+                    Open Settings → Services
+                  </button>
+                </div>
+              ) : null}
+
+              <button
+                disabled={publishLoading || deploymentStatus === 'deploying' || !githubConnected || !vercelConnected}
+                onClick={async () => {
+                  try {
+                    setPublishLoading(true);
+                    setDeploymentStatus('deploying');
+                    // 1) Push to GitHub to ensure branch/commit exists
+                    try {
+                      const pushRes = await fetch(`${API_BASE}/api/projects/${projectId}/github/push`, { method: 'POST' });
+                      if (!pushRes.ok) {
+                        const err = await pushRes.text();
+                        console.error('🚀 GitHub push failed:', err);
+                        throw new Error(err);
+                      }
+                    } catch (e) {
+                      console.error('🚀 GitHub push step failed', e);
+                      throw e;
+                    }
+                    // Small grace period to let GitHub update default branch
+                    await new Promise(r => setTimeout(r, 800));
+                    // 2) Deploy to Vercel (branch auto-resolved on server)
+                    const deployUrl = `${API_BASE}/api/projects/${projectId}/vercel/deploy`;
+                    const vercelRes = await fetch(deployUrl, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ branch: 'main' })
+                    });
+                    if (vercelRes.ok) {
+                      const data = await vercelRes.json();
+                      setDeploymentStatus('deploying');
+                      if (data.deployment_id) startDeploymentPolling(data.deployment_id);
+                      if (data.ready && data.deployment_url) {
+                        const url = data.deployment_url.startsWith('http') ? data.deployment_url : `https://${data.deployment_url}`;
+                        setPublishedUrl(url);
+                        setDeploymentStatus('ready');
+                      }
+                    } else {
+                      const errorText = await vercelRes.text();
+                      console.error('🚀 Vercel deploy failed:', vercelRes.status, errorText);
+                      setDeploymentStatus('idle');
+                      setPublishLoading(false);
+                    }
+                  } catch (e) {
+                    console.error('🚀 Publish failed:', e);
+                    alert('Publish failed. Check Settings and tokens.');
+                    setDeploymentStatus('idle');
+                    setPublishLoading(false);
+                    setTimeout(() => setShowPublishPanel(false), 1000);
+                  } finally {
+                    loadDeployStatus();
+                  }
+                }}
+                className={`w-full px-4 py-3 rounded-xl font-medium text-white transition ${
+                  publishLoading || deploymentStatus === 'deploying' || !githubConnected || !vercelConnected
+                    ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed'
+                    : 'bg-black hover:bg-gray-900'
+                }`}
+              >
+                {publishLoading ? 'Publishing…' : deploymentStatus === 'deploying' ? 'Deploying…' : (!githubConnected || !vercelConnected) ? 'Connect Services First' : (deploymentStatus === 'ready' && publishedUrl ? 'Update' : 'Publish')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Project Settings Modal */}
       <ProjectSettings

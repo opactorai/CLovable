@@ -795,7 +795,17 @@ export default function HomePage() {
                 projects.map((project) => (
                   <div 
                     key={project.id}
-                    className="p-2 px-3 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-all group"
+                    className="p-2 px-3 rounded-lg transition-all group"
+                    onMouseEnter={(e) => {
+                      if (project.preferred_cli && assistantBrandColors[project.preferred_cli]) {
+                        e.currentTarget.style.backgroundColor = `${assistantBrandColors[project.preferred_cli]}15`;
+                      } else {
+                        e.currentTarget.style.backgroundColor = 'rgba(156, 163, 175, 0.1)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
                   >
                     {editingProject?.id === project.id ? (
                       // Edit mode
@@ -846,14 +856,48 @@ export default function HomePage() {
                             router.push(`/${project.id}/chat${params.toString() ? '?' + params.toString() : ''}`);
                           }}
                         >
-                          <h3 className="text-gray-900 dark:text-white text-sm group-hover:text-orange-500 dark:group-hover:text-orange-300 transition-colors truncate">
-                            {project.name.length > 28 
-                              ? `${project.name.substring(0, 28)}...` 
-                              : project.name
-                            }
+                          <h3 
+                            className="text-gray-900 dark:text-white text-sm transition-colors truncate"
+                            style={{
+                              '--hover-color': project.preferred_cli && assistantBrandColors[project.preferred_cli] 
+                                ? assistantBrandColors[project.preferred_cli]
+                                : '#DE7356'
+                            } as React.CSSProperties}
+                          >
+                            <span 
+                              className="group-hover:text-[var(--hover-color)]"
+                              style={{
+                                transition: 'color 0.2s'
+                              }}
+                            >
+                              {project.name.length > 28 
+                                ? `${project.name.substring(0, 28)}...` 
+                                : project.name
+                              }
+                            </span>
                           </h3>
-                          <div className="text-gray-500 text-xs mt-1">
-                            {formatTime(project.last_message_at || project.created_at)}
+                          <div className="flex items-center gap-2 mt-1">
+                            <div className="text-gray-500 text-xs">
+                              {formatTime(project.last_message_at || project.created_at)}
+                            </div>
+                            {project.preferred_cli && (
+                              <div className="flex items-center gap-1">
+                                <span className="text-gray-400 text-xs">•</span>
+                                <span 
+                                  className="text-xs transition-colors"
+                                  style={{
+                                    color: assistantBrandColors[project.preferred_cli] ? `${assistantBrandColors[project.preferred_cli]}CC` : '#6B7280'
+                                  }}
+                                >
+                                  {project.preferred_cli === 'claude' ? 'Claude' : 
+                                   project.preferred_cli === 'cursor' ? 'Cursor' : 
+                                   project.preferred_cli === 'qwen' ? 'Qwen' : 
+                                   project.preferred_cli === 'gemini' ? 'Gemini' : 
+                                   project.preferred_cli === 'codex' ? 'Codex' : 
+                                   project.preferred_cli}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
@@ -1231,7 +1275,15 @@ export default function HomePage() {
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
-            className="bg-white dark:bg-gray-900 rounded-lg p-6 max-w-md w-full mx-4 border border-gray-200 dark:border-gray-700"
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '0.5rem',
+              padding: '1.5rem',
+              maxWidth: '28rem',
+              width: '100%',
+              margin: '0 1rem',
+              border: '1px solid rgb(229 231 235)'
+            }}
           >
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center">

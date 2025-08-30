@@ -271,11 +271,19 @@ async def deploy_to_vercel(
         # Initialize Vercel service
         vercel_service = VercelService(vercel_token)
         
+        # Resolve branch: prefer GitHub connection's default/last pushed branch
+        preferred_branch = (
+            github_connection.service_data.get("last_pushed_branch")
+            or github_connection.service_data.get("default_branch")
+            or request.branch
+            or "main"
+        )
+
         # Create deployment
         deployment_result = await vercel_service.create_deployment(
             project_name=vercel_data.get("project_name"),
             github_repo_id=github_repo_id,
-            branch=request.branch,
+            branch=preferred_branch,
             framework=vercel_data.get("framework", "nextjs")
         )
         

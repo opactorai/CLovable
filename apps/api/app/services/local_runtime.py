@@ -238,7 +238,7 @@ def _should_install_dependencies(repo_path: str) -> bool:
         with open(package_json_path, 'rb') as f:
             current_hash += hashlib.md5(f.read()).hexdigest()
     
-    # Hash package-lock.json if it exists
+    # Hash npm's package-lock.json if it exists
     if os.path.exists(package_lock_path):
         with open(package_lock_path, 'rb') as f:
             current_hash += hashlib.md5(f.read()).hexdigest()
@@ -323,9 +323,36 @@ def start_preview_process(project_id: str, repo_path: str, port: Optional[int] =
     })
     
     try:
+        # Normalize repository to npm to avoid mixed package managers
+        try:
+            pnpm_lock = os.path.join(repo_path, "pnpm-lock.yaml")
+            yarn_lock = os.path.join(repo_path, "yarn.lock")
+            pnpm_dir = os.path.join(repo_path, "node_modules", ".pnpm")
+            if os.path.exists(pnpm_lock) or os.path.exists(yarn_lock) or os.path.isdir(pnpm_dir):
+                print("Detected non-npm artifacts (pnpm/yarn). Cleaning to use npm...")
+                # Remove node_modules to avoid arborist crashes
+                try:
+                    import shutil
+                    shutil.rmtree(os.path.join(repo_path, "node_modules"), ignore_errors=True)
+                except Exception as _e:
+                    print(f"Warning: failed to remove node_modules: {_e}")
+                # Remove other lockfiles
+                try:
+                    if os.path.exists(pnpm_lock):
+                        os.remove(pnpm_lock)
+                except Exception:
+                    pass
+                try:
+                    if os.path.exists(yarn_lock):
+                        os.remove(yarn_lock)
+                except Exception:
+                    pass
+        except Exception as _e:
+            print(f"Warning during npm normalization: {_e}")
+
         # Only install dependencies if needed
         if _should_install_dependencies(repo_path):
-            print(f"Installing dependencies for project {project_id}...")
+            print(f"Installing dependencies for project {project_id} with npm...")
             install_result = subprocess.run(
                 ["npm", "install"],
                 cwd=repo_path,
@@ -340,7 +367,7 @@ def start_preview_process(project_id: str, repo_path: str, port: Optional[int] =
             
             # Save hash after successful install
             _save_install_hash(repo_path)
-            print(f"Dependencies installed successfully for project {project_id}")
+            print(f"Dependencies installed successfully for project {project_id} using npm")
         else:
             print(f"Dependencies already up to date for project {project_id}, skipping npm install")
         

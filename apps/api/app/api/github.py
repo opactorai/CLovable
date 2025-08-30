@@ -327,8 +327,9 @@ async def push_github_repository(project_id: str, db: Session = Depends(get_db))
     if not repo_path or not os.path.exists(repo_path):
         raise HTTPException(status_code=500, detail="Local repository path not found")
 
-    # Branch
-    default_branch = connection.service_data.get("default_branch", "main")
+    # Branch: GitHub may return null for default_branch on empty repos.
+    # Normalize to 'main' and persist after first successful push.
+    default_branch = connection.service_data.get("default_branch") or "main"
 
     # Commit any pending changes (optional harmless)
     commit_all(repo_path, "Publish from Lovable UI")
@@ -348,6 +349,9 @@ async def push_github_repository(project_id: str, db: Session = Depends(get_db))
             "last_push_at": datetime.utcnow().isoformat() + "Z",
             "last_pushed_branch": default_branch,
         })
+        # Ensure default_branch is set after first push
+        if not data.get("default_branch"):
+            data["default_branch"] = default_branch
         svc.service_data = data
         db.commit()
     except Exception as e:

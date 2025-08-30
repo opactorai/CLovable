@@ -54,20 +54,20 @@ export function ServiceSettings({ projectId, onOpenGlobalSettings }: ServiceSett
       description: 'Connect to GitHub for version control and collaboration'
     },
     {
-      id: 'supabase',
-      name: 'Supabase',
-      icon: 'supabase',
-      connected: false,
-      status: 'disconnected',
-      description: 'Connect to Supabase for backend services and database'
-    },
-    {
       id: 'vercel',
       name: 'Vercel',
       icon: 'vercel',
       connected: false,
       status: 'disconnected',
       description: 'Deploy your project to Vercel for production hosting'
+    },
+    {
+      id: 'supabase',
+      name: 'Supabase',
+      icon: 'supabase',
+      connected: false,
+      status: 'disconnected',
+      description: 'Connect to Supabase for backend services and database'
     }
   ]);
   
@@ -224,76 +224,78 @@ export function ServiceSettings({ projectId, onOpenGlobalSettings }: ServiceSett
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">
           Service Integrations
         </h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Connect GitHub, Supabase and Vercel with a consistent, polished experience.</p>
 
         <div className="space-y-4">
           {services.map(service => (
             <div
               key={service.id}
-              className="group p-6 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800/50 hover:border-gray-300 dark:hover:border-gray-600 transition-all duration-200"
+              className="relative group overflow-hidden rounded-2xl border border-gray-200/80 dark:border-white/10 bg-white/70 dark:bg-gray-900/60 backdrop-blur supports-[backdrop-filter]:bg-white/60 transition-all duration-200 hover:shadow-lg"
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="text-gray-700 dark:text-gray-300 flex items-center justify-center w-10 h-10 bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-200 dark:border-gray-600">
+              <div className="absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-gray-200 dark:via-white/10 to-transparent" />
+              <div className="p-5 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 justify-between">
+                <div className="flex items-center gap-4 flex-1 min-w-0">
+                  <div className="w-10 h-10 rounded-xl ring-1 ring-inset ring-gray-200 dark:ring-white/10 bg-gray-50 dark:bg-white/5 text-gray-700 dark:text-gray-300 flex items-center justify-center">
                     {getProviderIcon(service.icon)}
                   </div>
-                  <div>
-                    <div className="flex items-center gap-3 mb-1">
-                      <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-3 mb-1 min-w-0">
+                      <h4 className="text-[15px] font-semibold tracking-tight text-gray-900 dark:text-white">
                         {service.name}
                       </h4>
                       {service.connected && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium rounded-full">
-                          <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/30 whitespace-nowrap">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                           Connected
                         </span>
                       )}
+                      {!service.connected && tokenStatus[service.id as keyof typeof tokenStatus] === false && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 whitespace-nowrap">
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/></svg>
+                          Token needed
+                        </span>
+                      )}
                     </div>
-                    
-                    <div className="text-sm">
-                      {!service.connected && tokenStatus[service.id as keyof typeof tokenStatus] === false ? (
-                        <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                          <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                          </svg>
-                          <span className="font-medium">{service.name} token not configured</span>
-                        </div>
-                      ) : service.connected ? (
-                        <div className="text-gray-600 dark:text-gray-400">
+
+                    <div className="text-sm leading-6 text-gray-600 dark:text-gray-400 min-w-0">
+                      {!service.connected ? (
+                        <p className="truncate whitespace-nowrap sm:whitespace-normal sm:overflow-visible sm:max-w-[60ch]">
+                          {service.description}
+                        </p>
+                      ) : (
+                        <div className="text-gray-700 dark:text-gray-300">
                           {service.id === 'github' && service.connection?.service_data?.repo_url ? (
                             <div className="flex items-center gap-2">
-                              <span>Repository:</span>
+                              <span className="shrink-0">Repository:</span>
                               <a 
-                                href={service.connection.service_data.repo_url} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="font-mono text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 hover:underline"
+                                href={service.connection.service_data.repo_url}
+                                target="_blank" rel="noopener noreferrer"
+                                className="truncate font-mono text-blue-600 dark:text-blue-400 hover:underline"
                               >
                                 {service.connection.service_data.repo_name || service.connection.service_data.repo_url}
                               </a>
                             </div>
                           ) : service.id === 'vercel' && service.connection?.service_data?.project_url ? (
                             <div className="flex items-center gap-2">
-                              <span>Project:</span>
+                              <span className="shrink-0">Project:</span>
                               <a 
-                                href={service.connection.service_data.project_url} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="font-mono text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 hover:underline"
+                                href={service.connection.service_data.project_url}
+                                target="_blank" rel="noopener noreferrer"
+                                className="truncate font-mono text-blue-600 dark:text-blue-400 hover:underline"
                               >
                                 {service.connection.service_data.project_name || service.connection.service_data.project_url}
                               </a>
                             </div>
                           ) : service.id === 'supabase' && service.connection?.service_data?.project_url ? (
                             <div className="flex items-center gap-2">
-                              <span>Project:</span>
+                              <span className="shrink-0">Project:</span>
                               <a 
-                                href={service.connection.service_data.project_url} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="font-mono text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 hover:underline"
+                                href={service.connection.service_data.project_url}
+                                target="_blank" rel="noopener noreferrer"
+                                className="truncate font-mono text-blue-600 dark:text-blue-400 hover:underline"
                               >
                                 {service.connection.service_data.project_name || service.connection.service_data.project_id}
                               </a>
@@ -302,56 +304,38 @@ export function ServiceSettings({ projectId, onOpenGlobalSettings }: ServiceSett
                             <span>Connected and ready to use</span>
                           )}
                         </div>
-                      ) : (
-                        <p className="text-gray-500 dark:text-gray-400">
-                          {service.description}
-                        </p>
                       )}
                     </div>
                   </div>
-                </div>
 
-                <div className="flex items-center gap-2">
-                  {service.connected ? (
-                    <>
-                      <button
-                        onClick={() => console.log(`Configure ${service.id}`)}
-                        className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700/50 rounded-lg border border-transparent hover:border-gray-200 dark:hover:border-gray-600 transition-all duration-200"
-                      >
-                        Configure
-                      </button>
+                  <div className="flex items-center gap-2 sm:flex-shrink-0 w-full sm:w-auto sm:justify-end">
+                    {service.connected ? (
                       <button
                         onClick={() => handleDisconnect(service.id)}
-                        className="px-4 py-2 text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg border border-transparent hover:border-red-200 dark:hover:border-red-800 disabled:opacity-50 transition-all duration-200"
+                        className="px-4 py-2 text-sm rounded-xl text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 border border-transparent hover:border-red-200 dark:hover:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 transition whitespace-nowrap w-full sm:w-auto"
                         disabled={isLoading}
                       >
                         Disconnect
                       </button>
-                    </>
-                  ) : tokenStatus[service.id as keyof typeof tokenStatus] === false ? (
-                    <button
-                      onClick={() => {
-                        if (onOpenGlobalSettings) {
-                          onOpenGlobalSettings();
-                        }
-                      }}
-                      className="px-6 py-2.5 text-sm bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium shadow-sm hover:shadow-md disabled:opacity-50 transition-all duration-200 flex items-center gap-2"
-                      disabled={isLoading}
-                    >
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                      Setup Token
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleConnect(service.id)}
-                      className="px-6 py-2.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium shadow-sm hover:shadow-md disabled:opacity-50 transition-all duration-200"
-                      disabled={isLoading || tokenStatus[service.id as keyof typeof tokenStatus] === null}
-                    >
-                      {tokenStatus[service.id as keyof typeof tokenStatus] === null ? 'Checking...' : 'Connect'}
-                    </button>
-                  )}
+                    ) : tokenStatus[service.id as keyof typeof tokenStatus] === false ? (
+                      <button
+                        onClick={() => { if (onOpenGlobalSettings) onOpenGlobalSettings(); }}
+                        className="px-4 py-2.5 text-sm rounded-xl bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition flex items-center justify-center gap-2 whitespace-nowrap w-full sm:w-auto"
+                        disabled={isLoading}
+                      >
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/></svg>
+                        Setup Token
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleConnect(service.id)}
+                        className="px-4 py-2.5 text-sm rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition disabled:opacity-50 whitespace-nowrap w-full sm:w-auto"
+                        disabled={isLoading || tokenStatus[service.id as keyof typeof tokenStatus] === null}
+                      >
+                        {tokenStatus[service.id as keyof typeof tokenStatus] === null ? 'Checking...' : 'Connect'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

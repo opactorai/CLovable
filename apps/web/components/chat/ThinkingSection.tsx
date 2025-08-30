@@ -65,7 +65,7 @@ export default function ThinkingSection({
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.2 }}
-              className="mt-2 overflow-hidden"
+              style={{ marginTop: '0.5rem', overflow: 'hidden' }}
             >
               <div className="italic text-gray-500 dark:text-gray-500 leading-relaxed whitespace-pre-wrap">
                 {formatThinkingContent(restContent)}
