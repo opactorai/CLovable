@@ -1,9 +1,6 @@
 # Claudable
 
-<div align="center">
-  <img src="./assets/Claudable_promo.png" alt="Claudable Promo" style="width: 48%; display: inline-block; margin-right: 2%;" />
-  <img src="./assets/Claudable_agents.png" alt="Claudable Agents" style="width: 48%; display: inline-block;" />
-</div>
+<img src="./assets/Claudable.png" alt="Claudable" style="width: 100%;" />
 <div align="center">
 <h3>Connect CLI Agent • Build what you want • Deploy instantly</h3>
 
