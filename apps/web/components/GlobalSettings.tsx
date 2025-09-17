@@ -148,6 +148,23 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
     setTimeout(() => setToast(null), 3000);
   };
 
+  // Handle ESC key to close modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
   // Load all service tokens and CLI data
   useEffect(() => {
     if (isOpen) {
@@ -343,7 +360,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div 
+        <div
           className="absolute inset-0 bg-black/60 backdrop-blur-md"
           onClick={onClose}
         />
@@ -485,10 +502,10 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                       <select
                         value={globalSettings.default_cli}
                         onChange={(e) => setDefaultCLI(e.target.value)}
-                        className="pl-3 pr-8 py-1.5 text-xs font-medium border border-gray-200/50 dark:border-white/5 rounded-full bg-transparent hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300/50 dark:hover:border-white/10 text-gray-700 dark:text-white/80 focus:outline-none focus:ring-0 transition-colors cursor-pointer"
+                        className="pl-3 pr-8 py-1.5 text-xs font-medium border border-gray-200/50 dark:border-white/5 rounded-full bg-transparent hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300/50 dark:hover:border-white/10 text-gray-700 dark:text-white/80 focus:outline-none focus:ring-0 transition-colors cursor-pointer [&>option]:bg-white [&>option]:dark:bg-gray-800 [&>option]:text-gray-900 [&>option]:dark:text-white"
                       >
                         {CLI_OPTIONS.filter(cli => cliStatus[cli.id]?.installed && cli.enabled !== false).map(cli => (
-                          <option key={cli.id} value={cli.id}>
+                          <option key={cli.id} value={cli.id} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
                             {cli.name}
                           </option>
                         ))}
@@ -596,11 +613,11 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                             <select
                               value={settings.model || ''}
                               onChange={(e) => setDefaultModel(cli.id, e.target.value)}
-                              className="w-full px-3 py-1.5 border border-gray-200/50 dark:border-white/5 rounded-full bg-transparent hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-white/80 text-xs font-medium transition-colors focus:outline-none focus:ring-0"
+                              className="w-full px-3 py-1.5 border border-gray-200/50 dark:border-white/5 rounded-full bg-transparent hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-white/80 text-xs font-medium transition-colors focus:outline-none focus:ring-0 [&>option]:bg-white [&>option]:dark:bg-gray-800 [&>option]:text-gray-900 [&>option]:dark:text-white"
                             >
-                              <option value="">Select model</option>
+                              <option value="" className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">Select model</option>
                               {cli.models.map(model => (
-                                <option key={model.id} value={model.id}>
+                                <option key={model.id} value={model.id} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
                                   {model.name}
                                 </option>
                               ))}

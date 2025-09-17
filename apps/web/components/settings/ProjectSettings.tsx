@@ -82,7 +82,14 @@ export function ProjectSettings({
           )}
           
           {activeTab === 'ai-assistant' && (
-            <AIAssistantSettings projectId={projectId} />
+            <AIAssistantSettings
+              projectId={projectId}
+              onOpenGlobalSettings={() => {
+                // Open Global Settings with ai-agents tab
+                setShowGlobalSettings(true);
+                onClose(); // Close current modal
+              }}
+            />
           )}
           
           {activeTab === 'environment' && (
@@ -105,13 +112,13 @@ export function ProjectSettings({
     
     {/* Global Settings Modal */}
     {showGlobalSettings && (
-      <GlobalSettings 
+      <GlobalSettings
         isOpen={showGlobalSettings}
         onClose={() => {
           setShowGlobalSettings(false);
           // Note: We could reopen ProjectSettings here if needed
         }}
-        initialTab="services"
+        initialTab={activeTab === 'ai-assistant' ? 'ai-agents' : 'services'}
       />
     )}
     </>
