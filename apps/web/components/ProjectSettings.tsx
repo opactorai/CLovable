@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ServiceConnectionModal from '@/components/ServiceConnectionModal';
 import EnvironmentVariablesTab from '@/components/EnvironmentVariablesTab';
+import GlobalSettings from '@/components/GlobalSettings';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
 
@@ -599,14 +600,16 @@ export default function ProjectSettings({ isOpen, onClose, projectId, projectNam
                   </p>
                 </div>
               </div>
-              <button
-                onClick={onClose}
-                className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={onClose}
+                  className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -951,7 +954,7 @@ export default function ProjectSettings({ isOpen, onClose, projectId, projectNam
           projectId={projectId}
         />
       )}
-      
+
     </AnimatePresence>
   );
 }
