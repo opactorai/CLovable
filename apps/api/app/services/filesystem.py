@@ -20,19 +20,20 @@ def scaffold_nextjs_minimal(repo_path: str) -> None:
     import subprocess
     import tempfile
     import shutil
-    
+    import platform
+
     # Get parent directory to create project in
     parent_dir = Path(repo_path).parent
     project_name = Path(repo_path).name
-    
+
     try:
         # Create Next.js app with TypeScript and Tailwind CSS
         cmd = [
-            "npx", 
-            "create-next-app@latest", 
+            "npx",
+            "create-next-app@latest",
             project_name,
             "--typescript",
-            "--tailwind", 
+            "--tailwind",
             "--eslint",
             "--app",
             "--import-alias", "@/*",
@@ -40,24 +41,41 @@ def scaffold_nextjs_minimal(repo_path: str) -> None:
             "--skip-install",  # We'll install dependencies later (handled by backend)
             "--yes"            # Auto-accept all prompts
         ]
-        
+
         # Set environment for non-interactive mode
         env = os.environ.copy()
         env["CI"] = "true"  # Force non-interactive mode
+
+        # Windows-specific environment setup
+        is_windows = platform.system().lower() == "windows"
+        if is_windows:
+            env["FORCE_COLOR"] = "0"  # Disable colors that can cause issues
+            env["NPM_CONFIG_COLOR"] = "false"
+            env["NO_UPDATE_NOTIFIER"] = "true"
         
         from app.core.terminal_ui import ui
         ui.info(f"Running create-next-app with command: {' '.join(cmd)}", "Filesystem")
-        
-        # Run create-next-app in the parent directory with timeout
-        result = subprocess.run(
-            cmd, 
-            cwd=parent_dir, 
-            check=True, 
-            capture_output=True, 
-            text=True,
-            env=env,
-            timeout=300  # 5 minute timeout
-        )
+
+        # Windows-specific subprocess configuration
+        subprocess_kwargs = {
+            "cwd": parent_dir,
+            "check": True,
+            "capture_output": True,
+            "text": True,
+            "env": env,
+            "timeout": 300  # 5 minute timeout
+        }
+
+        if is_windows:
+            # On Windows, use shell=True for better npm/npx compatibility
+            subprocess_kwargs["shell"] = True
+            # Convert command list to string for shell=True
+            cmd_str = " ".join(f'"{arg}"' if " " in arg else arg for arg in cmd)
+            ui.info(f"Windows detected - using shell mode: {cmd_str}", "Filesystem")
+            result = subprocess.run(cmd_str, **subprocess_kwargs)
+        else:
+            # Unix systems use the command list directly
+            result = subprocess.run(cmd, **subprocess_kwargs)
         
         ui.success(f"Created Next.js app: {result.stdout}", "Filesystem")
         

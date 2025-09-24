@@ -287,15 +287,22 @@ def _save_install_hash(repo_path: str) -> None:
 def start_preview_process(project_id: str, repo_path: str, port: Optional[int] = None) -> tuple[str, int]:
     """
     Start a Next.js development server using subprocess
-    
+
     Args:
         project_id: Unique project identifier
         repo_path: Path to the project repository
         port: Optional port number, will auto-assign if not provided
-    
+
     Returns:
         Tuple of (process_name, port)
     """
+    # Validate repo_path before proceeding
+    if not repo_path or repo_path == "None":
+        raise RuntimeError(f"Invalid repo_path for project {project_id}: {repo_path}. Project may not be fully initialized yet.")
+
+    if not os.path.exists(repo_path):
+        raise RuntimeError(f"Repository path does not exist: {repo_path}")
+
     # Stop existing process if any
     stop_preview_process(project_id)
     

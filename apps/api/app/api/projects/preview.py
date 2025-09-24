@@ -61,8 +61,21 @@ async def start_preview(
             process_id=None
         )
     
+    # Validate repo_path before starting preview
+    if not project.repo_path:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Project {project_id} is not fully initialized yet. repo_path is null. Please wait for initialization to complete."
+        )
+
     # Start preview
-    process_name, port = start_preview_process(project_id, project.repo_path, port=body.port)
+    try:
+        process_name, port = start_preview_process(project_id, project.repo_path, port=body.port)
+    except RuntimeError as e:
+        if "Invalid repo_path" in str(e) or "not fully initialized" in str(e):
+            raise HTTPException(status_code=400, detail=str(e))
+        else:
+            raise HTTPException(status_code=500, detail=f"Failed to start preview: {str(e)}")
     result = {
         "success": True,
         "port": port,
@@ -180,8 +193,21 @@ async def restart_preview(
         stop_preview_process(project_id)
         # No need to check result as stop_preview_process returns None
     
+    # Validate repo_path before starting preview
+    if not project.repo_path:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Project {project_id} is not fully initialized yet. repo_path is null. Please wait for initialization to complete."
+        )
+
     # Start preview
-    process_name, port = start_preview_process(project_id, project.repo_path, port=body.port)
+    try:
+        process_name, port = start_preview_process(project_id, project.repo_path, port=body.port)
+    except RuntimeError as e:
+        if "Invalid repo_path" in str(e) or "not fully initialized" in str(e):
+            raise HTTPException(status_code=400, detail=str(e))
+        else:
+            raise HTTPException(status_code=500, detail=f"Failed to start preview: {str(e)}")
     result = {
         "success": True,
         "port": port,

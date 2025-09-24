@@ -91,13 +91,25 @@ async def initialize_project_background(project_id: str, project_name: str, body
             # Task 1: Initialize project files
             async def init_project_task():
                 project_path = await initialize_project(project_id, project_name)
-                
+
+                # Validate project_path before updating database
+                if not project_path or not os.path.exists(project_path):
+                    raise Exception(f"Project initialization failed - invalid path: {project_path}")
+
                 # Update project with repo path using fresh session
                 project = db_session.query(ProjectModel).filter(ProjectModel.id == project_id).first()
-                if project:
-                    project.repo_path = project_path
-                    db_session.commit()
-                
+                if not project:
+                    raise Exception(f"Project {project_id} not found in database")
+
+                project.repo_path = project_path
+                db_session.commit()
+
+                # Verify the update was successful
+                db_session.refresh(project)
+                if not project.repo_path or project.repo_path != project_path:
+                    raise Exception(f"Failed to update repo_path in database. Expected: {project_path}, Got: {project.repo_path}")
+
+                print(f"✅ Project {project_id} repo_path set to: {project_path}")
                 return project_path
             
             tasks.append(init_project_task())
