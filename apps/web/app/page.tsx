@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import type { PointerEvent as ReactPointerEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import CreateProjectModal from '@/components/CreateProjectModal';
@@ -7,12 +8,12 @@ import DeleteProjectModal from '@/components/DeleteProjectModal';
 import GlobalSettings from '@/components/GlobalSettings';
 import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
 import Image from 'next/image';
-import { Image as ImageIcon } from 'lucide-react';
+import { Image as ImageIcon, Search as SearchIcon } from 'lucide-react';
 
 // Ensure fetch is available
 const fetchAPI = globalThis.fetch || fetch;
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8081';
 
 type Project = { 
   id: string; 
@@ -41,6 +42,9 @@ const assistantBrandColors: { [key: string]: string } = {
   codex: '#000000'
 };
 
+const MIN_SIDEBAR_WIDTH = 240;
+const MAX_SIDEBAR_WIDTH = 420;
+
 export default function HomePage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [showCreate, setShowCreate] = useState(false);
@@ -55,8 +59,15 @@ export default function HomePage() {
   const [selectedModel, setSelectedModel] = useState('claude-sonnet-4');
   const [usingGlobalDefaults, setUsingGlobalDefaults] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarPinned, setSidebarPinned] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(280);
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+  const [isDesktopViewport, setIsDesktopViewport] = useState(false);
+  const [sidebarCliFilter, setSidebarCliFilter] = useState<'all' | string>('all');
+  const [sidebarSearch, setSidebarSearch] = useState('');
   const [cliStatus, setCLIStatus] = useState<{ [key: string]: { installed: boolean; checking: boolean; version?: string; error?: string; } }>({});
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isElectron, setIsElectron] = useState(false);
   
   // Define models for each assistant statically
   const modelsByAssistant = {
@@ -83,10 +94,17 @@ export default function HomePage() {
   
   // Get available models based on current assistant
   const availableModels = modelsByAssistant[selectedAssistant as keyof typeof modelsByAssistant] || [];
+  const isPinned = sidebarPinned && isDesktopViewport;
+  const shouldShowThinBar = !isPinned;
   
   // Sync with Global Settings (until user overrides locally)
   const { settings: globalSettings } = useGlobalSettings();
   
+  // Check if running in Electron
+  useEffect(() => {
+    setIsElectron(typeof window !== 'undefined' && !!(window as any).electronAPI);
+  }, []);
+
   // Check if this is a fresh page load (not navigation)
   useEffect(() => {
     const isPageRefresh = !sessionStorage.getItem('navigationFlag');
@@ -159,10 +177,138 @@ export default function HomePage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const router = useRouter();
+  const sidebarWidthRef = useRef(sidebarWidth);
+  const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const prefetchTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const assistantDropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    sidebarWidthRef.current = sidebarWidth;
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => setIsDesktopViewport(window.innerWidth >= 1024);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const storedPinned = localStorage.getItem('homepageSidebarPinned');
+    if (storedPinned !== null) {
+      setSidebarPinned(storedPinned === 'true');
+    }
+    const storedWidth = localStorage.getItem('homepageSidebarWidth');
+    if (storedWidth) {
+      const parsedWidth = parseInt(storedWidth, 10);
+      if (!Number.isNaN(parsedWidth)) {
+        const clampedWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, parsedWidth));
+        setSidebarWidth(clampedWidth);
+        sidebarWidthRef.current = clampedWidth;
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isPinned) {
+      setSidebarOpen(true);
+    }
+  }, [isPinned]);
+
+  const clampSidebarWidth = useCallback(
+    (value: number) => Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, value)),
+    []
+  );
+
+  const persistSidebarPinned = useCallback((value: boolean) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem('homepageSidebarPinned', value ? 'true' : 'false');
+    } catch {
+      // Ignore write failures (storage can be unavailable)
+    }
+  }, []);
+
+  const persistSidebarWidth = useCallback((value: number) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem('homepageSidebarWidth', String(value));
+    } catch {
+      // Ignore write failures (storage can be unavailable)
+    }
+  }, []);
+
+  const handleTogglePin = useCallback(() => {
+    const next = !sidebarPinned;
+    setSidebarPinned(next);
+    persistSidebarPinned(next);
+    if (next) {
+      setSidebarOpen(true);
+    }
+  }, [sidebarPinned, persistSidebarPinned]);
+
+  const handlePointerMove = useCallback(
+    (event: PointerEvent) => {
+      if (!resizeStateRef.current) return;
+      const nextWidth = clampSidebarWidth(
+        resizeStateRef.current.startWidth + (event.clientX - resizeStateRef.current.startX)
+      );
+      setSidebarWidth(nextWidth);
+      sidebarWidthRef.current = nextWidth;
+    },
+    [clampSidebarWidth]
+  );
+
+  const stopResizingSidebar = useCallback(() => {
+    if (!resizeStateRef.current) return;
+    resizeStateRef.current = null;
+    setIsResizingSidebar(false);
+    window.removeEventListener('pointermove', handlePointerMove);
+    window.removeEventListener('pointerup', stopResizingSidebar);
+    persistSidebarWidth(sidebarWidthRef.current);
+  }, [handlePointerMove, persistSidebarWidth]);
+
+  const handleResizePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (!isPinned) return;
+      event.preventDefault();
+      resizeStateRef.current = {
+        startX: event.clientX,
+        startWidth: sidebarWidthRef.current
+      };
+      setIsResizingSidebar(true);
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', stopResizingSidebar);
+    },
+    [isPinned, handlePointerMove, stopResizingSidebar]
+  );
+
+  const handleResizeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (!isPinned) return;
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        const delta = event.key === 'ArrowLeft' ? -10 : 10;
+        const nextWidth = clampSidebarWidth(sidebarWidthRef.current + delta);
+        setSidebarWidth(nextWidth);
+        sidebarWidthRef.current = nextWidth;
+        persistSidebarWidth(nextWidth);
+      }
+    },
+    [isPinned, clampSidebarWidth, persistSidebarWidth]
+  );
+
+  useEffect(() => {
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', stopResizingSidebar);
+    };
+  }, [handlePointerMove, stopResizingSidebar]);
 
   // Check CLI installation status
   useEffect(() => {
@@ -308,6 +454,7 @@ export default function HomePage() {
     } catch (error) {
       console.error('Failed to load projects:', error);
     }
+    // Remove call to loadClaudeConversations since we removed Claude folders feature
   }
   
   async function onCreated() { await load(); }
@@ -708,6 +855,224 @@ export default function HomePage() {
     { id: 'qwen', name: 'Qwen Coder', icon: '/qwen.png' }
   ];
 
+  const agentFilterOptions = [{ id: 'all', name: 'All agents' }, ...assistantOptions];
+
+  const filteredProjects = useMemo(() => {
+    const searchTerm = sidebarSearch.trim().toLowerCase();
+    return projects.filter((project) => {
+      const matchesAgent = sidebarCliFilter === 'all' || project.preferred_cli === sidebarCliFilter;
+      if (!matchesAgent) return false;
+
+      if (!searchTerm) return true;
+      const nameMatches = project.name.toLowerCase().includes(searchTerm);
+      const descriptionMatches = project.initial_prompt?.toLowerCase().includes(searchTerm) ?? false;
+      return nameMatches || descriptionMatches;
+    });
+  }, [projects, sidebarCliFilter, sidebarSearch]);
+
+  const sidebarContent = (
+    <div className="flex flex-col h-full">
+      {/* History header with pin controls */}
+      <div className="p-3 pt-10 border-b border-gray-200 dark:border-white/10">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 px-2 py-1">
+            <h2 className="text-gray-900 dark:text-white font-medium text-lg">History</h2>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleTogglePin}
+              className="p-1 text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded transition-colors"
+              title={isPinned ? 'Unpin sidebar' : 'Pin sidebar'}
+            >
+              {isPinned ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M7 3h10M9 3v6l-2 3v2h10v-2l-2-3V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M12 13v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M10 17l2 4 2-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M7 3h10M9 3v6l-2 3v2h10v-2l-2-3V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M12 13v8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </button>
+            {!isPinned && (
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="p-1 text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded transition-colors"
+                title="Close sidebar"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-2">
+          <div>
+            <label className="sr-only" htmlFor="sidebar-agent-filter">Filter conversations by agent</label>
+            <select
+              id="sidebar-agent-filter"
+              value={sidebarCliFilter}
+              onChange={(event) => setSidebarCliFilter(event.target.value)}
+              className="w-full rounded-lg border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#DE7356]/40"
+            >
+              {agentFilterOptions.map((option) => (
+                <option key={option.id} value={option.id} className="bg-white dark:bg-black text-gray-900 dark:text-white">
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="relative">
+            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+            <input
+              type="text"
+              value={sidebarSearch}
+              onChange={(event) => setSidebarSearch(event.target.value)}
+              placeholder="Search conversations"
+              className="w-full rounded-lg border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 pl-9 pr-3 py-2 text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#DE7356]/40"
+            />
+          </div>
+        </div>
+      </div>
+      
+      <div className="flex-1 overflow-y-auto p-2">
+        <div className="space-y-1">
+          {projects.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-gray-500 text-sm">No conversations yet</p>
+          </div>
+        ) : filteredProjects.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-gray-500 text-sm">No conversations match filters</p>
+          </div>
+        ) : (
+          filteredProjects.map((project) => (
+            <div 
+              key={project.id}
+              className="p-2 px-3 rounded-lg transition-all group"
+              onMouseEnter={(e) => {
+                if (project.preferred_cli && assistantBrandColors[project.preferred_cli]) {
+                  e.currentTarget.style.backgroundColor = `${assistantBrandColors[project.preferred_cli]}15`;
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+            >
+              <div
+                className="flex items-center justify-between gap-2 cursor-pointer"
+                onClick={() => {
+                  router.prefetch(`/${project.id}/chat`);
+                  const params = new URLSearchParams();
+                  if (selectedAssistant) params.set('cli', selectedAssistant);
+                  if (selectedModel) params.set('model', selectedModel);
+                  router.push(`/${project.id}/chat${params.toString() ? '?' + params.toString() : ''}`);
+                }}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <div className="relative w-9 h-9 rounded-xl overflow-hidden shadow-sm border border-gray-200 dark:border-white/10 flex items-center justify-center bg-white/80 dark:bg-white/5">
+                      <span className="text-xl select-none" role="img" aria-label="Project avatar">📁</span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 
+                        className="text-gray-900 dark:text-white text-sm transition-colors truncate"
+                        style={{
+                          '--hover-color': project.preferred_cli && assistantBrandColors[project.preferred_cli] 
+                            ? assistantBrandColors[project.preferred_cli]
+                            : '#DE7356'
+                        } as React.CSSProperties}
+                      >
+                        <span 
+                          className="group-hover:text-[var(--hover-color)]"
+                          style={{ transition: 'color 0.2s' }}
+                        >
+                          {project.name.length > 28 
+                            ? `${project.name.substring(0, 28)}...` 
+                            : project.name
+                          }
+                        </span>
+                      </h3>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="text-gray-500 text-xs">
+                          {formatTime(project.last_message_at || project.created_at)}
+                        </div>
+                        {project.preferred_cli && (
+                          <div className="flex items-center gap-1">
+                            <span className="text-gray-400 text-xs">•</span>
+                            <span 
+                              className="text-xs transition-colors"
+                              style={{
+                                color: assistantBrandColors[project.preferred_cli] ? `${assistantBrandColors[project.preferred_cli]}CC` : '#6B7280'
+                              }}
+                            >
+                              {project.preferred_cli === 'claude' ? 'Claude' : 
+                               project.preferred_cli === 'cursor' ? 'Cursor' : 
+                               project.preferred_cli === 'qwen' ? 'Qwen' : 
+                               project.preferred_cli === 'gemini' ? 'Gemini' : 
+                               project.preferred_cli === 'codex' ? 'Codex' : 
+                               project.preferred_cli}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingProject(project);
+                    }}
+                    className="p-1 text-gray-400 hover:text-orange-500 transition-colors"
+                    title="Edit project name"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openDeleteModal(project);
+                    }}
+                    className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                    title="Delete project"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+      </div>
+      
+      <div className="p-2 border-t border-gray-200 dark:border-white/10">
+        <button 
+          onClick={() => setShowGlobalSettings(true)}
+          className="w-full flex items-center gap-2 p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition-all text-sm"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Settings
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex h-screen relative overflow-hidden bg-white dark:bg-black">
       {/* Radial gradient background from bottom center */}
@@ -737,218 +1102,53 @@ export default function HomePage() {
       
       {/* Content wrapper */}
       <div className="relative z-10 flex h-full w-full">
-        {/* Thin sidebar bar when closed */}
-        <div className={`${sidebarOpen ? 'w-0' : 'w-12'} fixed inset-y-0 left-0 z-40 bg-transparent border-r border-gray-200/20 dark:border-white/5 transition-all duration-300 flex flex-col`}>
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="w-full h-12 flex items-center justify-center text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
-            title="Open sidebar"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-          
-          {/* Settings button when sidebar is closed */}
-          <div className="mt-auto mb-2">
+        {shouldShowThinBar && (
+          <div className={`${sidebarOpen ? 'w-0' : 'w-12'} fixed inset-y-0 left-0 z-40 bg-transparent border-r border-gray-200/20 dark:border-white/5 transition-all duration-300 flex flex-col`}>
             <button
-              onClick={() => setShowGlobalSettings(true)}
-              className="w-full h-12 flex items-center justify-center text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
-              title="Settings"
+              onClick={() => setSidebarOpen(true)}
+              className="w-full h-12 mt-8 flex items-center justify-center text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+              title="Open sidebar"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
-          </div>
-        </div>
-        
-        {/* Sidebar - Overlay style */}
-        <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed inset-y-0 left-0 z-40 w-64 bg-white/95 dark:bg-black/90 backdrop-blur-2xl border-r border-gray-200 dark:border-white/10 transition-transform duration-300`}>
-        <div className="flex flex-col h-full">
-          {/* History header with close button */}
-          <div className="p-3 border-b border-gray-200 dark:border-white/10">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 px-2 py-1">
-                <h2 className="text-gray-900 dark:text-white font-medium text-lg">History</h2>
-              </div>
+
+            {/* Settings button when sidebar is closed */}
+            <div className="mt-auto mb-2">
               <button
-                onClick={() => setSidebarOpen(false)}
-                className="p-1 text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded transition-colors"
-                title="Close sidebar"
+                onClick={() => setShowGlobalSettings(true)}
+                className="w-full h-12 flex items-center justify-center text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                title="Settings"
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </button>
             </div>
           </div>
-          
-          <div className="flex-1 overflow-y-auto p-2">
-            <div className="space-y-1">
-              {projects.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-500 text-sm">No conversations yet</p>
-                </div>
-              ) : (
-                projects.map((project) => (
-                  <div 
-                    key={project.id}
-                    className="p-2 px-3 rounded-lg transition-all group"
-                    onMouseEnter={(e) => {
-                      if (project.preferred_cli && assistantBrandColors[project.preferred_cli]) {
-                        e.currentTarget.style.backgroundColor = `${assistantBrandColors[project.preferred_cli]}15`;
-                      } else {
-                        e.currentTarget.style.backgroundColor = 'rgba(156, 163, 175, 0.1)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
-                  >
-                    {editingProject?.id === project.id ? (
-                      // Edit mode
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          const formData = new FormData(e.target as HTMLFormElement);
-                          const newName = formData.get('name') as string;
-                          if (newName.trim()) {
-                            updateProject(project.id, newName.trim());
-                          }
-                        }}
-                        className="space-y-2"
-                      >
-                        <input
-                          name="name"
-                          defaultValue={project.name}
-                          className="w-full px-2 py-1 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
-                          autoFocus
-                          onBlur={() => setEditingProject(null)}
-                        />
-                        <div className="flex gap-1">
-                          <button
-                            type="submit"
-                            className="px-2 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 transition-colors"
-                          >
-                            Save
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditingProject(null)}
-                            className="px-2 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </form>
-                    ) : (
-                      // View mode
-                      <div className="flex items-center justify-between gap-2">
-                        <div 
-                          className="flex-1 cursor-pointer min-w-0"
-                          onClick={() => {
-                            // Pass current model selection when navigating from sidebar
-                            const params = new URLSearchParams();
-                            if (selectedAssistant) params.set('cli', selectedAssistant);
-                            if (selectedModel) params.set('model', selectedModel);
-                            router.push(`/${project.id}/chat${params.toString() ? '?' + params.toString() : ''}`);
-                          }}
-                        >
-                          <h3 
-                            className="text-gray-900 dark:text-white text-sm transition-colors truncate"
-                            style={{
-                              '--hover-color': project.preferred_cli && assistantBrandColors[project.preferred_cli] 
-                                ? assistantBrandColors[project.preferred_cli]
-                                : '#DE7356'
-                            } as React.CSSProperties}
-                          >
-                            <span 
-                              className="group-hover:text-[var(--hover-color)]"
-                              style={{
-                                transition: 'color 0.2s'
-                              }}
-                            >
-                              {project.name.length > 28 
-                                ? `${project.name.substring(0, 28)}...` 
-                                : project.name
-                              }
-                            </span>
-                          </h3>
-                          <div className="flex items-center gap-2 mt-1">
-                            <div className="text-gray-500 text-xs">
-                              {formatTime(project.last_message_at || project.created_at)}
-                            </div>
-                            {project.preferred_cli && (
-                              <div className="flex items-center gap-1">
-                                <span className="text-gray-400 text-xs">•</span>
-                                <span 
-                                  className="text-xs transition-colors"
-                                  style={{
-                                    color: assistantBrandColors[project.preferred_cli] ? `${assistantBrandColors[project.preferred_cli]}CC` : '#6B7280'
-                                  }}
-                                >
-                                  {project.preferred_cli === 'claude' ? 'Claude' : 
-                                   project.preferred_cli === 'cursor' ? 'Cursor' : 
-                                   project.preferred_cli === 'qwen' ? 'Qwen' : 
-                                   project.preferred_cli === 'gemini' ? 'Gemini' : 
-                                   project.preferred_cli === 'codex' ? 'Codex' : 
-                                   project.preferred_cli}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingProject(project);
-                            }}
-                            className="p-1 text-gray-400 hover:text-orange-500 transition-colors"
-                            title="Edit project name"
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openDeleteModal(project);
-                            }}
-                            className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                            title="Delete project"
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-          
-          <div className="p-2 border-t border-gray-200 dark:border-white/10">
-            <button 
-              onClick={() => setShowGlobalSettings(true)}
-              className="w-full flex items-center gap-2 p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition-all text-sm"
+        )}
+
+        {isPinned && (
+          <aside
+            className="relative h-full flex-shrink-0 border-r border-gray-200 dark:border-white/10 bg-white/95 dark:bg-black/90 backdrop-blur-2xl"
+            style={{ width: `${sidebarWidth}px` }}
+          >
+            {sidebarContent}
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              tabIndex={0}
+              onPointerDown={handleResizePointerDown}
+              onKeyDown={handleResizeKeyDown}
+              className={`absolute top-0 right-0 h-full w-[6px] cursor-col-resize transition-colors ${isResizingSidebar ? 'bg-gray-300 dark:bg-gray-600' : 'bg-transparent hover:bg-gray-200/60 dark:hover:bg-gray-700/60'}`}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              Settings
-            </button>
-          </div>
-        </div>
-      </div>
-      
+              <span className="sr-only">Resize sidebar</span>
+            </div>
+          </aside>
+        )}
+
       {/* Main Content - Not affected by sidebar */}
       <div className="flex-1 flex flex-col min-w-0">
         <div className="flex-1 flex items-center justify-center p-8">
@@ -1262,6 +1462,17 @@ export default function HomePage() {
         </div>
       </div>
 
+      </div>
+
+      {shouldShowThinBar && (
+        <div
+          className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed inset-y-0 left-0 z-40 bg-white/95 dark:bg-black/90 backdrop-blur-2xl border-r border-gray-200 dark:border-white/10 transition-transform duration-300`}
+          style={{ width: `${sidebarWidth}px` }}
+        >
+          {sidebarContent}
+        </div>
+      )}
+
       {/* Global Settings Modal */}
       <GlobalSettings
         isOpen={showGlobalSettings}
@@ -1359,7 +1570,6 @@ export default function HomePage() {
           </motion.div>
         </div>
       )}
-      </div>
     </div>
   );
 }
