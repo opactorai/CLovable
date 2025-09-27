@@ -1,0 +1,49 @@
+name: Set Vercel BACKEND_BASE_URL Env
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend_base_url:
+        description: "Backend base URL (e.g., https://api.example.com)"
+        required: true
+  push:
+    branches: ["main"]
+
+jobs:
+  set-env:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.VERCEL_TOKEN && secrets.VERCEL_ORG_ID && secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Ensure inputs/secret value is available
+        id: input
+        run: |
+          if [ -n "${{ github.event.inputs.backend_base_url }}" ]; then
+            echo "val=${{ github.event.inputs.backend_base_url }}" >> $GITHUB_OUTPUT
+          elif [ -n "${{ secrets.BACKEND_BASE_URL }}" ]; then
+            echo "val=${{ secrets.BACKEND_BASE_URL }}" >> $GITHUB_OUTPUT
+          else
+            echo "No BACKEND_BASE_URL provided via dispatch input or secret. Skipping." && exit 0
+      - name: Upsert env var via Vercel API
+        if: steps.input.outputs.val != ''
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VAL: ${{ steps.input.outputs.val }}
+        run: |
+          set -euo pipefail
+          # Delete existing entries named BACKEND_BASE_URL (if any)
+          EXISTING=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID/env?decrypt=false" | jq -r '.envs[] | select(.key=="BACKEND_BASE_URL") | .id')
+          for id in $EXISTING; do
+            curl -sS -X DELETE -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID/env/$id" >/dev/null || true
+          done
+          # Create new env var for all targets
+          curl -sS -X POST \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"key\":\"BACKEND_BASE_URL\",\"value\":\"$VAL\",\"type\":\"encrypted\",\"target\":[\"production\",\"preview\",\"development\"]}" \
+            "https://api.vercel.com/v10/projects/$VERCEL_PROJECT_ID/env" | jq -r '.key' | grep BACKEND_BASE_URL
+      - name: Invalidate Preview Cache (optional)
+        if: steps.input.outputs.val != ''
+        run: echo "BACKEND_BASE_URL set. Next build will pick it up."
+

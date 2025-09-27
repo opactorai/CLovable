@@ -265,6 +265,7 @@ class CursorAgentCLI(BaseCLI):
         images: Optional[List[Dict[str, Any]]] = None,
         model: Optional[str] = None,
         is_initial_prompt: bool = False,
+        api_key: Optional[str] = None,
     ) -> AsyncGenerator[Message, None]:
         """Execute Cursor Agent CLI with stream-json format and session continuity"""
         # Ensure AGENTS.md exists for system prompt
@@ -300,9 +301,10 @@ class CursorAgentCLI(BaseCLI):
             cmd.extend(["--resume", active_session_id])
             print(f"🔗 [Cursor] Resuming session: {active_session_id}")
 
-        # Add API key if available
-        if os.getenv("CURSOR_API_KEY"):
-            cmd.extend(["--api-key", os.getenv("CURSOR_API_KEY")])
+        # Add API key if available (prioritize provided key over environment)
+        cursor_api_key = api_key or os.getenv("CURSOR_API_KEY")
+        if cursor_api_key:
+            cmd.extend(["--api-key", cursor_api_key])
 
         # Add model - prioritize parameter over environment variable
         cli_model = self._get_cli_model_name(model) or os.getenv("CURSOR_MODEL")

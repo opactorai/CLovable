@@ -29,15 +29,17 @@ How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and 
 ## Features
 <img src="./assets/gif/Claudable_v2_cc_4_1080p.gif" alt="Claudable Demo" style="width: 100%; max-width: 800px;">
 
-- **Powerful Agent Performance**: Leverage the full power of Claude Code and Cursor CLI Agent capabilities with native MCP support
-- **Natural Language to Code**: Simply describe what you want to build, and Claudable generates production-ready Next.js code
-- **Instant Preview**: See your changes immediately with hot-reload as AI builds your app
-- **Zero Setup, Instant Launch**: No complex sandboxes, no API key, no database headaches - just start building immediately
-- **Beautiful UI**: Generate beautiful UI with Tailwind CSS and shadcn/ui
-- **Deploy to Vercel**: Push your app live with a single click, no configuration needed
-- **GitHub Integration**: Automatic version control and continuous deployment setup
-- **Supabase Database**: Connect production PostgreSQL with authentication ready to use
-- **Automated Error Detection**: Detect errors in your app and fix them automatically
+- **🚀 Enhanced AI Agent Performance**: Leverage the full power of Claude Code, Cursor CLI, Codex, Qwen, and Gemini with native MCP (Multi-Context Protocol) support
+- **🔐 Secure API Key Management**: Built-in UI for managing API keys for all supported AI services - no more hardcoded keys
+- **🛡️ Sandbox Execution**: Safe AI code execution with isolated environments and permission controls
+- **💬 Natural Language to Code**: Simply describe what you want to build, and Claudable generates production-ready Next.js code
+- **⚡ Instant Preview**: See your changes immediately with hot-reload as AI builds your app
+- **🎨 Beautiful UI**: Generate beautiful UI with Tailwind CSS and shadcn/ui
+- **🚀 One-Click Deployment**: Push your app live to Vercel with automatic environment configuration
+- **🔗 GitHub Integration**: Automatic version control and continuous deployment setup
+- **🗄️ Database Ready**: Connect production PostgreSQL with authentication ready to use
+- **🔍 Automated Error Detection**: Detect errors in your app and fix them automatically
+- **🔄 Session Continuity**: Maintain context across conversations with MCP-enabled agents
 
 ## Demo Examples
 
@@ -148,8 +150,15 @@ Your application will be available at:
 - Frontend: http://localhost:3000
 - API Server: http://localhost:8080
 - API Documentation: http://localhost:8080/docs
+- API Keys Management: http://localhost:3000/api-keys
 
 **Note**: Ports are automatically detected. If the default ports are in use, the next available ports will be assigned.
+
+### First-Time Setup
+
+1. **Configure API Keys**: Visit the API Keys page to add your AI service credentials
+2. **Choose Your Agent**: Select your preferred AI agent (Claude, Cursor, Codex, Qwen, or Gemini)
+3. **Start Building**: Describe your app idea and watch it come to life!
 
 ## Setup
 
@@ -277,13 +286,38 @@ If you encounter the error: `Error output dangerously skip permissions cannot be
 
 MIT License.
 
+## New Features (v2.0)
+
+### 🔐 Secure API Key Management
+- **Built-in UI**: Manage all your AI service API keys through a secure web interface at `/api-keys`
+- **No Hardcoded Keys**: All API keys are stored securely in the database and used dynamically
+- **Multi-Provider Support**: Support for Claude, Cursor, OpenAI, Google, Qwen, GitHub, Supabase, and Vercel
+- **Real-time Updates**: API keys are immediately available to all AI agents
+
+### 🚀 MCP (Multi-Context Protocol) Support
+- **Enhanced Context**: All AI agents now support MCP for better context awareness
+- **Session Continuity**: Maintain conversation context across multiple interactions
+- **Tool Integration**: Seamless integration with MCP-enabled tools and services
+- **Multi-Context Sessions**: Each user gets isolated context sessions
+
+### 🛡️ Sandbox Execution
+- **Safe Code Execution**: All AI-generated code runs in isolated sandbox environments
+- **Permission Controls**: Fine-grained control over what code can access
+- **Security First**: Protect your system from potentially harmful AI-generated code
+- **Dynamic Sandbox**: Sandbox environments are created and destroyed per session
+
+### 🚀 Production-Ready Deployment
+- **Vercel Integration**: One-click deployment to Vercel with automatic configuration
+- **Environment Secrets**: Secure handling of API keys and sensitive data
+- **GitHub Actions**: Automated CI/CD pipeline for continuous deployment
+- **Automatic Publishing**: Push to main → Production deployment, PR → Preview deployment
+
 ## Upcoming Features
 These features are in development and will be opened soon.
-- **New CLI Agents** - Trust us, you're going to LOVE this!
 - **Checkpoints for Chat** - Save and restore conversation/codebase states
-- **Advanced MCP Integration** - Native integration with MCP
 - **Enhanced Agent System** - Subagents, AGENTS.md integration
 - **Website Cloning** - You can start a project from a reference URL.
+- **Advanced Analytics** - Detailed insights into AI agent performance
 - Various bug fixes and community PR merges
 
 We're working hard to deliver the features you've been asking for. Stay tuned!

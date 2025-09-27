@@ -12,7 +12,7 @@ import { Image as ImageIcon } from 'lucide-react';
 // Ensure fetch is available
 const fetchAPI = globalThis.fetch || fetch;
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
+const API_BASE = '';
 
 type Project = { 
   id: string; 
@@ -294,7 +294,7 @@ export default function HomePage() {
 
   async function load() {
     try {
-      const r = await fetchAPI(`${API_BASE}/api/projects`);
+      const r = await fetchAPI(`/api/projects`);
       if (r.ok) {
         const projectsData = await r.json();
         // Sort by most recent activity (last_message_at or created_at)
@@ -314,7 +314,7 @@ export default function HomePage() {
   
   async function start(projectId: string) {
     try {
-      await fetchAPI(`${API_BASE}/api/projects/${projectId}/preview/start`, { method: 'POST' });
+      await fetchAPI(`/api/projects/${projectId}/preview/start`, { method: 'POST' });
       await load();
     } catch (error) {
       console.error('Failed to start project:', error);
@@ -323,7 +323,7 @@ export default function HomePage() {
   
   async function stop(projectId: string) {
     try {
-      await fetchAPI(`${API_BASE}/api/projects/${projectId}/preview/stop`, { method: 'POST' });
+      await fetchAPI(`/api/projects/${projectId}/preview/stop`, { method: 'POST' });
       await load();
     } catch (error) {
       console.error('Failed to stop project:', error);
@@ -368,7 +368,7 @@ export default function HomePage() {
 
   async function updateProject(projectId: string, newName: string) {
     try {
-      const response = await fetchAPI(`${API_BASE}/api/projects/${projectId}`, {
+      const response = await fetchAPI(`/api/projects/${projectId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newName })
@@ -496,7 +496,7 @@ export default function HomePage() {
     
     try {
       // Create a new project first
-      const response = await fetchAPI(`${API_BASE}/api/projects`, {
+      const response = await fetchAPI(`/api/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -533,7 +533,7 @@ export default function HomePage() {
             const formData = new FormData();
             formData.append('file', image.file);
 
-            const uploadResponse = await fetchAPI(`${API_BASE}/api/assets/${project.id}/upload`, {
+            const uploadResponse = await fetchAPI(`/api/assets/${project.id}/upload`, {
               method: 'POST',
               body: formData
             });
@@ -563,7 +563,7 @@ export default function HomePage() {
       // Execute initial prompt directly with images
       if (finalPrompt.trim()) {
         try {
-          const actResponse = await fetchAPI(`${API_BASE}/api/chat/${project.id}/act`, {
+          const actResponse = await fetchAPI(`/api/chat/${project.id}/act`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1226,6 +1226,12 @@ export default function HomePage() {
             
             {/* Example Cards */}
             <div className="flex flex-wrap gap-2 justify-center mt-8">
+              <a
+                href="/users"
+                className="px-4 py-2 text-sm font-medium text-white bg-black dark:bg-white dark:text-black rounded-full hover:opacity-90 transition-all"
+              >
+                Add User
+              </a>
               {[
                 { 
                   text: 'Landing Page',

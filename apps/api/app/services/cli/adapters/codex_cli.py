@@ -79,6 +79,7 @@ class CodexCLI(BaseCLI):
         images: Optional[List[Dict[str, Any]]] = None,
         model: Optional[str] = None,
         is_initial_prompt: bool = False,
+        api_key: Optional[str] = None,
     ) -> AsyncGenerator[Message, None]:
         """Execute Codex CLI with auto-approval and message buffering"""
 
@@ -120,6 +121,7 @@ class CodexCLI(BaseCLI):
             "Create files in the root directory of the project, not in subdirectories unless the user specifically asks for a subdirectory structure."
         )
 
+        # Build base command with enhanced MCP and Sandbox support
         cmd = [
             "codex",
             "--cd",
@@ -133,11 +135,37 @@ class CodexCLI(BaseCLI):
             "tools.web_search_request=true",
             "-c",
             "use_experimental_streamable_shell_tool=true",
-            "-c",
-            "sandbox_mode=danger-full-access",
+        ]
+        
+        # Configure sandbox mode based on settings
+        if self.sandbox_enabled:
+            cmd.extend([
+                "-c",
+                "sandbox_mode=danger-full-access",
+            ])
+        else:
+            cmd.extend([
+                "-c", 
+                "sandbox_mode=disabled",
+            ])
+        
+        # Add MCP support if enabled
+        if self.mcp_enabled:
+            cmd.extend([
+                "-c",
+                "mcp_enabled=true",
+                "-c",
+                "mcp_tools=true",
+            ])
+        
+        # Add API key if provided
+        if api_key:
+            cmd.extend(["-c", f"api_key={api_key}"])
+        
+        cmd.extend([
             "-c",
             f"instructions={json.dumps(auto_instructions)}",
-        ]
+        ])
 
         # Optionally resume from a previous rollout. Disabled by default to avoid
         # stale system prompts or behaviors leaking between runs.

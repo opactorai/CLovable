@@ -10,7 +10,25 @@ export const metadata: Metadata = {
   title: 'Claudable',
   description: 'Claudable Application',
   icons: {
-    icon: '/Claudable_Icon.png',
+    icon: '/icon.png',
+    shortcut: '/icon.png',
+    apple: '/icon.png',
+  },
+  openGraph: {
+    title: 'Claudable',
+    description: 'Build what you want • Deploy instantly',
+    url: '/',
+    siteName: 'Claudable',
+    images: [
+      { url: '/icon.png', width: 512, height: 512, alt: 'Claudable' },
+    ],
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Claudable',
+    description: 'Build what you want • Deploy instantly',
+    images: ['/icon.png'],
   },
 }
 

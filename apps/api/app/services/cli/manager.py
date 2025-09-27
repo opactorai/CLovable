@@ -49,6 +49,7 @@ class UnifiedCLIManager:
         images: Optional[List[Dict[str, Any]]] = None,
         model: Optional[str] = None,
         is_initial_prompt: bool = False,
+        api_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Execute instruction with specified CLI"""
 
@@ -61,7 +62,7 @@ class UnifiedCLIManager:
             if status.get("available") and status.get("configured"):
                 try:
                     return await self._execute_with_cli(
-                        cli, instruction, images, model, is_initial_prompt
+                        cli, instruction, images, model, is_initial_prompt, api_key
                     )
                 except Exception as e:
                     ui.error(f"CLI {cli_type.value} failed: {e}", "CLI")
@@ -90,6 +91,7 @@ class UnifiedCLIManager:
         images: Optional[List[Dict[str, Any]]],
         model: Optional[str] = None,
         is_initial_prompt: bool = False,
+        api_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Execute instruction with a specific CLI"""
 
@@ -115,6 +117,7 @@ class UnifiedCLIManager:
             images=images,
             model=model,
             is_initial_prompt=is_initial_prompt,
+            api_key=api_key,
         ):
             # Check for error messages or result status
             if message.message_type == "error":

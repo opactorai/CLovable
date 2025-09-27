@@ -15,7 +15,7 @@ import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
 
 // 더 이상 ProjectSettings을 로드하지 않음 (메인 페이지에서 글로벌 설정으로 관리)
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
+const API_BASE = '';
 
 // Define assistant brand colors
 const assistantBrandColors: { [key: string]: string } = {
@@ -1652,7 +1652,7 @@ export default function ChatPage({ params }: Params) {
                           <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
                             <p className="text-sm font-medium text-green-700 dark:text-green-400 mb-2">Currently published at:</p>
                             <a 
-                              href={publishedUrl} 
+                              href={publishedUrl || undefined} 
                               target="_blank" 
                               rel="noopener noreferrer" 
                               className="text-sm text-green-600 dark:text-green-300 font-mono hover:underline break-all"
@@ -2232,11 +2232,11 @@ export default function ChatPage({ params }: Params) {
                 <div className="p-4 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20">
                   <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400 mb-2">Published successfully</p>
                   <div className="flex items-center gap-2">
-                    <a href={publishedUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-mono text-emerald-700 dark:text-emerald-300 underline break-all flex-1">
+                    <a href={publishedUrl || undefined} target="_blank" rel="noopener noreferrer" className="text-sm font-mono text-emerald-700 dark:text-emerald-300 underline break-all flex-1">
                       {publishedUrl}
                     </a>
                     <button
-                      onClick={() => navigator.clipboard?.writeText(publishedUrl)}
+                      onClick={() => navigator.clipboard?.writeText(publishedUrl || "")}
                       className="px-2 py-1 text-xs rounded-lg border border-emerald-300/80 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/30"
                     >
                       Copy
