@@ -39,8 +39,7 @@ export function useUserRequests({ projectId }: UseUserRequestsOptions) {
     if (!isTabVisible) return; // 탭이 비활성화되어 있으면 폴링 중지
 
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
-      const response = await fetch(`${apiBase}/api/chat/${projectId}/requests/active`);
+      const response = await fetch(`/api/chat/${projectId}/requests/active`);
       if (response.ok) {
         const data: ActiveRequestsResponse = await response.json();
         setHasActiveRequests(data.hasActiveRequests);

@@ -8,6 +8,8 @@ from app.models.env_vars import EnvVar
 from app.models.tokens import ServiceToken
 from app.models.project_services import ProjectServiceConnection
 from app.models.user_requests import UserRequest
+from app.models.users import User
+from app.models.service_approvals import ServiceApproval, ServiceUsageLog
 
 
 __all__ = [
@@ -20,4 +22,7 @@ __all__ = [
     "ServiceToken",
     "ProjectServiceConnection",
     "UserRequest",
+    "User",
+    "ServiceApproval",
+    "ServiceUsageLog",
 ]
