@@ -206,7 +206,15 @@ def _is_port_free(port: int) -> bool:
 
 
 def find_free_preview_port() -> int:
-    """Find a free port in the preview range"""
+    """Find a free port in the preview range."""
+    if settings.preview_port_fixed is not None:
+        if _is_port_free(settings.preview_port_fixed):
+            return settings.preview_port_fixed
+        raise RuntimeError(
+            f"Preview port {settings.preview_port_fixed} is already in use. "
+            "Stop the process using that port or set PREVIEW_PORT_FIXED=auto."
+        )
+
     for port in range(settings.preview_port_start, settings.preview_port_end + 1):
         if _is_port_free(port):
             return port

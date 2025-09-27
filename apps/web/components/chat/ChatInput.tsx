@@ -23,11 +23,13 @@ interface ChatInputProps {
   selectedModel?: string;
   thinkingMode?: boolean;
   onThinkingModeChange?: (enabled: boolean) => void;
+  isProcessing?: boolean;
+  onStop?: () => void;
 }
 
-export default function ChatInput({ 
-  onSendMessage, 
-  disabled = false, 
+export default function ChatInput({
+  onSendMessage,
+  disabled = false,
   placeholder = "Ask Claudable...",
   mode = 'act',
   onModeChange,
@@ -35,7 +37,9 @@ export default function ChatInput({
   preferredCli = 'claude',
   selectedModel = '',
   thinkingMode = false,
-  onThinkingModeChange
+  onThinkingModeChange,
+  isProcessing = false,
+  onStop
 }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
@@ -407,17 +411,32 @@ export default function ChatInput({
                 <span>Chat</span>
               </button>
             </div>
-            
-            
-            {/* Send Button */}
-            <button
-              id="chatinput-send-message-button"
-              type="submit"
-              className="flex size-8 items-center justify-center rounded-full bg-gray-900 dark:bg-white text-white dark:text-gray-900 transition-all duration-150 ease-out disabled:cursor-not-allowed disabled:opacity-50 hover:scale-110 disabled:hover:scale-100"
-              disabled={disabled || (!message.trim() && uploadedImages.length === 0) || isUploading}
-            >
-              <SendHorizontal className="h-4 w-4" />
-            </button>
+
+            <div className="flex flex-col gap-2">
+              {/* Stop Button - shown when processing, always visible above send */}
+              {isProcessing && onStop && (
+                <button
+                  type="button"
+                  onClick={onStop}
+                  className="flex size-8 items-center justify-center rounded-full bg-red-500 hover:bg-red-600 text-white transition-all duration-150 ease-out hover:scale-110"
+                  title="Stop processing"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 6h12v12H6z" />
+                  </svg>
+                </button>
+              )}
+
+              {/* Send Button */}
+              <button
+                id="chatinput-send-message-button"
+                type="submit"
+                className="flex size-8 items-center justify-center rounded-full bg-gray-900 dark:bg-white text-white dark:text-gray-900 transition-all duration-150 ease-out disabled:cursor-not-allowed disabled:opacity-50 hover:scale-110 disabled:hover:scale-100"
+                disabled={disabled || (!message.trim() && uploadedImages.length === 0) || isUploading || isProcessing}
+              >
+                <SendHorizontal className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </div>
       </form>

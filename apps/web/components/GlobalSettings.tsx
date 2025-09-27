@@ -12,7 +12,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
 interface GlobalSettingsProps {
   isOpen: boolean;
   onClose: () => void;
-  initialTab?: 'general' | 'ai-agents' | 'services' | 'about';
+  initialTab?: 'general' | 'cli-models' | 'agents' | 'commands' | 'services' | 'about';
 }
 
 interface CLIOption {
@@ -124,9 +124,16 @@ interface ServiceToken {
   last_used?: string;
 }
 
+interface ClaudeFileEntry {
+  name: string;
+  path: string;
+  absolute_path: string;
+  updated_at?: number;
+}
+
 export default function GlobalSettings({ isOpen, onClose, initialTab = 'general' }: GlobalSettingsProps) {
   const { theme, toggle: toggleTheme } = useTheme();
-  const [activeTab, setActiveTab] = useState<'general' | 'ai-agents' | 'services' | 'about'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'general' | 'cli-models' | 'agents' | 'commands' | 'services' | 'about'>(initialTab ?? 'general');
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<'github' | 'supabase' | 'vercel' | null>(null);
   const [tokens, setTokens] = useState<{ [key: string]: ServiceToken | null }>({
@@ -141,6 +148,22 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [installModalOpen, setInstallModalOpen] = useState(false);
   const [selectedCLI, setSelectedCLI] = useState<CLIOption | null>(null);
+  const [agentFiles, setAgentFiles] = useState<ClaudeFileEntry[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<ClaudeFileEntry | null>(null);
+  const [agentContent, setAgentContent] = useState('');
+  const [agentOriginalContent, setAgentOriginalContent] = useState('');
+  const [isLoadingAgents, setIsLoadingAgents] = useState(false);
+  const [isLoadingAgentContent, setIsLoadingAgentContent] = useState(false);
+  const [isSavingAgent, setIsSavingAgent] = useState(false);
+  const [commandFiles, setCommandFiles] = useState<ClaudeFileEntry[]>([]);
+  const [selectedCommand, setSelectedCommand] = useState<ClaudeFileEntry | null>(null);
+  const [commandContent, setCommandContent] = useState('');
+  const [commandOriginalContent, setCommandOriginalContent] = useState('');
+  const [isLoadingCommands, setIsLoadingCommands] = useState(false);
+  const [isLoadingCommandContent, setIsLoadingCommandContent] = useState(false);
+  const [isSavingCommand, setIsSavingCommand] = useState(false);
+  const [agentsInitialized, setAgentsInitialized] = useState(false);
+  const [commandsInitialized, setCommandsInitialized] = useState(false);
 
   // Show toast function
   const showToast = (message: string, type: 'success' | 'error') => {
@@ -151,11 +174,33 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
   // Load all service tokens and CLI data
   useEffect(() => {
     if (isOpen) {
+      setAgentsInitialized(false);
+      setCommandsInitialized(false);
+      setAgentFiles([]);
+      setCommandFiles([]);
+      setSelectedAgent(null);
+      setAgentContent('');
+      setAgentOriginalContent('');
+      setSelectedCommand(null);
+      setCommandContent('');
+      setCommandOriginalContent('');
       loadAllTokens();
       loadGlobalSettings();
       checkCLIStatus();
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (activeTab === 'agents' && !isLoadingAgents && !agentsInitialized) {
+      loadAgentFiles();
+    }
+  }, [activeTab, agentsInitialized, isLoadingAgents]);
+
+  useEffect(() => {
+    if (activeTab === 'commands' && !isLoadingCommands && !commandsInitialized) {
+      loadCommandFiles();
+    }
+  }, [activeTab, commandsInitialized, isLoadingCommands]);
 
   const loadAllTokens = async () => {
     const providers = ['github', 'supabase', 'vercel'];
@@ -239,6 +284,156 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
       });
       setCLIStatus(errorStatus);
     }
+  };
+
+  const encodeClaudePath = (value: string) => value.split('/').map(encodeURIComponent).join('/');
+
+  const fetchClaudeFiles = async (resource: 'agents' | 'commands'): Promise<ClaudeFileEntry[]> => {
+    const response = await fetch(`${API_BASE}/api/claude/${resource}`);
+    if (!response.ok) {
+      throw new Error(`Failed to load ${resource}`);
+    }
+    return await response.json();
+  };
+
+  const fetchClaudeFileContent = async (resource: 'agents' | 'commands', filePath: string) => {
+    const response = await fetch(`${API_BASE}/api/claude/${resource}/${encodeClaudePath(filePath)}`);
+    if (!response.ok) {
+      throw new Error(`Failed to load ${resource} content`);
+    }
+    const data = await response.json();
+    return data.content as string;
+  };
+
+  const saveClaudeFileContent = async (resource: 'agents' | 'commands', filePath: string, content: string) => {
+    const response = await fetch(`${API_BASE}/api/claude/${resource}/${encodeClaudePath(filePath)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content })
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to save ${resource}`);
+    }
+  };
+
+  const handleSelectAgent = async (file: ClaudeFileEntry) => {
+    setSelectedAgent(file);
+    setIsLoadingAgentContent(true);
+    try {
+      const content = await fetchClaudeFileContent('agents', file.path);
+      setAgentContent(content);
+      setAgentOriginalContent(content);
+    } catch (error) {
+      console.error(error);
+      showToast('Failed to load agent content', 'error');
+    } finally {
+      setIsLoadingAgentContent(false);
+    }
+  };
+
+  const handleSelectCommand = async (file: ClaudeFileEntry) => {
+    setSelectedCommand(file);
+    setIsLoadingCommandContent(true);
+    try {
+      const content = await fetchClaudeFileContent('commands', file.path);
+      setCommandContent(content);
+      setCommandOriginalContent(content);
+    } catch (error) {
+      console.error(error);
+      showToast('Failed to load command content', 'error');
+    } finally {
+      setIsLoadingCommandContent(false);
+    }
+  };
+
+  const loadAgentFiles = async (pathToSelect?: string) => {
+    setIsLoadingAgents(true);
+    try {
+      const files = await fetchClaudeFiles('agents');
+      setAgentFiles(files);
+      if (files.length > 0) {
+        const target = pathToSelect
+          ? files.find((file) => file.path === pathToSelect) || files[0]
+          : files[0];
+        await handleSelectAgent(target);
+      } else {
+        setSelectedAgent(null);
+        setAgentContent('');
+        setAgentOriginalContent('');
+      }
+    } catch (error) {
+      console.error(error);
+      showToast('Failed to load agents', 'error');
+    } finally {
+      setIsLoadingAgents(false);
+      setAgentsInitialized(true);
+    }
+  };
+
+  const loadCommandFiles = async (pathToSelect?: string) => {
+    setIsLoadingCommands(true);
+    try {
+      const files = await fetchClaudeFiles('commands');
+      setCommandFiles(files);
+      if (files.length > 0) {
+        const target = pathToSelect
+          ? files.find((file) => file.path === pathToSelect) || files[0]
+          : files[0];
+        await handleSelectCommand(target);
+      } else {
+        setSelectedCommand(null);
+        setCommandContent('');
+        setCommandOriginalContent('');
+      }
+    } catch (error) {
+      console.error(error);
+      showToast('Failed to load commands', 'error');
+    } finally {
+      setIsLoadingCommands(false);
+      setCommandsInitialized(true);
+    }
+  };
+
+  const handleSaveAgent = async () => {
+    if (!selectedAgent) return;
+    setIsSavingAgent(true);
+    try {
+      await saveClaudeFileContent('agents', selectedAgent.path, agentContent);
+      setAgentOriginalContent(agentContent);
+      showToast('Agent saved', 'success');
+      await loadAgentFiles(selectedAgent.path);
+    } catch (error) {
+      console.error(error);
+      showToast('Failed to save agent', 'error');
+    } finally {
+      setIsSavingAgent(false);
+    }
+  };
+
+  const handleSaveCommand = async () => {
+    if (!selectedCommand) return;
+    setIsSavingCommand(true);
+    try {
+      await saveClaudeFileContent('commands', selectedCommand.path, commandContent);
+      setCommandOriginalContent(commandContent);
+      showToast('Command saved', 'success');
+      await loadCommandFiles(selectedCommand.path);
+    } catch (error) {
+      console.error(error);
+      showToast('Failed to save command', 'error');
+    } finally {
+      setIsSavingCommand(false);
+    }
+  };
+
+  const refreshAgentFiles = () => {
+    if (isLoadingAgents) return;
+    loadAgentFiles(selectedAgent?.path);
+  };
+
+  const refreshCommandFiles = () => {
+    if (isLoadingCommands) return;
+    loadCommandFiles(selectedCommand?.path);
   };
 
   const saveGlobalSettings = async () => {
@@ -383,7 +578,9 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
             <nav className="flex px-5">
               {[
                 { id: 'general' as const, label: 'General' },
-                { id: 'ai-agents' as const, label: 'AI Agents' },
+                { id: 'cli-models' as const, label: 'CLI Models' },
+                { id: 'agents' as const, label: 'Agents' },
+                { id: 'commands' as const, label: 'Commands' },
                 { id: 'services' as const, label: 'Services' },
                 { id: 'about' as const, label: 'About' }
               ].map(tab => (
@@ -469,14 +666,14 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
               </div>
             )}
 
-            {activeTab === 'ai-agents' && (
+            {activeTab === 'cli-models' && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div>
-                      <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">CLI Agents</h3>
+                      <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">CLI Models</h3>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Manage your AI coding assistants
+                        Manage the installed CLI model preferences
                       </p>
                     </div>
                     {/* Inline Default CLI Selector */}
@@ -623,6 +820,168 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                     );
                   })}
                   
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'agents' && (
+              <div className="flex flex-col md:flex-row gap-6 h-full">
+                <div className="w-full md:w-64 space-y-2">
+                  <div className="flex items-center justify-between text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <span>Claude Agents</span>
+                    <button
+                      onClick={refreshAgentFiles}
+                      disabled={isLoadingAgents}
+                      className="text-xs font-semibold text-[#DE7356] hover:text-[#c96247] disabled:opacity-50"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white/60 dark:bg-gray-800/40">
+                    {isLoadingAgents ? (
+                      <div className="p-4 text-sm text-gray-500 dark:text-gray-400">Loading agents…</div>
+                    ) : agentFiles.length === 0 ? (
+                      <div className="p-4 text-sm text-gray-500 dark:text-gray-400">No agent files found.</div>
+                    ) : (
+                      <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                        {agentFiles.map((file) => (
+                          <li key={file.path}>
+                            <button
+                              onClick={() => handleSelectAgent(file)}
+                              className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                                selectedAgent?.path === file.path
+                                  ? 'bg-[#DE7356]/10 text-[#DE7356]'
+                                  : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100/80 dark:hover:bg-gray-700/40'
+                              }`}
+                            >
+                              {file.name}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex-1 min-h-[300px]">
+                  {selectedAgent ? (
+                    <div className="flex h-full flex-col space-y-3">
+                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                        <div>
+                          <h3 className="text-base font-semibold text-gray-900 dark:text-white">{selectedAgent.name}</h3>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 break-all">{selectedAgent.absolute_path}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs ${agentContent !== agentOriginalContent ? 'text-orange-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                            {agentContent !== agentOriginalContent ? 'Unsaved changes' : 'Up to date'}
+                          </span>
+                          <button
+                            onClick={handleSaveAgent}
+                            disabled={isSavingAgent || isLoadingAgentContent || agentContent === agentOriginalContent}
+                            className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                              isSavingAgent || isLoadingAgentContent || agentContent === agentOriginalContent
+                                ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                                : 'bg-[#DE7356] text-white hover:bg-[#c96247]'
+                            }`}
+                          >
+                            {isSavingAgent ? 'Saving…' : 'Save'}
+                          </button>
+                        </div>
+                      </div>
+
+                      <textarea
+                        value={agentContent}
+                        onChange={(event) => setAgentContent(event.target.value)}
+                        disabled={isLoadingAgentContent}
+                        className="flex-1 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-800 dark:text-gray-100 p-4 font-mono leading-6 resize-none"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-gray-300 dark:border-gray-600 text-sm text-gray-500 dark:text-gray-400">
+                      Select an agent to view or edit its content.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'commands' && (
+              <div className="flex flex-col md:flex-row gap-6 h-full">
+                <div className="w-full md:w-64 space-y-2">
+                  <div className="flex items-center justify-between text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <span>Claude Commands</span>
+                    <button
+                      onClick={refreshCommandFiles}
+                      disabled={isLoadingCommands}
+                      className="text-xs font-semibold text-[#DE7356] hover:text-[#c96247] disabled:opacity-50"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white/60 dark:bg-gray-800/40">
+                    {isLoadingCommands ? (
+                      <div className="p-4 text-sm text-gray-500 dark:text-gray-400">Loading commands…</div>
+                    ) : commandFiles.length === 0 ? (
+                      <div className="p-4 text-sm text-gray-500 dark:text-gray-400">No command files found.</div>
+                    ) : (
+                      <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                        {commandFiles.map((file) => (
+                          <li key={file.path}>
+                            <button
+                              onClick={() => handleSelectCommand(file)}
+                              className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                                selectedCommand?.path === file.path
+                                  ? 'bg-[#DE7356]/10 text-[#DE7356]'
+                                  : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100/80 dark:hover:bg-gray-700/40'
+                              }`}
+                            >
+                              {file.name}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex-1 min-h-[300px]">
+                  {selectedCommand ? (
+                    <div className="flex h-full flex-col space-y-3">
+                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                        <div>
+                          <h3 className="text-base font-semibold text-gray-900 dark:text-white">{selectedCommand.name}</h3>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 break-all">{selectedCommand.absolute_path}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs ${commandContent !== commandOriginalContent ? 'text-orange-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                            {commandContent !== commandOriginalContent ? 'Unsaved changes' : 'Up to date'}
+                          </span>
+                          <button
+                            onClick={handleSaveCommand}
+                            disabled={isSavingCommand || isLoadingCommandContent || commandContent === commandOriginalContent}
+                            className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                              isSavingCommand || isLoadingCommandContent || commandContent === commandOriginalContent
+                                ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                                : 'bg-[#DE7356] text-white hover:bg-[#c96247]'
+                            }`}
+                          >
+                            {isSavingCommand ? 'Saving…' : 'Save'}
+                          </button>
+                        </div>
+                      </div>
+
+                      <textarea
+                        value={commandContent}
+                        onChange={(event) => setCommandContent(event.target.value)}
+                        disabled={isLoadingCommandContent}
+                        className="flex-1 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-800 dark:text-gray-100 p-4 font-mono leading-6 resize-none"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-gray-300 dark:border-gray-600 text-sm text-gray-500 dark:text-gray-400">
+                      Select a command to review or edit its markdown.
+                    </div>
+                  )}
                 </div>
               </div>
             )}

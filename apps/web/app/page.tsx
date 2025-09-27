@@ -1,24 +1,27 @@
 "use client";
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import type { PointerEvent as ReactPointerEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { motion } from 'framer-motion';
+import { MotionDiv } from '@/lib/motion';
 import { useRouter } from 'next/navigation';
 import CreateProjectModal from '@/components/CreateProjectModal';
 import DeleteProjectModal from '@/components/DeleteProjectModal';
 import GlobalSettings from '@/components/GlobalSettings';
 import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
 import Image from 'next/image';
-import { Image as ImageIcon } from 'lucide-react';
+import { Image as ImageIcon, MessageSquare, Search as SearchIcon, Star } from 'lucide-react';
 
 // Ensure fetch is available
 const fetchAPI = globalThis.fetch || fetch;
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8081';
 
 type Project = { 
   id: string; 
   name: string; 
   status?: string; 
   preview_url?: string | null;
+  repo_path?: string | null;
   created_at: string;
   last_active_at?: string | null;
   last_message_at?: string | null;
@@ -32,6 +35,26 @@ type Project = {
   };
 };
 
+type ConversationSummary = {
+  project_id: string;
+  project_name: string;
+  project_path?: string | null;
+  conversation_id: string;
+  summary: string;
+  first_message?: string | null;
+  last_message_at?: string | null;
+  cli_type?: string | null;
+  source?: string | null;
+  pinned?: boolean;
+};
+
+type ConversationGroup = {
+  project: Project;
+  conversations: ConversationSummary[];
+  showProjectRow: boolean;
+  lastTimestamp: string;
+};
+
 // Define assistant brand colors
 const assistantBrandColors: { [key: string]: string } = {
   claude: '#DE7356',
@@ -41,11 +64,24 @@ const assistantBrandColors: { [key: string]: string } = {
   codex: '#000000'
 };
 
+const MIN_SIDEBAR_WIDTH = 332;
+const MAX_SIDEBAR_WIDTH = 420;
+const BUILDING_STATUSES = new Set(['building', 'initializing', 'deploying', 'queued']);
+
+const hexToRgba = (hex: string, alpha: number) => {
+  if (!hex.startsWith('#')) return hex;
+  const normalized = hex.replace('#', '');
+  const bigint = parseInt(normalized.length === 3 ? normalized.split('').map(char => char + char).join('') : normalized, 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
 export default function HomePage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [showGlobalSettings, setShowGlobalSettings] = useState(false);
-  const [globalSettingsTab, setGlobalSettingsTab] = useState<'general' | 'ai-assistant'>('ai-assistant');
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; project: Project | null }>({ isOpen: false, project: null });
   const [isDeleting, setIsDeleting] = useState(false);
@@ -55,8 +91,17 @@ export default function HomePage() {
   const [selectedModel, setSelectedModel] = useState('claude-sonnet-4');
   const [usingGlobalDefaults, setUsingGlobalDefaults] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarPinned, setSidebarPinned] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(280);
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+  const [isDesktopViewport, setIsDesktopViewport] = useState(false);
+  const [sidebarCliFilter, setSidebarCliFilter] = useState<'all' | string>('all');
+  const [sidebarSearch, setSidebarSearch] = useState('');
   const [cliStatus, setCLIStatus] = useState<{ [key: string]: { installed: boolean; checking: boolean; version?: string; error?: string; } }>({});
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [conversationSummaries, setConversationSummaries] = useState<ConversationSummary[]>([]);
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+  const [isSyncingClaude, setIsSyncingClaude] = useState(false);
   
   // Define models for each assistant statically
   const modelsByAssistant = {
@@ -83,6 +128,8 @@ export default function HomePage() {
   
   // Get available models based on current assistant
   const availableModels = modelsByAssistant[selectedAssistant as keyof typeof modelsByAssistant] || [];
+  const isPinned = sidebarPinned && isDesktopViewport;
+  const shouldShowThinBar = !isPinned;
   
   // Sync with Global Settings (until user overrides locally)
   const { settings: globalSettings } = useGlobalSettings();
@@ -159,10 +206,138 @@ export default function HomePage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const router = useRouter();
+  const sidebarWidthRef = useRef(sidebarWidth);
+  const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const prefetchTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const assistantDropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    sidebarWidthRef.current = sidebarWidth;
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => setIsDesktopViewport(window.innerWidth >= 1024);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const storedPinned = localStorage.getItem('homepageSidebarPinned');
+    if (storedPinned !== null) {
+      setSidebarPinned(storedPinned === 'true');
+    }
+    const storedWidth = localStorage.getItem('homepageSidebarWidth');
+    if (storedWidth) {
+      const parsedWidth = parseInt(storedWidth, 10);
+      if (!Number.isNaN(parsedWidth)) {
+        const clampedWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, parsedWidth));
+        setSidebarWidth(clampedWidth);
+        sidebarWidthRef.current = clampedWidth;
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isPinned) {
+      setSidebarOpen(true);
+    }
+  }, [isPinned]);
+
+  const clampSidebarWidth = useCallback(
+    (value: number) => Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, value)),
+    []
+  );
+
+  const persistSidebarPinned = useCallback((value: boolean) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem('homepageSidebarPinned', value ? 'true' : 'false');
+    } catch {
+      // Ignore write failures (storage can be unavailable)
+    }
+  }, []);
+
+  const persistSidebarWidth = useCallback((value: number) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem('homepageSidebarWidth', String(value));
+    } catch {
+      // Ignore write failures (storage can be unavailable)
+    }
+  }, []);
+
+  const handleTogglePin = useCallback(() => {
+    const next = !sidebarPinned;
+    setSidebarPinned(next);
+    persistSidebarPinned(next);
+    if (next) {
+      setSidebarOpen(true);
+    }
+  }, [sidebarPinned, persistSidebarPinned]);
+
+  const handlePointerMove = useCallback(
+    (event: PointerEvent) => {
+      if (!resizeStateRef.current) return;
+      const nextWidth = clampSidebarWidth(
+        resizeStateRef.current.startWidth + (event.clientX - resizeStateRef.current.startX)
+      );
+      setSidebarWidth(nextWidth);
+      sidebarWidthRef.current = nextWidth;
+    },
+    [clampSidebarWidth]
+  );
+
+  const stopResizingSidebar = useCallback(() => {
+    if (!resizeStateRef.current) return;
+    resizeStateRef.current = null;
+    setIsResizingSidebar(false);
+    window.removeEventListener('pointermove', handlePointerMove);
+    window.removeEventListener('pointerup', stopResizingSidebar);
+    persistSidebarWidth(sidebarWidthRef.current);
+  }, [handlePointerMove, persistSidebarWidth]);
+
+  const handleResizePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (!isPinned) return;
+      event.preventDefault();
+      resizeStateRef.current = {
+        startX: event.clientX,
+        startWidth: sidebarWidthRef.current
+      };
+      setIsResizingSidebar(true);
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', stopResizingSidebar);
+    },
+    [isPinned, handlePointerMove, stopResizingSidebar]
+  );
+
+  const handleResizeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (!isPinned) return;
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        const delta = event.key === 'ArrowLeft' ? -10 : 10;
+        const nextWidth = clampSidebarWidth(sidebarWidthRef.current + delta);
+        setSidebarWidth(nextWidth);
+        sidebarWidthRef.current = nextWidth;
+        persistSidebarWidth(nextWidth);
+      }
+    },
+    [isPinned, clampSidebarWidth, persistSidebarWidth]
+  );
+
+  useEffect(() => {
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', stopResizingSidebar);
+    };
+  }, [handlePointerMove, stopResizingSidebar]);
 
   // Check CLI installation status
   useEffect(() => {
@@ -248,15 +423,6 @@ export default function HomePage() {
     const date = new Date(utcDateString);
     const now = new Date();
     
-    // Debug: Log the conversion (remove in production)
-    console.log('Time formatting:', {
-      input: dateString,
-      converted: utcDateString,
-      parsedISO: date.toISOString(),
-      parsedLocal: date.toLocaleString(),
-      nowISO: now.toISOString()
-    });
-    
     // Calculate the actual time difference
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / (1000 * 60));
@@ -292,6 +458,218 @@ export default function HomePage() {
     });
   };
 
+  const matchesSearch = useCallback((term: string, ...parts: Array<string | null | undefined>) => {
+    if (!term) return true;
+    const lowered = term.toLowerCase();
+    return parts.some((part) => part && part.toLowerCase().includes(lowered));
+  }, []);
+
+  const normalizeCliValue = useCallback((value?: string | null) => (value || '').toLowerCase(), []);
+
+  const matchesCliFilter = useCallback((cli?: string | null, source?: string | null) => {
+    if (sidebarCliFilter === 'all') return true;
+    const normalized = normalizeCliValue(cli) || normalizeCliValue(source);
+    if (sidebarCliFilter === 'claude') {
+      return normalized === 'claude' || source === 'claude_log';
+    }
+    return normalized === sidebarCliFilter;
+  }, [normalizeCliValue, sidebarCliFilter]);
+
+const renderChatIcon = (color: string, isAnimating: boolean, size: 'lg' | 'sm' = 'lg') => {
+  const dimension = size === 'lg' ? 'h-9 w-9 rounded-xl' : 'h-7 w-7 rounded-lg';
+  const containerClasses = `relative inline-flex ${dimension} items-center justify-center border transition-all duration-300 shadow-sm backdrop-blur-sm`;
+  const iconColor = color || assistantBrandColors.claude;
+  const baseBackground = size === 'lg' ? 'bg-white/80 dark:bg-white/10' : 'bg-white/70 dark:bg-white/10';
+  const animBackground = isAnimating ? hexToRgba(iconColor, 0.22) : baseBackground;
+  const animShadow = isAnimating ? `0 0 16px ${hexToRgba(iconColor, 0.4)}` : `0 2px 6px ${hexToRgba('#000000', 0.08)}`;
+
+  return (
+    <span
+      className={`${containerClasses} ${isAnimating ? 'border-transparent' : 'border-gray-200/70 dark:border-white/10'} ${baseBackground}`}
+      style={{ color: iconColor, backgroundColor: animBackground, boxShadow: animShadow }}
+    >
+      {isAnimating ? (
+        <>
+          <MotionDiv
+            className="absolute inset-0 rounded-[inherit]"
+            style={{ boxShadow: `0 0 0 1px ${hexToRgba(iconColor, 0.35)}` }}
+            animate={{ opacity: [0.5, 0.15, 0.5], scale: [1, 1.1, 1] }}
+            transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+          />
+          <MotionDiv
+            className="relative block h-4 w-4"
+            style={{
+              backgroundColor: iconColor,
+              mask: 'url(/Symbol_white.png) no-repeat center/contain',
+              WebkitMask: 'url(/Symbol_white.png) no-repeat center/contain'
+            }}
+            animate={{ rotate: 360 }}
+            transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+          />
+        </>
+      ) : (
+        <MessageSquare className="relative h-5 w-5" strokeWidth={2.1} />
+      )}
+    </span>
+  );
+};
+
+const renderShimmerText = (text: string, color: string) => (
+  <span
+      className="relative inline-flex"
+      style={{
+        background: `linear-gradient(90deg,
+          ${hexToRgba(color, 0.25)} 0%,
+          ${hexToRgba(color, 0.75)} 30%,
+          rgba(255,255,255,0.95) 50%,
+          ${hexToRgba(color, 0.75)} 70%,
+          ${hexToRgba(color, 0.25)} 100%)`,
+        backgroundSize: '200% 100%',
+        WebkitBackgroundClip: 'text',
+        backgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+        animation: 'shimmerText 4s linear infinite'
+      }}
+    >
+      {text}
+    </span>
+  );
+
+  const loadConversationSummaries = useCallback(async () => {
+    try {
+      setIsLoadingConversations(true);
+      const response = await fetchAPI(`${API_BASE}/api/chat/conversations`);
+      if (response.ok) {
+        const data = await response.json();
+        setConversationSummaries(Array.isArray(data) ? data.map((item: any) => ({
+          ...item,
+          pinned: Boolean(item.pinned)
+        })) : []);
+      }
+    } catch (error) {
+      console.error('Failed to load conversation summaries:', error);
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  }, []);
+
+  const syncClaudeLogs = useCallback(async () => {
+    try {
+      setIsSyncingClaude(true);
+      await fetchAPI(`${API_BASE}/api/claude-conversations/sync`, { method: 'POST' });
+    } catch (error) {
+      console.warn('Failed to sync Claude logs:', error);
+    } finally {
+      setIsSyncingClaude(false);
+      await loadConversationSummaries();
+    }
+  }, [loadConversationSummaries]);
+
+  const conversationGroups = useMemo<ConversationGroup[]>(() => {
+    const term = sidebarSearch.trim().toLowerCase();
+    const byProject = new Map<string, { project: Project; conversations: ConversationSummary[] }>();
+
+    projects.forEach((project) => {
+      byProject.set(project.id, { project, conversations: [] });
+    });
+
+    conversationSummaries.forEach((summary) => {
+      const group = byProject.get(summary.project_id);
+      if (!group) return;
+      group.conversations.push(summary);
+    });
+
+    const getTimestamp = (value?: string | null): number => {
+      if (!value) return 0;
+      const normalisedValue = value.includes('T') ? value : value.replace(' ', 'T');
+      const parsed = Date.parse(normalisedValue);
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+
+    const groups: ConversationGroup[] = [];
+    byProject.forEach(({ project, conversations }) => {
+      const filteredConversations = conversations.filter((summary) => {
+        if (!matchesCliFilter(summary.cli_type, summary.source)) return false;
+        if (!term) return true;
+        return matchesSearch(term, summary.summary, summary.first_message, summary.project_name, summary.project_path, summary.conversation_id);
+      });
+
+      const projectMatches = matchesCliFilter(project.preferred_cli, undefined) && (
+        !term || matchesSearch(term, project.name, project.repo_path, project.initial_prompt)
+      );
+
+      if (!projectMatches && filteredConversations.length === 0) {
+        return;
+      }
+
+      filteredConversations.sort((a, b) => {
+        const aTime = getTimestamp(a.last_message_at);
+        const bTime = getTimestamp(b.last_message_at);
+        if (aTime !== bTime) {
+          return bTime - aTime;
+        }
+
+        const aPinned = Boolean(a.pinned);
+        const bPinned = Boolean(b.pinned);
+        if (aPinned === bPinned) {
+          return 0;
+        }
+
+        return aPinned ? -1 : 1;
+      });
+
+      const lastTimestamp = filteredConversations[0]?.last_message_at
+        || project.last_message_at
+        || project.created_at;
+
+      groups.push({
+        project,
+        conversations: filteredConversations,
+        showProjectRow: projectMatches,
+        lastTimestamp: lastTimestamp || project.created_at,
+      });
+    });
+
+    groups.sort((a, b) => getTimestamp(b.lastTimestamp) - getTimestamp(a.lastTimestamp));
+
+    return groups;
+  }, [projects, conversationSummaries, sidebarSearch, matchesCliFilter, matchesSearch]);
+
+  const handleProjectClick = useCallback((projectId: string) => {
+    const params = new URLSearchParams();
+    if (selectedAssistant) params.set('cli', selectedAssistant);
+    if (selectedModel) params.set('model', selectedModel);
+    router.push(`/${projectId}/chat${params.toString() ? `?${params.toString()}` : ''}`);
+  }, [router, selectedAssistant, selectedModel]);
+
+  const handleConversationClick = useCallback((projectId: string, conversationId: string) => {
+    if (!projectId || !conversationId) return;
+    const params = new URLSearchParams();
+    params.set('conversation', conversationId);
+    if (selectedAssistant) params.set('cli', selectedAssistant);
+    if (selectedModel) params.set('model', selectedModel);
+    router.push(`/${projectId}/chat${params.toString() ? `?${params.toString()}` : ''}`);
+  }, [router, selectedAssistant, selectedModel]);
+
+  const toggleConversationPin = useCallback(async (conversationId: string, pinned: boolean) => {
+    try {
+      const response = await fetchAPI(`${API_BASE}/api/chat/conversations/${conversationId}/pin`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned })
+      });
+      if (!response.ok) {
+        console.warn('Failed to update pin state for conversation', conversationId);
+        return;
+      }
+      setConversationSummaries((prev) => prev.map((item) => (
+        item.conversation_id === conversationId ? { ...item, pinned } : item
+      )));
+    } catch (error) {
+      console.error('Failed to toggle conversation pin:', error);
+    }
+  }, []);
+
   async function load() {
     try {
       const r = await fetchAPI(`${API_BASE}/api/projects`);
@@ -308,6 +686,7 @@ export default function HomePage() {
     } catch (error) {
       console.error('Failed to load projects:', error);
     }
+    await loadConversationSummaries();
   }
   
   async function onCreated() { await load(); }
@@ -650,6 +1029,13 @@ export default function HomePage() {
     };
   }, [selectedAssistant]);
 
+  useEffect(() => {
+    const sessionKey = 'claudeSyncV1';
+    if (!sessionStorage.getItem(sessionKey)) {
+      syncClaudeLogs().finally(() => sessionStorage.setItem(sessionKey, 'true'));
+    }
+  }, [syncClaudeLogs]);
+
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -708,8 +1094,239 @@ export default function HomePage() {
     { id: 'qwen', name: 'Qwen Coder', icon: '/qwen.png' }
   ];
 
+  const agentFilterOptions = [{ id: 'all', name: 'All agents' }, ...assistantOptions];
+
+  const sidebarContent = (
+    <div className="flex flex-col h-full">
+      {/* History header with pin controls */}
+      <div className="p-3 pt-10">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 px-2 py-1">
+            <h2 className="text-gray-900 dark:text-white font-medium text-lg">History</h2>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleTogglePin}
+              className="p-1 text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded transition-colors"
+              title={isPinned ? 'Unpin sidebar' : 'Pin sidebar'}
+            >
+              {isPinned ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M7 3h10M9 3v6l-2 3v2h10v-2l-2-3V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M12 13v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M10 17l2 4 2-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M7 3h10M9 3v6l-2 3v2h10v-2l-2-3V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M12 13v8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </button>
+            {!isPinned && (
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="p-1 text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded transition-colors"
+                title="Close sidebar"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-3">
+          <div>
+            <label className="sr-only" htmlFor="sidebar-agent-filter">Filter conversations by agent</label>
+            <select
+              id="sidebar-agent-filter"
+              value={sidebarCliFilter}
+              onChange={(event) => setSidebarCliFilter(event.target.value)}
+              className="w-full rounded-lg border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#DE7356]/40"
+            >
+              {agentFilterOptions.map((option) => (
+                <option key={option.id} value={option.id} className="bg-white dark:bg-black text-gray-900 dark:text-white">
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="relative">
+            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+            <input
+              type="text"
+              value={sidebarSearch}
+              onChange={(event) => setSidebarSearch(event.target.value)}
+              placeholder="Search conversations"
+              className="w-full rounded-lg border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 pl-9 pr-12 py-2 text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#DE7356]/40"
+            />
+            <button
+              onClick={syncClaudeLogs}
+              disabled={isSyncingClaude}
+              className="absolute right-1 top-1 flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-[#DE7356] hover:bg-[#DE7356]/10 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isSyncingClaude ? 'Syncing…' : 'Sync Claude'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-2 py-3 space-y-3">
+        {isLoadingConversations ? (
+          <div className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">Loading conversations…</div>
+        ) : conversationGroups.length === 0 ? (
+          <div className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+            {conversationSummaries.length === 0 ? 'No conversations yet' : 'No conversations match filters'}
+          </div>
+        ) : (
+          (() => {
+            const topGroupId = conversationGroups[0]?.project.id;
+            const topConversationId = conversationGroups[0]?.conversations[0]?.conversation_id;
+
+            return conversationGroups.map((group) => {
+              const projectStatusRaw = group.project.status || '';
+              const projectStatus = normalizeCliValue(projectStatusRaw);
+              const isProjectBuilding = BUILDING_STATUSES.has(projectStatus)
+                || projectStatus.includes('build')
+                || projectStatus.includes('deploy')
+                || projectStatus.includes('queue');
+              const isProjectRunning = projectStatus.includes('run') && !projectStatus.includes('preview');
+              const isTopGroup = group.project.id === topGroupId;
+              const isProjectAnimating = isTopGroup && (isProjectBuilding || isProjectRunning);
+              const projectCliColor = group.project.preferred_cli && assistantBrandColors[group.project.preferred_cli]
+                ? assistantBrandColors[group.project.preferred_cli]
+                : '#DE7356';
+
+              return (
+              <div key={group.project.id} className="space-y-2">
+                {group.showProjectRow && (
+                  <button
+                    onClick={() => handleProjectClick(group.project.id)}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-white/5"
+                  >
+                    {renderChatIcon(projectCliColor, isProjectAnimating)}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
+                        {isProjectAnimating ? renderShimmerText(group.project.name, projectCliColor) : group.project.name}
+                      </p>
+                      <div className="mt-1 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                        <span title={formatFullTime(group.lastTimestamp)}>{formatTime(group.lastTimestamp)}</span>
+                        {group.project.preferred_cli && (
+                          <span className="inline-flex items-center gap-1">
+                            <span
+                              className="h-2 w-2 rounded-full"
+                              style={{ backgroundColor: projectCliColor }}
+                            />
+                            <span>{group.project.preferred_cli.charAt(0).toUpperCase() + group.project.preferred_cli.slice(1)}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                )}
+
+                {group.conversations.map((conversation, index) => {
+                  const conversationCli = conversation.cli_type || (conversation.source === 'claude_log' ? 'claude' : null);
+                  const cliColor = conversationCli && assistantBrandColors[conversationCli]
+                    ? assistantBrandColors[conversationCli]
+                    : '#6B7280';
+                  const summaryText = conversation.summary || conversation.first_message || 'No summary yet';
+                  const conversationTimestamp = conversation.last_message_at || group.lastTimestamp;
+                  const isPrimaryAnimating = isProjectAnimating && index === 0 && conversation.conversation_id === topConversationId;
+                  const isPinnedConversation = Boolean(conversation.pinned);
+
+                  return (
+                    <div
+                      key={conversation.conversation_id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleConversationClick(group.project.id, conversation.conversation_id)}
+                      onKeyDown={(event: ReactKeyboardEvent<HTMLDivElement>) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          handleConversationClick(group.project.id, conversation.conversation_id);
+                        }
+                      }}
+                      className={`flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-[#DE7356]/30 cursor-pointer ${isPinnedConversation ? 'bg-amber-50/70 dark:bg-amber-500/10 border border-amber-200/60 dark:border-amber-500/30' : ''}`}
+                    >
+                      <span className="mt-0.5">
+                        {renderChatIcon(cliColor, isPrimaryAnimating, 'sm')}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-gray-800 dark:text-gray-100 line-clamp-2">
+                          {isPrimaryAnimating ? renderShimmerText(summaryText, cliColor) : summaryText}
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                          <span title={formatFullTime(conversationTimestamp)}>{formatTime(conversationTimestamp)}</span>
+                          {conversationCli && (
+                            <span className="inline-flex items-center gap-1">
+                              <span
+                                className="h-2 w-2 rounded-full"
+                                style={{ backgroundColor: cliColor }}
+                              />
+                              <span>{conversationCli.charAt(0).toUpperCase() + conversationCli.slice(1)}</span>
+                            </span>
+                          )}
+                          {conversation.source === 'claude_log' && (
+                            <span className="rounded-full bg-[#DE7356]/10 px-2 py-0.5 text-[10px] font-medium text-[#DE7356]">Claude log</span>
+                          )}
+                          {isPinnedConversation && (
+                            <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">Pinned</span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          toggleConversationPin(conversation.conversation_id, !isPinnedConversation);
+                        }}
+                        className={`ml-auto mt-1 inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${isPinnedConversation ? 'text-amber-500 hover:bg-amber-500/10' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-white/10'}`}
+                        title={isPinnedConversation ? 'Unpin conversation' : 'Pin conversation'}
+                      >
+                        <Star
+                          className="h-4 w-4"
+                          strokeWidth={isPinnedConversation ? 1.5 : 2}
+                          style={isPinnedConversation ? { fill: 'currentColor' } : undefined}
+                        />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+            });
+          })()
+        )}
+      </div>
+
+      <div className="p-2 border-t border-gray-200 dark:border-white/10">
+        <button 
+          onClick={() => setShowGlobalSettings(true)}
+          className="w-full flex items-center gap-2 p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition-all text-sm"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Settings
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex h-screen relative overflow-hidden bg-white dark:bg-black">
+      <style>{`
+        @keyframes shimmerText {
+          0% { background-position: 200% center; }
+          100% { background-position: -200% center; }
+        }
+      `}</style>
       {/* Radial gradient background from bottom center */}
       <div className="absolute inset-0">
         <div className="absolute inset-0 bg-white dark:bg-black" />
@@ -737,218 +1354,53 @@ export default function HomePage() {
       
       {/* Content wrapper */}
       <div className="relative z-10 flex h-full w-full">
-        {/* Thin sidebar bar when closed */}
-        <div className={`${sidebarOpen ? 'w-0' : 'w-12'} fixed inset-y-0 left-0 z-40 bg-transparent border-r border-gray-200/20 dark:border-white/5 transition-all duration-300 flex flex-col`}>
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="w-full h-12 flex items-center justify-center text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
-            title="Open sidebar"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-          
-          {/* Settings button when sidebar is closed */}
-          <div className="mt-auto mb-2">
+        {shouldShowThinBar && (
+          <div className={`${sidebarOpen ? 'w-0' : 'w-12'} fixed inset-y-0 left-0 z-40 bg-transparent border-r border-gray-200/20 dark:border-white/5 transition-all duration-300 flex flex-col`}>
             <button
-              onClick={() => setShowGlobalSettings(true)}
-              className="w-full h-12 flex items-center justify-center text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
-              title="Settings"
+              onClick={() => setSidebarOpen(true)}
+              className="w-full h-12 mt-8 flex items-center justify-center text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+              title="Open sidebar"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
-          </div>
-        </div>
-        
-        {/* Sidebar - Overlay style */}
-        <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed inset-y-0 left-0 z-40 w-64 bg-white/95 dark:bg-black/90 backdrop-blur-2xl border-r border-gray-200 dark:border-white/10 transition-transform duration-300`}>
-        <div className="flex flex-col h-full">
-          {/* History header with close button */}
-          <div className="p-3 border-b border-gray-200 dark:border-white/10">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 px-2 py-1">
-                <h2 className="text-gray-900 dark:text-white font-medium text-lg">History</h2>
-              </div>
+
+            {/* Settings button when sidebar is closed */}
+            <div className="mt-auto mb-2">
               <button
-                onClick={() => setSidebarOpen(false)}
-                className="p-1 text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded transition-colors"
-                title="Close sidebar"
+                onClick={() => setShowGlobalSettings(true)}
+                className="w-full h-12 flex items-center justify-center text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                title="Settings"
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </button>
             </div>
           </div>
-          
-          <div className="flex-1 overflow-y-auto p-2">
-            <div className="space-y-1">
-              {projects.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-500 text-sm">No conversations yet</p>
-                </div>
-              ) : (
-                projects.map((project) => (
-                  <div 
-                    key={project.id}
-                    className="p-2 px-3 rounded-lg transition-all group"
-                    onMouseEnter={(e) => {
-                      if (project.preferred_cli && assistantBrandColors[project.preferred_cli]) {
-                        e.currentTarget.style.backgroundColor = `${assistantBrandColors[project.preferred_cli]}15`;
-                      } else {
-                        e.currentTarget.style.backgroundColor = 'rgba(156, 163, 175, 0.1)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
-                  >
-                    {editingProject?.id === project.id ? (
-                      // Edit mode
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          const formData = new FormData(e.target as HTMLFormElement);
-                          const newName = formData.get('name') as string;
-                          if (newName.trim()) {
-                            updateProject(project.id, newName.trim());
-                          }
-                        }}
-                        className="space-y-2"
-                      >
-                        <input
-                          name="name"
-                          defaultValue={project.name}
-                          className="w-full px-2 py-1 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
-                          autoFocus
-                          onBlur={() => setEditingProject(null)}
-                        />
-                        <div className="flex gap-1">
-                          <button
-                            type="submit"
-                            className="px-2 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 transition-colors"
-                          >
-                            Save
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditingProject(null)}
-                            className="px-2 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </form>
-                    ) : (
-                      // View mode
-                      <div className="flex items-center justify-between gap-2">
-                        <div 
-                          className="flex-1 cursor-pointer min-w-0"
-                          onClick={() => {
-                            // Pass current model selection when navigating from sidebar
-                            const params = new URLSearchParams();
-                            if (selectedAssistant) params.set('cli', selectedAssistant);
-                            if (selectedModel) params.set('model', selectedModel);
-                            router.push(`/${project.id}/chat${params.toString() ? '?' + params.toString() : ''}`);
-                          }}
-                        >
-                          <h3 
-                            className="text-gray-900 dark:text-white text-sm transition-colors truncate"
-                            style={{
-                              '--hover-color': project.preferred_cli && assistantBrandColors[project.preferred_cli] 
-                                ? assistantBrandColors[project.preferred_cli]
-                                : '#DE7356'
-                            } as React.CSSProperties}
-                          >
-                            <span 
-                              className="group-hover:text-[var(--hover-color)]"
-                              style={{
-                                transition: 'color 0.2s'
-                              }}
-                            >
-                              {project.name.length > 28 
-                                ? `${project.name.substring(0, 28)}...` 
-                                : project.name
-                              }
-                            </span>
-                          </h3>
-                          <div className="flex items-center gap-2 mt-1">
-                            <div className="text-gray-500 text-xs">
-                              {formatTime(project.last_message_at || project.created_at)}
-                            </div>
-                            {project.preferred_cli && (
-                              <div className="flex items-center gap-1">
-                                <span className="text-gray-400 text-xs">•</span>
-                                <span 
-                                  className="text-xs transition-colors"
-                                  style={{
-                                    color: assistantBrandColors[project.preferred_cli] ? `${assistantBrandColors[project.preferred_cli]}CC` : '#6B7280'
-                                  }}
-                                >
-                                  {project.preferred_cli === 'claude' ? 'Claude' : 
-                                   project.preferred_cli === 'cursor' ? 'Cursor' : 
-                                   project.preferred_cli === 'qwen' ? 'Qwen' : 
-                                   project.preferred_cli === 'gemini' ? 'Gemini' : 
-                                   project.preferred_cli === 'codex' ? 'Codex' : 
-                                   project.preferred_cli}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingProject(project);
-                            }}
-                            className="p-1 text-gray-400 hover:text-orange-500 transition-colors"
-                            title="Edit project name"
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openDeleteModal(project);
-                            }}
-                            className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                            title="Delete project"
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-          
-          <div className="p-2 border-t border-gray-200 dark:border-white/10">
-            <button 
-              onClick={() => setShowGlobalSettings(true)}
-              className="w-full flex items-center gap-2 p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition-all text-sm"
+        )}
+
+        {isPinned && (
+          <aside
+            className="relative h-full flex-shrink-0 border-r border-gray-200 dark:border-white/10 bg-white/95 dark:bg-black/90 backdrop-blur-2xl"
+            style={{ width: `${sidebarWidth}px` }}
+          >
+            {sidebarContent}
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              tabIndex={0}
+              onPointerDown={handleResizePointerDown}
+              onKeyDown={handleResizeKeyDown}
+              className={`absolute top-0 right-0 h-full w-[6px] cursor-col-resize transition-colors ${isResizingSidebar ? 'bg-gray-300 dark:bg-gray-600' : 'bg-transparent hover:bg-gray-200/60 dark:hover:bg-gray-700/60'}`}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              Settings
-            </button>
-          </div>
-        </div>
-      </div>
-      
+              <span className="sr-only">Resize sidebar</span>
+            </div>
+          </aside>
+        )}
+
       {/* Main Content - Not affected by sidebar */}
       <div className="flex-1 flex flex-col min-w-0">
         <div className="flex-1 flex items-center justify-center p-8">
@@ -1262,6 +1714,17 @@ export default function HomePage() {
         </div>
       </div>
 
+      </div>
+
+      {shouldShowThinBar && (
+        <div
+          className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed inset-y-0 left-0 z-40 bg-white/95 dark:bg-black/90 backdrop-blur-2xl border-r border-gray-200 dark:border-white/10 transition-transform duration-300`}
+          style={{ width: `${sidebarWidth}px` }}
+        >
+          {sidebarContent}
+        </div>
+      )}
+
       {/* Global Settings Modal */}
       <GlobalSettings
         isOpen={showGlobalSettings}
@@ -1359,7 +1822,6 @@ export default function HomePage() {
           </motion.div>
         </div>
       )}
-      </div>
     </div>
   );
 }

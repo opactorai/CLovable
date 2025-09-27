@@ -4,11 +4,21 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from claude_code_sdk import query, ClaudeCodeOptions
-from claude_code_sdk.types import (
-    Message, UserMessage, AssistantMessage, SystemMessage, ResultMessage,
-    ContentBlock, TextBlock, ThinkingBlock, ToolUseBlock, ToolResultBlock
-)
+try:
+    from claude_code_sdk import query, ClaudeCodeOptions
+except ImportError:
+    # SDK might be updating, provide fallback
+    query = None
+    ClaudeCodeOptions = None
+try:
+    from claude_code_sdk.types import (
+        Message, UserMessage, AssistantMessage, SystemMessage, ResultMessage,
+        ContentBlock, TextBlock, ThinkingBlock, ToolUseBlock, ToolResultBlock
+    )
+except ImportError:
+    # SDK types might be missing, provide None fallback
+    Message = UserMessage = AssistantMessage = SystemMessage = ResultMessage = None
+    ContentBlock = TextBlock = ThinkingBlock = ToolUseBlock = ToolResultBlock = None
 
 
 DEFAULT_MODEL = os.getenv("CLAUDE_CODE_MODEL", "claude-sonnet-4-20250514")

@@ -12,7 +12,12 @@ from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
 from app.core.terminal_ui import ui
 from app.models.messages import Message
-from claude_code_sdk import ClaudeSDKClient, ClaudeCodeOptions
+try:
+    from claude_code_sdk import ClaudeSDKClient, ClaudeCodeOptions
+except ImportError:
+    # SDK might have compatibility issues, use None as fallback
+    ClaudeSDKClient = None
+    ClaudeCodeOptions = None
 
 from ..base import BaseCLI, CLIType
 

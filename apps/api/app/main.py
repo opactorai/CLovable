@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.api.projects import router as projects_router
+from app.api.openapi_docs import configure_openapi, TAGS_METADATA
 from app.api.repo import router as repo_router
 from app.api.commits import router as commits_router
 from app.api.env import router as env_router
@@ -12,6 +13,8 @@ from app.api.settings import router as settings_router
 from app.api.project_services import router as project_services_router
 from app.api.github import router as github_router
 from app.api.vercel import router as vercel_router
+from app.api.claude_conversations import router as claude_conversations_router
+from app.api.claude_files import router as claude_files_router
 from app.core.logging import configure_logging
 from app.core.terminal_ui import ui
 from sqlalchemy import inspect
@@ -23,7 +26,18 @@ import os
 
 configure_logging()
 
-app = FastAPI(title="Clovable API")
+app = FastAPI(
+    title="Clovable API",
+    description="API for managing projects, chat sessions, and integrations with Claude, GitHub, and Vercel",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    openapi_tags=TAGS_METADATA
+)
+
+# Configure enhanced OpenAPI documentation
+configure_openapi(app)
 
 # Middleware to suppress logging for specific endpoints
 class LogFilterMiddleware(BaseHTTPMiddleware):
@@ -65,6 +79,8 @@ app.include_router(settings_router)  # Settings API
 app.include_router(project_services_router)  # Project services API
 app.include_router(github_router)  # GitHub integration API
 app.include_router(vercel_router)  # Vercel integration API
+app.include_router(claude_conversations_router, prefix="/api")  # Claude conversation folder reader
+app.include_router(claude_files_router, prefix="/api")  # Claude CLI file management
 
 
 @app.get("/health")

@@ -1,24 +1,25 @@
 """Database migrations module for SQLite."""
 
 import logging
-from pathlib import Path
-from typing import Optional
+
+from sqlalchemy import inspect, text
+from sqlalchemy.engine import Engine
 
 logger = logging.getLogger(__name__)
 
 
-def run_sqlite_migrations(db_path: Optional[str] = None) -> None:
-    """
-    Run SQLite database migrations.
-    
-    Args:
-        db_path: Path to the SQLite database file
-    """
-    if db_path:
-        logger.info(f"Running migrations for SQLite database at: {db_path}")
-    else:
-        logger.info("Running migrations for in-memory SQLite database")
-    
-    # Add migration logic here as needed
-    # For now, this is a placeholder that ensures the module exists
-    pass
+def run_sqlite_migrations(engine: Engine | None = None) -> None:
+    """Run lightweight SQLite migrations."""
+
+    if engine is None:
+        logger.info("No engine supplied for migrations; skipping")
+        return
+
+    inspector = inspect(engine)
+
+    # Add `pinned` column to sessions table if missing
+    session_columns = {column["name"] for column in inspector.get_columns("sessions")}
+    if "pinned" not in session_columns:
+        logger.info("Adding `pinned` column to sessions table")
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE sessions ADD COLUMN pinned BOOLEAN DEFAULT 0"))

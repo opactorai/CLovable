@@ -18,6 +18,7 @@ from app.models.commits import Commit
 from app.models.user_requests import UserRequest
 from app.services.cli.unified_manager import UnifiedCLIManager
 from app.services.cli.base import CLIType
+from app.services.cli.process_manager import terminate_project_processes
 from app.services.git_ops import commit_all
 from app.core.websocket.manager import manager
 from app.core.terminal_ui import ui
@@ -294,7 +295,11 @@ async def execute_act_task(
         
         # Update session status to running
         session.status = "running"
-        
+
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if project:
+            project.status = "running"
+
         # ★ NEW: Update UserRequest status to started
         if request_id:
             user_request = db.query(UserRequest).filter(UserRequest.id == request_id).first()
@@ -304,6 +309,15 @@ async def execute_act_task(
                 user_request.model_used = project_selected_model
         
         db.commit()
+
+        if project:
+            await manager.broadcast_to_project(project_id, {
+                "type": "project_status",
+                "data": {
+                    "status": "running",
+                    "message": instruction[:80] or 'Working...'
+                }
+            })
         
         # Send act_start event to trigger loading indicator
         await manager.broadcast_to_project(project_id, {
@@ -373,7 +387,18 @@ async def execute_act_task(
             # Update session status only (no success message to user)
             session.status = "completed"
             session.completed_at = datetime.utcnow()
-            
+
+            if project:
+                project.status = "active"
+                db.commit()
+                await manager.broadcast_to_project(project_id, {
+                    "type": "project_status",
+                    "data": {
+                        "status": "active",
+                        "message": "Project ready"
+                    }
+                })
+
             # ★ NEW: Mark UserRequest as completed successfully
             if request_id:
                 user_request = db.query(UserRequest).filter(UserRequest.id == request_id).first()
@@ -411,7 +436,7 @@ async def execute_act_task(
             session.status = "failed"
             session.error = result.get("error") if result else "No CLI available"
             session.completed_at = datetime.utcnow()
-            
+
             # ★ NEW: Mark UserRequest as completed with failure
             if request_id:
                 user_request = db.query(UserRequest).filter(UserRequest.id == request_id).first()
@@ -468,7 +493,11 @@ async def execute_act_task(
         session.status = "failed"
         session.error = str(e)
         session.completed_at = datetime.utcnow()
-        
+
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if project:
+            project.status = "active"
+
         # ★ NEW: Mark UserRequest as failed due to exception
         if request_id:
             user_request = db.query(UserRequest).filter(UserRequest.id == request_id).first()
@@ -502,6 +531,38 @@ async def execute_act_task(
                 "error": str(e)
             }
         })
+
+
+@router.post("/{project_id}/stop")
+async def stop_execution(
+    project_id: str,
+    db: Session = Depends(get_db)
+):
+    """Stop the current execution for a project"""
+    try:
+        # Update all active sessions for this project to stopped
+        active_sessions = db.query(ChatSession).filter(
+            ChatSession.project_id == project_id,
+            ChatSession.status.in_(["active", "running"])
+        ).all()
+
+        for session in active_sessions:
+            session.status = "stopped"
+            session.completed_at = datetime.utcnow()
+
+        db.commit()
+
+        # Terminate all CLI processes for this project
+        terminated_count = await terminate_project_processes(project_id)
+        ui.info(f"Terminated {terminated_count} CLI processes for project {project_id}", "Stop")
+
+        return {
+            "message": f"Stopped {len(active_sessions)} active sessions and {terminated_count} processes",
+            "stopped_sessions": len(active_sessions),
+            "terminated_processes": terminated_count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/{project_id}/act", response_model=ActResponse)

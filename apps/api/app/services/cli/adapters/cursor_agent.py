@@ -13,6 +13,7 @@ from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
 from app.models.messages import Message
 from app.core.terminal_ui import ui
+from app.services.cli.process_manager import register_process, unregister_process
 
 from ..base import BaseCLI, CLIType
 
@@ -322,6 +323,10 @@ class CursorAgentCLI(BaseCLI):
                 cwd=project_repo_path,
             )
 
+            # Register the process for tracking
+            if session_id:
+                register_process(session_id, process)
+
             cursor_session_id = None
             assistant_message_buffer = ""
             result_received = False  # Track if we received result event
@@ -464,6 +469,10 @@ class CursorAgentCLI(BaseCLI):
                 )
 
             await process.wait()
+
+            # Unregister the process after completion
+            if session_id:
+                unregister_process(session_id)
 
             # Log completion
             if cursor_session_id:

@@ -178,7 +178,18 @@ async def install_dependencies_background(project_id: str, project_path: str):
     except Exception as e:
         print(f"Error installing dependencies: {e}")
 
-@router.post("/{project_id}/install-dependencies")
+@router.post(
+    "/{project_id}/install-dependencies",
+    summary="Install dependencies",
+    description="Trigger background installation of project dependencies (npm packages). The installation runs asynchronously and progress is reported via WebSocket.",
+    response_description="Installation status",
+    responses={
+        200: {"description": "Installation started successfully"},
+        404: {"description": "Project not found"},
+        400: {"description": "Project repository path not found"}
+    },
+    tags=["projects"]
+)
 async def install_project_dependencies(
     project_id: str,
     background_tasks: BackgroundTasks,
@@ -200,14 +211,26 @@ async def install_project_dependencies(
     return {"message": "Dependency installation started in background", "project_id": project_id}
 
 
-@router.get("/health")
+@router.get(
+    "/health",
+    summary="Projects health check",
+    description="Check if the projects router is operational",
+    tags=["health"]
+)
 async def projects_health():
     """Simple health check for projects router"""
     return {"status": "ok", "router": "projects"}
 
 
 
-@router.get("/", response_model=List[Project])
+@router.get(
+    "/",
+    response_model=List[Project],
+    summary="List all projects",
+    description="Retrieve a complete list of all projects with their current status, service connections, and metadata including features, tech stack, and last activity timestamps.",
+    response_description="List of projects with full details",
+    tags=["projects"]
+)
 async def list_projects(db: Session = Depends(get_db)) -> List[Project]:
     """List all projects with their status and last activity"""
     
@@ -278,7 +301,18 @@ async def list_projects(db: Session = Depends(get_db)) -> List[Project]:
     return result
 
 
-@router.get("/{project_id}", response_model=Project)
+@router.get(
+    "/{project_id}",
+    response_model=Project,
+    summary="Get project details",
+    description="Retrieve detailed information about a specific project including configuration, status, connected services, and AI-generated metadata.",
+    response_description="Project details",
+    responses={
+        404: {"description": "Project not found"},
+        500: {"description": "Database error"}
+    },
+    tags=["projects"]
+)
 async def get_project(project_id: str, db: Session = Depends(get_db)) -> Project:
     """Get a specific project by ID"""
     
@@ -313,7 +347,20 @@ async def get_project(project_id: str, db: Session = Depends(get_db)) -> Project
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 
-@router.post("/", response_model=Project)
+@router.post(
+    "/",
+    response_model=Project,
+    status_code=201,
+    summary="Create a new project",
+    description="Create a new project with the specified configuration. This initializes the project directory structure and sets up the development environment. The project ID must be lowercase with hyphens only.",
+    response_description="Newly created project",
+    responses={
+        201: {"description": "Project created successfully"},
+        409: {"description": "Project with this ID already exists"},
+        400: {"description": "Invalid project ID format"}
+    },
+    tags=["projects"]
+)
 async def create_project(
     body: ProjectCreate,
     db: Session = Depends(get_db)
@@ -390,10 +437,21 @@ async def create_project(
     )
 
 
-@router.put("/{project_id}", response_model=Project)
+@router.put(
+    "/{project_id}",
+    response_model=Project,
+    summary="Update project",
+    description="Update an existing project's name and other configurable properties.",
+    response_description="Updated project details",
+    responses={
+        200: {"description": "Project updated successfully"},
+        404: {"description": "Project not found"}
+    },
+    tags=["projects"]
+)
 async def update_project(
-    project_id: str, 
-    body: ProjectUpdate, 
+    project_id: str,
+    body: ProjectUpdate,
     db: Session = Depends(get_db)
 ) -> Project:
     """Update a project"""
@@ -454,7 +512,17 @@ async def update_project(
     )
 
 
-@router.delete("/{project_id}")
+@router.delete(
+    "/{project_id}",
+    summary="Delete project",
+    description="Delete a project and all its associated data including messages, sessions, and service connections. This action cannot be undone.",
+    response_description="Confirmation message",
+    responses={
+        200: {"description": "Project deleted successfully"},
+        404: {"description": "Project not found"}
+    },
+    tags=["projects"]
+)
 async def delete_project(project_id: str, db: Session = Depends(get_db)):
     """Delete a project"""
     
