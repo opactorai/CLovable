@@ -42,3 +42,4 @@ class Project(Base):
     env_vars = relationship("EnvVar", back_populates="project", cascade="all, delete-orphan")
     service_connections = relationship("ProjectServiceConnection", back_populates="project", cascade="all, delete-orphan")
     user_requests = relationship("UserRequest", back_populates="project", cascade="all, delete-orphan")
+    mcp_servers = relationship("MCPServer", back_populates="project", cascade="all, delete-orphan")

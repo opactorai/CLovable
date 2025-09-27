@@ -9,7 +9,7 @@ from app.services.cli.base import CLIType
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
-# CLI 옵션과 체크 명령어 정의
+# Define CLI options and check commands
 CLI_OPTIONS = [
     {
         "id": "claude",
@@ -31,9 +31,9 @@ class CLIStatusResponse(BaseModel):
 
 
 async def check_cli_installation(cli_id: str, command: list) -> CLIStatusResponse:
-    """단일 CLI의 설치 상태를 확인합니다."""
+    """Check the installation status of a single CLI."""
     try:
-        # subprocess를 비동기로 실행
+        # Run subprocess asynchronously
         process = await asyncio.create_subprocess_exec(
             *command,
             stdout=asyncio.subprocess.PIPE,
@@ -43,9 +43,9 @@ async def check_cli_installation(cli_id: str, command: list) -> CLIStatusRespons
         stdout, stderr = await process.communicate()
         
         if process.returncode == 0:
-            # 성공적으로 실행된 경우
+            # Successfully executed
             version_output = stdout.decode().strip()
-            # 버전 정보에서 실제 버전 번호 추출 (첫 번째 라인만 사용)
+            # Extract actual version number from version info (use first line only)
             version = version_output.split('\n')[0] if version_output else "installed"
             
             return CLIStatusResponse(
@@ -54,7 +54,7 @@ async def check_cli_installation(cli_id: str, command: list) -> CLIStatusRespons
                 version=version
             )
         else:
-            # 명령어 실행은 되었지만 에러 리턴 코드
+            # Command executed but returned error code
             error_msg = stderr.decode().strip() if stderr else f"Command failed with code {process.returncode}"
             return CLIStatusResponse(
                 cli_id=cli_id,
@@ -63,14 +63,14 @@ async def check_cli_installation(cli_id: str, command: list) -> CLIStatusRespons
             )
             
     except FileNotFoundError:
-        # 명령어를 찾을 수 없는 경우 (설치되지 않음)
+        # Command not found (not installed)
         return CLIStatusResponse(
             cli_id=cli_id,
             installed=False,
             error="Command not found"
         )
     except Exception as e:
-        # 기타 예외
+        # Other exceptions
         return CLIStatusResponse(
             cli_id=cli_id,
             installed=False,
@@ -80,10 +80,10 @@ async def check_cli_installation(cli_id: str, command: list) -> CLIStatusRespons
 
 @router.get("/cli-status")
 async def get_cli_status() -> Dict[str, Any]:
-    """모든 CLI의 설치 상태를 확인하고 반환합니다."""
+    """Check and return the installation status of all CLIs."""
     results = {}
     
-    # 새로운 UnifiedCLIManager의 CLI 인스턴스 사용
+    # Use CLI instances from the new UnifiedCLIManager
     from app.services.cli.unified_manager import ClaudeCodeCLI, CursorAgentCLI, CodexCLI, QwenCLI, GeminiCLI
     cli_instances = {
         "claude": ClaudeCodeCLI(),
@@ -93,7 +93,7 @@ async def get_cli_status() -> Dict[str, Any]:
         "gemini": GeminiCLI()
     }
     
-    # 모든 CLI를 병렬로 확인
+    # Check all CLIs in parallel
     tasks = []
     for cli_id, cli_instance in cli_instances.items():
         print(f"[DEBUG] Setting up check for CLI: {cli_id}")
@@ -105,10 +105,10 @@ async def get_cli_status() -> Dict[str, Any]:
         
         tasks.append(check_cli(cli_id, cli_instance))
     
-    # 모든 태스크 실행
+    # Execute all tasks
     cli_results = await asyncio.gather(*tasks)
     
-    # 결과를 딕셔너리로 변환
+    # Convert results to dictionary
     for cli_id, status in cli_results:
         results[cli_id] = {
             "installed": status.get("available", False) and status.get("configured", False),
@@ -120,7 +120,7 @@ async def get_cli_status() -> Dict[str, Any]:
     return results
 
 
-# 글로벌 설정 관리를 위한 임시 메모리 저장소 (실제로는 데이터베이스에 저장해야 함)
+# Temporary memory storage for global settings management (should be stored in database in production)
 GLOBAL_SETTINGS = {
     "default_cli": "claude",
     "cli_settings": {
@@ -136,13 +136,13 @@ class GlobalSettingsModel(BaseModel):
 
 @router.get("/global")
 async def get_global_settings() -> Dict[str, Any]:
-    """글로벌 설정을 반환합니다."""
+    """Return global settings."""
     return GLOBAL_SETTINGS
 
 
 @router.put("/global")
 async def update_global_settings(settings: GlobalSettingsModel) -> Dict[str, Any]:
-    """글로벌 설정을 업데이트합니다."""
+    """Update global settings."""
     global GLOBAL_SETTINGS
     
     GLOBAL_SETTINGS.update({

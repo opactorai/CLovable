@@ -1,4 +1,4 @@
-fastapi>=0.112
+fastapi[all]>=0.112
 uvicorn[standard]>=0.30
 pydantic>=2.7
 SQLAlchemy>=2.0

@@ -8,6 +8,8 @@ from .websocket import router as websocket_router
 from .messages import router as messages_router
 from .act import router as act_router
 from .cli_preferences import router as cli_router
+from .conversations import router as conversations_router
+from .tokens import router as tokens_router
 
 
 # Create main chat router (prefix will be added in main.py)
@@ -18,3 +20,5 @@ router.include_router(websocket_router, tags=["chat"])
 router.include_router(messages_router, tags=["chat"])
 router.include_router(act_router, tags=["chat"])
 router.include_router(cli_router, tags=["chat"])
+router.include_router(conversations_router, tags=["chat"])
+router.include_router(tokens_router, tags=["chat", "tokens"])

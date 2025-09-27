@@ -3,7 +3,22 @@ import React, { useEffect, useState, useRef, ReactElement } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { Brain } from 'lucide-react';
+import {
+  Brain,
+  BookOpen,
+  Bot,
+  Check,
+  FileText,
+  Folder,
+  Globe2,
+  Palette,
+  Pencil,
+  Search,
+  Settings,
+  Target,
+  Wrench,
+  Zap
+} from 'lucide-react';
 import ToolResultItem from './ToolResultItem';
 import ThinkingSection from './chat/ThinkingSection';
 
@@ -114,6 +129,9 @@ interface ChatMessage {
   session_id?: string;
   conversation_id?: string;
   created_at: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  cost_usd?: number;
 }
 
 interface LogEntry {
@@ -131,15 +149,142 @@ interface ActiveSession {
   duration_seconds?: number;
 }
 
+interface TokenUsage {
+  totalTokens: number;
+  userTokens: number;
+  assistantTokens: number;
+  systemTokens?: number;
+  toolTokens?: number;
+  limit: number;
+}
+
 interface ChatLogProps {
   projectId: string;
+  tokenLimit?: number;
+  onTokenUsageChange?: (usage: TokenUsage) => void;
   onSessionStatusChange?: (isRunning: boolean) => void;
   onProjectStatusUpdate?: (status: string, message?: string) => void;
   startRequest?: (requestId: string) => void;
   completeRequest?: (requestId: string, isSuccessful: boolean, errorMessage?: string) => void;
 }
 
-export default function ChatLog({ projectId, onSessionStatusChange, onProjectStatusUpdate, startRequest, completeRequest }: ChatLogProps) {
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const emojiIconRenderers: Record<string, () => React.ReactNode> = {
+  '✅': () => <Check className="h-4 w-4 text-emerald-500" strokeWidth={2.5} />,
+  '🎨': () => <Palette className="h-4 w-4 text-[#DE7356]" strokeWidth={2.5} />,
+  '🔧': () => <Wrench className="h-4 w-4 text-[#DE7356]" strokeWidth={2.5} />,
+  '⚡': () => <Zap className="h-4 w-4 text-amber-500" strokeWidth={2.5} />,
+  '🔍': () => <Search className="h-4 w-4 text-[#6B7280]" strokeWidth={2.5} />,
+  '🔎': () => <Search className="h-4 w-4 text-[#6B7280]" strokeWidth={2.5} />,
+  '📖': () => <BookOpen className="h-4 w-4 text-[#DE7356]" strokeWidth={2.5} />,
+  '✏️': () => <Pencil className="h-4 w-4 text-[#DE7356]" strokeWidth={2.5} />,
+  '📁': () => <Folder className="h-4 w-4 text-[#6B7280]" strokeWidth={2.5} />,
+  '🌐': () => <Globe2 className="h-4 w-4 text-sky-500" strokeWidth={2.5} />,
+  '🤖': () => <Bot className="h-4 w-4 text-[#6B7280]" strokeWidth={2.5} />,
+  '📝': () => <FileText className="h-4 w-4 text-[#DE7356]" strokeWidth={2.5} />,
+  '🎯': () => <Target className="h-4 w-4 text-indigo-500" strokeWidth={2.5} />,
+  '📓': () => <FileText className="h-4 w-4 text-[#DE7356]" strokeWidth={2.5} />,
+  '⚙️': () => <Settings className="h-4 w-4 text-[#6B7280]" strokeWidth={2.5} />,
+  '🧠': () => <Brain className="h-4 w-4 text-purple-500" strokeWidth={2.5} />,
+};
+
+const emojiRegex = new RegExp(`(${Object.keys(emojiIconRenderers).map(escapeRegex).join('|')})`, 'g');
+
+const estimateTokens = (text: string) => {
+  if (!text) return 0;
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  return Math.max(1, Math.ceil(trimmed.length / 4));
+};
+
+const renderWithEmojiIcons = (nodes: React.ReactNode): React.ReactNode[] => {
+  const result: React.ReactNode[] = [];
+
+  React.Children.forEach(nodes, (child, childIndex) => {
+    if (typeof child === 'string') {
+      const parts = child.split(emojiRegex).filter(part => part !== '');
+      parts.forEach((part, partIndex) => {
+        const renderer = emojiIconRenderers[part];
+        if (renderer) {
+          result.push(
+            <span
+              key={`emoji-${childIndex}-${partIndex}`}
+              className="inline-flex items-center align-middle"
+              data-emoji-icon
+            >
+              {renderer()}
+            </span>
+          );
+        } else {
+          result.push(part);
+        }
+      });
+      return;
+    }
+
+    if (React.isValidElement(child)) {
+      const element = child as React.ReactElement<any>;
+      const existingChildren = element.props?.children;
+      if (!existingChildren || React.Children.count(existingChildren) === 0) {
+        result.push(child);
+        return;
+      }
+
+      const processedChildren = renderWithEmojiIcons(existingChildren);
+      if (processedChildren.length === 0) {
+        result.push(child);
+        return;
+      }
+
+      const cloned = React.cloneElement(
+        element,
+        undefined,
+        processedChildren.length === 1 ? processedChildren[0] : processedChildren
+      );
+      result.push(cloned);
+      return;
+    }
+
+    if (child !== null && child !== undefined) {
+      result.push(child);
+    }
+  });
+
+  return result;
+};
+
+const renderListItem = (children: React.ReactNode) => {
+  const contentNodes = renderWithEmojiIcons(children);
+  const firstNode = contentNodes[0];
+  const hasEmojiIcon = Boolean(
+    firstNode &&
+      React.isValidElement(firstNode) &&
+      (firstNode.props as Record<string, unknown>)?.['data-emoji-icon']
+  );
+
+  return (
+    <li
+      className={
+        hasEmojiIcon
+          ? 'mb-1 break-words list-none flex items-start gap-2'
+          : 'mb-1 break-words'
+      }
+    >
+      {contentNodes}
+    </li>
+  );
+};
+
+export default function ChatLog({
+  projectId,
+  tokenLimit,
+  onTokenUsageChange,
+  onSessionStatusChange,
+  onProjectStatusUpdate,
+  startRequest,
+  completeRequest,
+}: ChatLogProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
@@ -241,11 +386,48 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
     const toolPatterns = [
       /\*\*(Read|LS|Glob|Grep|Edit|Write|Bash|Task|WebFetch|WebSearch|MultiEdit|TodoWrite)\*\*/,
     ];
-    
+
     return toolPatterns.some(pattern => pattern.test(content));
   };
 
   useEffect(scrollToBottom, [messages, logs]);
+
+  useEffect(() => {
+    if (!onTokenUsageChange) return;
+    const limit = tokenLimit ?? 262144;
+    let userTokens = 0;
+    let assistantTokens = 0;
+
+    let systemTokens = 0;
+    let toolTokens = 0;
+
+    messages.forEach((message) => {
+      if (!message?.content) return;
+      const tokens = estimateTokens(message.content);
+      if (message.role === 'user') {
+        userTokens += tokens;
+      } else if (message.role === 'assistant') {
+        assistantTokens += tokens;
+      } else if (message.message_type === 'system_prompt') {
+        systemTokens += tokens;
+      } else if (message.message_type?.includes('tool')) {
+        toolTokens += tokens;
+      }
+    });
+
+    if (systemTokens === 0) {
+      systemTokens = 8000; // More realistic system prompt estimate
+    }
+
+    onTokenUsageChange({
+      totalTokens: userTokens + assistantTokens + systemTokens + toolTokens,
+      userTokens,
+      assistantTokens,
+      systemTokens,
+      toolTokens,
+      limit,
+    });
+  }, [messages, onTokenUsageChange, tokenLimit]);
 
   // Check for active session on component mount
   const checkActiveSession = async () => {
@@ -425,14 +607,14 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
             <ReactMarkdown 
               key={`text-${lastIndex}`}
               components={{
-                p: ({children}) => <p className="mb-2 last:mb-0 break-words">{children}</p>,
+                p: ({children}) => <p className="mb-2 last:mb-0 break-words">{renderWithEmojiIcons(children)}</p>,
                 strong: ({children}) => <strong className="font-medium">{children}</strong>,
                 em: ({children}) => <em className="italic">{children}</em>,
                 code: ({children}) => <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-xs font-mono">{children}</code>,
                 pre: ({children}) => <pre className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg my-2 overflow-x-auto text-xs break-words">{children}</pre>,
                 ul: ({children}) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
                 ol: ({children}) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
-                li: ({children}) => <li className="mb-1 break-words">{children}</li>
+                li: ({children}) => renderListItem(children)
               }}
             >
               {beforeText}
@@ -479,7 +661,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
                     </code>
                   </p>;
                 }
-                return <p className="mb-2 last:mb-0 break-words">{children}</p>;
+                return <p className="mb-2 last:mb-0 break-words">{renderWithEmojiIcons(children)}</p>;
               },
               strong: ({children}) => <strong className="font-medium">{children}</strong>,
               em: ({children}) => <em className="italic">{children}</em>,
@@ -487,7 +669,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
               pre: ({children}) => <pre className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg my-2 overflow-x-auto text-xs break-words">{children}</pre>,
               ul: ({children}) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
               ol: ({children}) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
-              li: ({children}) => <li className="mb-1 break-words">{children}</li>
+              li: ({children}) => renderListItem(children)
             }}
           >
             {remainingText}
@@ -519,7 +701,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
                   </code>
                 </p>;
               }
-              return <p className="mb-2 last:mb-0 break-words">{children}</p>;
+              return <p className="mb-2 last:mb-0 break-words">{renderWithEmojiIcons(children)}</p>;
             },
             strong: ({children}) => <strong className="font-medium">{children}</strong>,
             em: ({children}) => <em className="italic">{children}</em>,
@@ -527,7 +709,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
             pre: ({children}) => <pre className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg my-2 overflow-x-auto text-xs break-words">{children}</pre>,
             ul: ({children}) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
             ol: ({children}) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
-            li: ({children}) => <li className="mb-1 break-words">{children}</li>
+            li: ({children}) => renderListItem(children)
           }}
         >
           {content}
@@ -650,14 +832,14 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
           <div>
             <ReactMarkdown 
               components={{
-                p: ({children}) => <p className="mb-2 last:mb-0 break-words">{children}</p>,
+                p: ({children}) => <p className="mb-2 last:mb-0 break-words">{renderWithEmojiIcons(children)}</p>,
                 strong: ({children}) => <strong className="font-medium">{children}</strong>,
                 em: ({children}) => <em className="italic">{children}</em>,
                 code: ({children}) => <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-xs font-mono break-all">{children}</code>,
                 pre: ({children}) => <pre className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg my-2 overflow-x-auto text-xs break-words">{children}</pre>,
                 ul: ({children}) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
                 ol: ({children}) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
-                li: ({children}) => <li className="mb-1 break-words">{children}</li>
+                li: ({children}) => renderListItem(children)
               }}
             >
               {shortenPath(log.data.content)}
@@ -932,8 +1114,21 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
                       <ToolMessage content={message.content} metadata={message.metadata_json} />
                     ) : (
                       // Regular agent message - plain text
-                      <div className="text-sm text-gray-900 dark:text-white leading-relaxed">
-                        {renderContentWithThinking(shortenPath(message.content))}
+                      <div>
+                        <div className="text-sm text-gray-900 dark:text-white leading-relaxed">
+                          {renderContentWithThinking(shortenPath(message.content))}
+                        </div>
+                        {message.role === 'assistant' && (
+                          <div className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                            {/* Estimate tokens and cost for display */}
+                            {(() => {
+                              const inputTokens = message.input_tokens || estimateTokens(message.content || '') * 0.3;
+                              const outputTokens = message.output_tokens || estimateTokens(message.content || '');
+                              const cost = message.cost_usd || ((inputTokens * 0.000003) + (outputTokens * 0.000015));
+                              return `${Math.round(inputTokens)} in, ${Math.round(outputTokens)} out • $${cost.toFixed(4)}`;
+                            })()}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

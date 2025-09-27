@@ -45,6 +45,121 @@ def hard_reset(repo_path: str, commit_sha: str) -> None:
     _run(["git", "reset", "--hard", commit_sha], cwd=repo_path)
 
 
+def get_status(repo_path: str) -> dict:
+    """Get git status"""
+    try:
+        status_output = _run(["git", "status", "--porcelain"], cwd=repo_path)
+        branch_output = _run(["git", "branch", "--show-current"], cwd=repo_path)
+
+        modified = []
+        staged = []
+        untracked = []
+
+        for line in status_output.splitlines():
+            if line.startswith("??"):
+                untracked.append(line[3:])
+            elif line.startswith("M "):
+                staged.append(line[3:])
+            elif line.startswith(" M"):
+                modified.append(line[3:])
+            elif line.startswith("A "):
+                staged.append(line[3:])
+
+        return {
+            "branch": branch_output,
+            "modified": modified,
+            "staged": staged,
+            "untracked": untracked,
+            "clean": len(modified) == 0 and len(staged) == 0 and len(untracked) == 0
+        }
+    except subprocess.CalledProcessError:
+        return {"error": "Not a git repository or git command failed"}
+
+
+def get_branches(repo_path: str) -> dict:
+    """Get all branches"""
+    try:
+        local_branches = _run(["git", "branch"], cwd=repo_path).splitlines()
+        remote_branches = _run(["git", "branch", "-r"], cwd=repo_path).splitlines()
+
+        current_branch = None
+        locals = []
+        remotes = []
+
+        for branch in local_branches:
+            if branch.startswith("* "):
+                current_branch = branch[2:].strip()
+                locals.append(current_branch)
+            else:
+                locals.append(branch.strip())
+
+        for branch in remote_branches:
+            branch = branch.strip()
+            if not branch.startswith("origin/HEAD"):
+                remotes.append(branch)
+
+        return {
+            "current": current_branch,
+            "local": locals,
+            "remote": remotes
+        }
+    except subprocess.CalledProcessError:
+        return {"error": "Failed to get branches"}
+
+
+def pull(repo_path: str, remote: str = "origin", branch: str = None) -> str:
+    """Pull from remote repository"""
+    try:
+        cmd = ["git", "pull", remote]
+        if branch:
+            cmd.append(branch)
+        return _run(cmd, cwd=repo_path)
+    except subprocess.CalledProcessError as e:
+        raise Exception(f"Git pull failed: {e.stderr}")
+
+
+def push(repo_path: str, remote: str = "origin", branch: str = None) -> str:
+    """Push to remote repository"""
+    try:
+        cmd = ["git", "push", remote]
+        if branch:
+            cmd.append(branch)
+        return _run(cmd, cwd=repo_path)
+    except subprocess.CalledProcessError as e:
+        raise Exception(f"Git push failed: {e.stderr}")
+
+
+def create_branch(repo_path: str, branch_name: str, checkout: bool = True) -> str:
+    """Create a new branch"""
+    try:
+        _run(["git", "branch", branch_name], cwd=repo_path)
+        if checkout:
+            _run(["git", "checkout", branch_name], cwd=repo_path)
+        return f"Created and switched to branch '{branch_name}'" if checkout else f"Created branch '{branch_name}'"
+    except subprocess.CalledProcessError as e:
+        raise Exception(f"Failed to create branch: {e.stderr}")
+
+
+def checkout_branch(repo_path: str, branch_name: str) -> str:
+    """Switch to a different branch"""
+    try:
+        return _run(["git", "checkout", branch_name], cwd=repo_path)
+    except subprocess.CalledProcessError as e:
+        raise Exception(f"Failed to checkout branch: {e.stderr}")
+
+
+def commit_all(repo_path: str, message: str) -> str:
+    """Add all changes and commit"""
+    try:
+        _run(["git", "add", "-A"], cwd=repo_path)
+        _run(["git", "commit", "-m", message], cwd=repo_path)
+        return current_head(repo_path)
+    except subprocess.CalledProcessError as e:
+        if "nothing to commit" in str(e.stderr):
+            raise Exception("Nothing to commit, working tree clean")
+        raise Exception(f"Git commit failed: {e.stderr}")
+
+
 def add_remote(repo_path: str, remote_name: str, remote_url: str) -> None:
     """Add a remote repository"""
     try:

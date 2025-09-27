@@ -2,11 +2,18 @@
   "name": "cc-lovable-web",
   "version": "0.1.0",
   "private": true,
+  "description": "Claudable - Connect CLI Agent, Build what you want, Deploy instantly",
+  "author": "Claudable Team",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "node scripts/dev.js",
     "dev:no-open": "next dev --turbo",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "electron": "electron .",
+    "electron:dev": "concurrently -k \"cross-env NODE_ENV=development npm run dev:no-open\" \"wait-on http://localhost:3001 && cross-env NODE_ENV=development electron .\"",
+    "electron:build": "npm run build && electron-builder",
+    "electron:dist": "npm run build && electron-builder --publish never"
   },
   "dependencies": {
     "clsx": "2.1.1",
@@ -25,11 +32,68 @@
     "@types/node": "24.2.1",
     "@types/react-syntax-highlighter": "^15.5.0",
     "autoprefixer": "10.4.20",
+    "concurrently": "^8.2.2",
+    "cross-env": "^10.0.0",
+    "electron": "^38.1.2",
+    "electron-builder": "^26.0.12",
     "postcss": "8.4.41",
     "tailwindcss": "3.4.10",
-    "typescript": "5.9.2"
+    "typescript": "5.9.2",
+    "wait-on": "^9.0.1"
   },
   "engines": {
     "node": ">=18"
+  },
+  "build": {
+    "appId": "com.claudable.app",
+    "productName": "Claudable",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "out/**/*",
+      "public/**/*",
+      "!**/*.map",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!**/node_modules/*.d.ts",
+      "!**/node_modules/.bin"
+    ],
+    "extraResources": [
+      {
+        "from": "../../api",
+        "to": "api",
+        "filter": [
+          "**/*",
+          "!**/__pycache__",
+          "!**/*.pyc",
+          "!**/.env*",
+          "!**/venv",
+          "!**/.venv"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "public/icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "public/icon.ico"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Development",
+      "icon": "public/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

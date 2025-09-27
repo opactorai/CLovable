@@ -14,7 +14,12 @@ from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
 from app.core.terminal_ui import ui
 from app.models.messages import Message
-from claude_code_sdk import ClaudeSDKClient, ClaudeCodeOptions
+try:
+    from claude_code_sdk import ClaudeSDKClient, ClaudeCodeOptions
+except ImportError:
+    # SDK might have compatibility issues, use None as fallback
+    ClaudeSDKClient = None
+    ClaudeCodeOptions = None
 
 from ..base import BaseCLI, CLIType
 
@@ -459,10 +464,30 @@ node_modules/
                                 and getattr(message_obj, "type", None) == "result"
                             )
                         ):
+                            # Extract real token usage from result
+                            input_tokens = getattr(message_obj, 'input_tokens', None)
+                            output_tokens = getattr(message_obj, 'output_tokens', None)
+
                             ui.success(
                                 f"Session completed in {getattr(message_obj, 'duration_ms', 0)}ms",
                                 "Claude SDK",
                             )
+
+                            if input_tokens and output_tokens:
+                                ui.info(f"Token usage - Input: {input_tokens}, Output: {output_tokens}", "Claude SDK")
+
+                                # Store real token usage using token tracker
+                                from app.services.token_tracker import token_tracker
+                                from app.core.database import SessionLocal
+
+                                db = SessionLocal()
+                                try:
+                                    if session_id:
+                                        token_tracker.update_session_tokens(
+                                            session_id, input_tokens, output_tokens, db
+                                        )
+                                finally:
+                                    db.close()
 
                             # Create internal result message (hidden from UI)
                             result_message = Message(

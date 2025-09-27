@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { MotionDiv, MotionH3, MotionP, MotionButton } from '../../../lib/motion';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -24,6 +25,118 @@ const assistantBrandColors: { [key: string]: string } = {
   qwen: '#A855F7',
   gemini: '#4285F4',
   codex: '#000000'
+};
+
+const formatTokenCount = (value: number) => value.toLocaleString();
+
+const formatTokenLimit = (value: number) => {
+  if (value >= 1_000_000) return `${Math.round(value / 100_000) / 10}M`;
+  if (value >= 1_000) return `${Math.round(value / 1_000)}K`;
+  return `${value}`;
+};
+
+const TokenUsageBar = ({
+  totalTokens,
+  userTokens,
+  assistantTokens,
+  systemTokens = 0,
+  toolTokens = 0,
+  limit,
+  assistantColor,
+}: {
+  totalTokens: number;
+  userTokens: number;
+  assistantTokens: number;
+  systemTokens?: number;
+  toolTokens?: number;
+  limit: number;
+  assistantColor: string;
+}) => {
+  const safeLimit = Math.max(limit || 1, 1);
+  const totalPercent = Math.min(totalTokens / safeLimit, 1);
+  const systemPercent = Math.min(systemTokens / safeLimit, totalPercent);
+  const toolPercent = Math.min(toolTokens / safeLimit, totalPercent - systemPercent);
+  const userPercent = Math.min(userTokens / safeLimit, totalPercent - systemPercent - toolPercent);
+  const assistantPercent = Math.min(assistantTokens / safeLimit, Math.max(totalPercent - systemPercent - toolPercent - userPercent, 0));
+
+  return (
+    <div className="mt-4 select-none">
+      <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-2">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#3B82F6' }} />
+            <span>System</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#10B981' }} />
+            <span>Tools</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#A855F7' }} />
+            <span>User</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: assistantColor }} />
+            <span>Agent</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span>Tokens: {formatTokenCount(totalTokens)}</span>
+          <span>{Math.round(totalPercent * 100)}% of {formatTokenLimit(safeLimit)}</span>
+        </div>
+      </div>
+      <div className="relative h-2 w-full rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden">
+        {systemPercent > 0 && (
+          <div
+            className="absolute inset-y-0 left-0"
+            style={{
+              width: `${systemPercent * 100}%`,
+              backgroundColor: '#3B82F6',
+            }}
+          />
+        )}
+        {toolPercent > 0 && (
+          <div
+            className="absolute inset-y-0"
+            style={{
+              left: `${systemPercent * 100}%`,
+              width: `${toolPercent * 100}%`,
+              backgroundColor: '#10B981',
+            }}
+          />
+        )}
+        {userPercent > 0 && (
+          <div
+            className="absolute inset-y-0"
+            style={{
+              left: `${(systemPercent + toolPercent) * 100}%`,
+              width: `${userPercent * 100}%`,
+              backgroundColor: '#A855F7',
+            }}
+          />
+        )}
+        {assistantPercent > 0 && (
+          <div
+            className="absolute inset-y-0"
+            style={{
+              left: `${(systemPercent + toolPercent + userPercent) * 100}%`,
+              width: `${assistantPercent * 100}%`,
+              backgroundColor: assistantColor,
+            }}
+          />
+        )}
+        {totalPercent < 1 && (
+          <div
+            className="absolute inset-y-0"
+            style={{
+              left: `${totalPercent * 100}%`,
+              width: `${(1 - totalPercent) * 100}%`,
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
 };
 
 // Function to convert hex to CSS filter for tinting white images
@@ -177,6 +290,7 @@ export default function ChatPage({ params }: Params) {
   const [prompt, setPrompt] = useState('');
   const [mode, setMode] = useState<'act' | 'chat'>('act');
   const [isRunning, setIsRunning] = useState(false);
+  const [projectIsBuilding, setProjectIsBuilding] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
   const [deviceMode, setDeviceMode] = useState<'desktop'|'mobile'>('desktop');
   const [showGlobalSettings, setShowGlobalSettings] = useState(false);
@@ -198,14 +312,132 @@ export default function ChatPage({ params }: Params) {
   const [deploymentStatus, setDeploymentStatus] = useState<'idle' | 'deploying' | 'ready' | 'error'>('idle');
   const deployPollRef = useRef<NodeJS.Timeout | null>(null);
   const [isStartingPreview, setIsStartingPreview] = useState(false);
+  const [chatPaneWidth, setChatPaneWidth] = useState<number>(420);
+  const chatPaneWidthRef = useRef(chatPaneWidth);
+  const [isResizingChatPane, setIsResizingChatPane] = useState(false);
+  const chatResizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  const clampChatPaneWidth = useCallback((width: number) => {
+    if (typeof window === 'undefined') return width;
+    const minWidth = 450;
+    const maxWidth = Math.max(minWidth, window.innerWidth - 480);
+    return Math.min(Math.max(width, minWidth), maxWidth);
+  }, []);
+
+  const handleChatPanePointerMove = useCallback((event: PointerEvent) => {
+    const state = chatResizeStateRef.current;
+    if (!state) return;
+    const delta = event.clientX - state.startX;
+    const nextWidth = clampChatPaneWidth(state.startWidth + delta);
+    setChatPaneWidth(nextWidth);
+  }, [clampChatPaneWidth]);
+
+  const handleChatPanePointerUp = useCallback(() => {
+    chatResizeStateRef.current = null;
+    setIsResizingChatPane(false);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('pointermove', handleChatPanePointerMove);
+      window.removeEventListener('pointerup', handleChatPanePointerUp);
+    }
+  }, [handleChatPanePointerMove]);
+
+  const handleChatPanePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    chatResizeStateRef.current = {
+      startX: event.clientX,
+      startWidth: chatPaneWidthRef.current
+    };
+    setIsResizingChatPane(true);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pointermove', handleChatPanePointerMove);
+      window.addEventListener('pointerup', handleChatPanePointerUp);
+    }
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }, [handleChatPanePointerMove, handleChatPanePointerUp]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem('claudable:chatPaneWidth');
+    if (stored) {
+      const parsed = parseInt(stored, 10);
+      if (!Number.isNaN(parsed)) {
+        setChatPaneWidth(clampChatPaneWidth(parsed));
+        return;
+      }
+    }
+    setChatPaneWidth(clampChatPaneWidth(Math.round(window.innerWidth * 0.28)));
+  }, [clampChatPaneWidth]);
+
+  useEffect(() => {
+    chatPaneWidthRef.current = chatPaneWidth;
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('claudable:chatPaneWidth', String(chatPaneWidth));
+    }
+  }, [chatPaneWidth]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => {
+      setChatPaneWidth(prev => clampChatPaneWidth(prev));
+    };
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [clampChatPaneWidth]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('pointermove', handleChatPanePointerMove);
+        window.removeEventListener('pointerup', handleChatPanePointerUp);
+      }
+    };
+  }, [handleChatPanePointerMove, handleChatPanePointerUp]);
   const [previewInitializationMessage, setPreviewInitializationMessage] = useState('Starting development server...');
   const [preferredCli, setPreferredCli] = useState<string>('claude');
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [usingGlobalDefaults, setUsingGlobalDefaults] = useState<boolean>(true);
+  const [showAssistantDropdown, setShowAssistantDropdown] = useState(false);
+  const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [thinkingMode, setThinkingMode] = useState<boolean>(false);
   const [currentRoute, setCurrentRoute] = useState<string>('/');
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isFileUpdating, setIsFileUpdating] = useState(false);
+  const conversationTokenLimit = useMemo(() => {
+    if (preferredCli === 'claude') {
+      const model = selectedModel?.toLowerCase() || '';
+      if (model.includes('20250514') || model.includes('1m')) return 1_000_000; // 1M context model
+      if (model.includes('opus')) return 200_000;
+      if (model.includes('haiku')) return 64_000;
+      return 262_144; // Regular Sonnet 4
+    }
+    if (preferredCli === 'cursor') return 128_000;
+    if (preferredCli === 'qwen') return 128_000;
+    if (preferredCli === 'gemini') return 2_000_000; // Gemini has large context
+    return 200_000;
+  }, [preferredCli, selectedModel]);
+
+  const [tokenUsage, setTokenUsage] = useState({
+    totalTokens: 0,
+    userTokens: 0,
+    assistantTokens: 0,
+    limit: conversationTokenLimit,
+  });
+
+  useEffect(() => {
+    setTokenUsage((prev) => ({
+      ...prev,
+      limit: conversationTokenLimit,
+    }));
+  }, [conversationTokenLimit]);
+
+  const handleTokenUsageChange = useCallback((usage: { totalTokens: number; userTokens: number; assistantTokens: number; systemTokens?: number; toolTokens?: number; limit: number }) => {
+    setTokenUsage({
+      ...usage,
+      limit: conversationTokenLimit // Use current limit, not the one from ChatLog
+    });
+  }, [conversationTokenLimit]);
 
   // Guarded trigger that can be called from multiple places safely
   const triggerInitialPromptIfNeeded = useCallback(() => {
@@ -841,6 +1073,7 @@ export default function ChatPage({ params }: Params) {
           selected_model: project.selected_model
         });
         setProjectName(project.name || `Project ${projectId.slice(0, 8)}`);
+        setProjectIsBuilding(project.is_building || false);
         
         // Set CLI and model from project settings if available
         if (project.preferred_cli) {
@@ -1417,11 +1650,11 @@ export default function ChatPage({ params }: Params) {
         <div className="h-full w-full flex">
           {/* 왼쪽: 채팅창 */}
           <div
-            style={{ width: '30%' }}
+            style={{ width: `${chatPaneWidth}px` }}
             className="h-full border-r border-gray-200 dark:border-gray-800 flex flex-col"
           >
             {/* 채팅 헤더 */}
-            <div className="bg-white dark:bg-black border-b border-gray-200 dark:border-gray-800 p-4 h-[73px] flex items-center">
+            <div className="bg-white dark:bg-black border-b border-gray-200 dark:border-gray-800 p-4 pt-10 h-[89px] flex items-center">
               <div className="flex items-center gap-3">
                 <button 
                   onClick={() => router.push('/')}
@@ -1433,9 +1666,9 @@ export default function ChatPage({ params }: Params) {
                   </svg>
                 </button>
                 <div>
-                  <h1 className="text-lg font-semibold text-gray-900 dark:text-white">{projectName || 'Loading...'}</h1>
+                  <h1 className="text-base font-semibold text-gray-900 dark:text-white truncate max-w-md">{projectName || 'Loading...'}</h1>
                   {projectDescription && (
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                    <p className="text-sm text-gray-500 dark:text-gray-400 truncate max-w-md">
                       {projectDescription}
                     </p>
                   )}
@@ -1446,10 +1679,15 @@ export default function ChatPage({ params }: Params) {
             {/* 채팅 로그 영역 */}
             <div className="flex-1 min-h-0">
               <ChatLog 
-                projectId={projectId} 
+                projectId={projectId}
+                tokenLimit={conversationTokenLimit}
+                onTokenUsageChange={handleTokenUsageChange}
                 onSessionStatusChange={(isRunningValue) => {
                   console.log('🔍 [DEBUG] Session status change:', isRunningValue);
-                  setIsRunning(isRunningValue);
+                  if (isRunningValue) {
+                    setIsRunning(true);
+                    setProjectIsBuilding(true);
+                  }
                   // Agent 작업 완료 상태 추적 및 자동 preview 시작
                   if (!isRunningValue && hasInitialPrompt && !agentWorkComplete && !previewUrl) {
                     setAgentWorkComplete(true);
@@ -1467,9 +1705,8 @@ export default function ChatPage({ params }: Params) {
             
             {/* 간단한 입력 영역 */}
             <div className="p-4 rounded-bl-2xl">
-              <ChatInput 
+              <ChatInput
                 onSendMessage={(message, images) => {
-                  // Pass images to runAct
                   runAct(message, images);
                 }}
                 disabled={isRunning}
@@ -1481,12 +1718,85 @@ export default function ChatPage({ params }: Params) {
                 selectedModel={selectedModel}
                 thinkingMode={thinkingMode}
                 onThinkingModeChange={setThinkingMode}
+                isProcessing={isRunning || projectIsBuilding}
+                onStop={async () => {
+                  try {
+                    const response = await fetch(`${API_BASE}/api/chat/${projectId}/stop`, {
+                      method: 'POST'
+                    });
+                    if (response.ok) {
+                      setIsRunning(false);
+                      setProjectIsBuilding(false);
+                    }
+                  } catch (error) {
+                    console.error('Failed to stop execution:', error);
+                  }
+                }}
+                onAssistantChange={(assistant) => {
+                  setPreferredCli(assistant);
+                  setUsingGlobalDefaults(false);
+                }}
+                onModelChange={(model) => {
+                  setSelectedModel(model);
+                  setUsingGlobalDefaults(false);
+                }}
+                availableModels={
+                  preferredCli === 'claude' ? [
+                    { id: 'claude-sonnet-4', name: 'Sonnet 4' },
+                    { id: 'claude-sonnet-4-20250514', name: 'Sonnet 4 [1m]' },
+                    { id: 'claude-opus-4.1', name: 'Opus 4.1' }
+                  ] : preferredCli === 'cursor' ? [
+                    { id: 'gpt-5', name: 'GPT-5' },
+                    { id: 'claude-sonnet-4', name: 'Sonnet 4' },
+                    { id: 'claude-opus-4.1', name: 'Opus 4.1' }
+                  ] : preferredCli === 'codex' ? [
+                    { id: 'gpt-5', name: 'GPT-5' }
+                  ] : preferredCli === 'qwen' ? [
+                    { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus' }
+                  ] : preferredCli === 'gemini' ? [
+                    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+                    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' }
+                  ] : []
+                }
+              />
+              <TokenUsageBar
+                totalTokens={tokenUsage.totalTokens}
+                userTokens={tokenUsage.userTokens}
+                assistantTokens={tokenUsage.assistantTokens}
+                systemTokens={tokenUsage.systemTokens}
+                toolTokens={tokenUsage.toolTokens}
+                limit={tokenUsage.limit}
+                assistantColor={assistantBrandColors[preferredCli] || assistantBrandColors.claude}
               />
             </div>
           </div>
 
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            tabIndex={0}
+            onPointerDown={handleChatPanePointerDown}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                event.preventDefault();
+                const delta = event.key === 'ArrowLeft' ? -20 : 20;
+                const next = clampChatPaneWidth(chatPaneWidthRef.current + delta);
+                setChatPaneWidth(next);
+              }
+            }}
+            className={`relative w-[10px] flex-shrink-0 cursor-col-resize group ${isResizingChatPane ? 'bg-gray-200/60 dark:bg-white/10' : 'bg-transparent'}`}
+          >
+            <span
+              className={`absolute left-1/2 top-0 h-full w-[2px] -translate-x-1/2 rounded-full transition-colors ${
+                isResizingChatPane
+                  ? 'bg-blue-400 dark:bg-blue-500'
+                  : 'bg-transparent group-hover:bg-gray-300 group-hover:dark:bg-gray-600'
+              }`}
+            />
+          </div>
+
           {/* 오른쪽: Preview/Code 영역 */}
-          <div className="h-full flex flex-col bg-black" style={{ width: '70%' }}>
+          <div className="h-full flex flex-col bg-black flex-1 min-w-0">
             {/* 컨텐츠 영역 */}
             <div className="flex-1 min-h-0 flex flex-col">
               {/* Controls Bar */}
@@ -1579,13 +1889,26 @@ export default function ChatPage({ params }: Params) {
                           <button
                             aria-label="Mobile preview"
                             className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
-                              deviceMode === 'mobile' 
-                                ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30' 
+                              deviceMode === 'mobile'
+                                ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30'
                                 : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
                             }`}
                             onClick={() => setDeviceMode('mobile')}
                           >
                             <FaMobileAlt size={14} />
+                          </button>
+                          <button
+                            aria-label="Open in browser"
+                            className="h-7 w-7 flex items-center justify-center rounded transition-colors text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
+                            onClick={() => {
+                              if (previewUrl) {
+                                window.require('electron').shell.openExternal(previewUrl);
+                              }
+                            }}
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
                           </button>
                         </div>
                       </div>
@@ -1645,11 +1968,11 @@ export default function ChatPage({ params }: Params) {
                           </div>
                         )}
                         
-                        {deploymentStatus === 'ready' && publishedUrl && (
+                        {deploymentStatus === 'ready' && publishedUrl ? (
                           <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
                             <p className="text-sm font-medium text-green-700 dark:text-green-400 mb-2">Currently published at:</p>
                             <a 
-                              href={publishedUrl} 
+                              href={publishedUrl ?? undefined} 
                               target="_blank" 
                               rel="noopener noreferrer" 
                               className="text-sm text-green-600 dark:text-green-300 font-mono hover:underline break-all"
@@ -1657,7 +1980,7 @@ export default function ChatPage({ params }: Params) {
                               {publishedUrl}
                             </a>
                           </div>
-                        )}
+                        ) : null}
                         
                         {deploymentStatus === 'error' && (
                           <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
@@ -2225,11 +2548,11 @@ export default function ChatPage({ params }: Params) {
                 </div>
               )}
 
-              {deploymentStatus === 'ready' && publishedUrl && (
+              {deploymentStatus === 'ready' && publishedUrl ? (
                 <div className="p-4 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20">
                   <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400 mb-2">Published successfully</p>
                   <div className="flex items-center gap-2">
-                    <a href={publishedUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-mono text-emerald-700 dark:text-emerald-300 underline break-all flex-1">
+                    <a href={publishedUrl ?? undefined} target="_blank" rel="noopener noreferrer" className="text-sm font-mono text-emerald-700 dark:text-emerald-300 underline break-all flex-1">
                       {publishedUrl}
                     </a>
                     <button
@@ -2240,7 +2563,7 @@ export default function ChatPage({ params }: Params) {
                     </button>
                   </div>
                 </div>
-              )}
+              ) : null}
 
               {deploymentStatus === 'error' && (
                 <div className="p-4 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">

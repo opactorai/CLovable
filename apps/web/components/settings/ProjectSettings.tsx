@@ -4,12 +4,18 @@
  */
 import React, { useState } from 'react';
 import { FaCog, FaRobot, FaLock, FaPlug } from 'react-icons/fa';
+import { GitBranch, Brain, Zap } from 'lucide-react';
 import { SettingsModal } from './SettingsModal';
 import { GeneralSettings } from './GeneralSettings';
 import { AIAssistantSettings } from './AIAssistantSettings';
 import { EnvironmentSettings } from './EnvironmentSettings';
 import { ServiceSettings } from './ServiceSettings';
+import { MCPServersTab } from './MCPServersTab';
+import { GitTab } from './GitTab';
+import { MemoryTab } from './MemoryTab';
 import GlobalSettings from '@/components/GlobalSettings';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
 
 interface ProjectSettingsProps {
   isOpen: boolean;
@@ -19,7 +25,7 @@ interface ProjectSettingsProps {
   initialTab?: string;
 }
 
-type SettingsTab = 'general' | 'ai-assistant' | 'environment' | 'services';
+type SettingsTab = 'general' | 'ai-assistant' | 'environment' | 'services' | 'mcp' | 'git' | 'memory';
 
 export function ProjectSettings({
   isOpen,
@@ -30,13 +36,44 @@ export function ProjectSettings({
 }: ProjectSettingsProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab as SettingsTab);
   const [showGlobalSettings, setShowGlobalSettings] = useState(false);
+  const [preferredCli, setPreferredCli] = useState<string>('claude');
 
-  const tabs: { id: SettingsTab; label: string; icon: React.ReactElement }[] = [
-    { id: 'general', label: 'General', icon: <span className="w-4 h-4 inline-flex"><FaCog /></span> },
-    { id: 'ai-assistant', label: 'Agent', icon: <span className="w-4 h-4 inline-flex"><FaRobot /></span> },
-    { id: 'environment', label: 'Envs', icon: <span className="w-4 h-4 inline-flex"><FaLock /></span> },
-    { id: 'services', label: 'Services', icon: <span className="w-4 h-4 inline-flex"><FaPlug /></span> }
-  ];
+  // Load project data to get actual preferred CLI
+  React.useEffect(() => {
+    if (isOpen && projectId) {
+      fetch(`${API_BASE}/api/projects/${projectId}`)
+        .then(res => res.json())
+        .then(project => {
+          if (project.preferred_cli) {
+            setPreferredCli(project.preferred_cli);
+          }
+        })
+        .catch(console.error);
+    }
+  }, [isOpen, projectId]);
+
+  // CLI-aware tabs - show/hide based on CLI support
+  const getAvailableTabs = () => {
+    const baseTabs = [
+      { id: 'general' as const, label: 'General', icon: <span className="w-4 h-4 inline-flex"><FaCog /></span> },
+      { id: 'environment' as const, label: 'Envs', icon: <span className="w-4 h-4 inline-flex"><FaLock /></span> },
+      { id: 'services' as const, label: 'Services', icon: <span className="w-4 h-4 inline-flex"><FaPlug /></span> },
+      { id: 'git' as const, label: 'Git', icon: <GitBranch className="w-4 h-4" /> },
+    ];
+
+    // CLI-specific tabs (only for Claude for now)
+    if (preferredCli === 'claude') {
+      baseTabs.push(
+        { id: 'ai-assistant' as const, label: 'Agent', icon: <span className="w-4 h-4 inline-flex"><FaRobot /></span> },
+        { id: 'mcp' as const, label: 'MCP', icon: <Zap className="w-4 h-4" /> },
+        { id: 'memory' as const, label: 'Memory', icon: <Brain className="w-4 h-4" /> }
+      );
+    }
+
+    return baseTabs;
+  };
+
+  const tabs = getAvailableTabs();
 
   return (
     <>
@@ -90,14 +127,26 @@ export function ProjectSettings({
           )}
           
           {activeTab === 'services' && (
-            <ServiceSettings 
-              projectId={projectId} 
+            <ServiceSettings
+              projectId={projectId}
               onOpenGlobalSettings={() => {
                 // Open Global Settings with services tab
                 setShowGlobalSettings(true);
                 onClose(); // Close current modal
               }}
             />
+          )}
+
+          {activeTab === 'mcp' && (
+            <MCPServersTab projectId={projectId} />
+          )}
+
+          {activeTab === 'git' && (
+            <GitTab projectId={projectId} />
+          )}
+
+          {activeTab === 'memory' && (
+            <MemoryTab projectId={projectId} preferredCli={preferredCli} />
           )}
         </div>
       </div>

@@ -1,7 +1,7 @@
 """
 Claude Code SDK session management
 """
-from sqlalchemy import String, DateTime, ForeignKey, Text, Integer, Numeric
+from sqlalchemy import String, DateTime, ForeignKey, Text, Integer, Numeric, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
 from app.db.base import Base
@@ -34,8 +34,11 @@ class Session(Base):
     total_messages: Mapped[int] = mapped_column(Integer, default=0)
     total_tools_used: Mapped[int] = mapped_column(Integer, default=0)
     total_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     total_cost_usd: Mapped[float | None] = mapped_column(Numeric(10, 6), nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     
     # Timestamps
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
