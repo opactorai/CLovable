@@ -64,8 +64,8 @@ const assistantBrandColors: { [key: string]: string } = {
   codex: '#000000'
 };
 
-const MIN_SIDEBAR_WIDTH = 332;
-const MAX_SIDEBAR_WIDTH = 420;
+const MIN_SIDEBAR_WIDTH = 250;
+const MAX_SIDEBAR_WIDTH = 800;
 const BUILDING_STATUSES = new Set(['building', 'initializing', 'deploying', 'queued']);
 
 const hexToRgba = (hex: string, alpha: number) => {
@@ -106,8 +106,9 @@ export default function HomePage() {
   // Define models for each assistant statically
   const modelsByAssistant = {
     claude: [
-      { id: 'claude-sonnet-4', name: 'Claude Sonnet 4' },
-      { id: 'claude-opus-4.1', name: 'Claude Opus 4.1' }
+      { id: 'claude-sonnet-4', name: 'Sonnet 4' },
+      { id: 'claude-sonnet-4-20250514', name: 'Sonnet 4 [1m]' },
+      { id: 'claude-opus-4.1', name: 'Opus 4.1' }
     ],
     cursor: [
       { id: 'gpt-5', name: 'GPT-5' },
