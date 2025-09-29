@@ -7,6 +7,7 @@ import json
 import subprocess
 import signal
 import os
+import aiohttp
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
@@ -28,6 +29,8 @@ class MCPServerProcess:
     process: Optional[subprocess.Popen]
     tools: List[MCPTool]
     error: Optional[str]
+    sse_session: Optional[aiohttp.ClientSession] = None
+    sse_url: Optional[str] = None
 
 
 class MCPManager:
@@ -103,9 +106,45 @@ class MCPManager:
                 return True
 
             elif server_model.transport == "sse":
-                # TODO: Implement SSE transport
-                ui.warning("SSE transport not yet implemented", "MCP")
-                return False
+                if not server_model.url:
+                    raise ValueError("URL required for SSE transport")
+
+                ui.info(f"Connecting to SSE MCP server: {server_model.name}", "MCP")
+
+                # Create SSE client session
+                timeout = aiohttp.ClientTimeout(total=30, connect=10)
+                session = aiohttp.ClientSession(timeout=timeout)
+
+                try:
+                    # Test connection
+                    async with session.get(server_model.url) as response:
+                        if response.status != 200:
+                            raise ValueError(f"SSE server returned status {response.status}")
+
+                    # Discover tools via SSE
+                    tools = await self._discover_tools_sse(session, server_model.url, server_model.name)
+
+                    # Store running server
+                    self.running_servers[server_model.id] = MCPServerProcess(
+                        model=server_model,
+                        process=None,
+                        tools=tools,
+                        error=None,
+                        sse_session=session,
+                        sse_url=server_model.url
+                    )
+
+                    # Update database status
+                    server_model.status = {"running": True, "tools": [{"name": t.name, "description": t.description} for t in tools]}
+                    server_model.is_active = True
+                    db.commit()
+
+                    ui.success(f"MCP server {server_model.name} connected with {len(tools)} tools", "MCP")
+                    return True
+
+                except Exception as e:
+                    await session.close()
+                    raise e
 
         except Exception as e:
             error_msg = f"Failed to start MCP server {server_model.name}: {str(e)}"
@@ -125,6 +164,7 @@ class MCPManager:
             server_process = self.running_servers[server_id]
             ui.info(f"Stopping MCP server: {server_process.model.name}", "MCP")
 
+            # Handle stdio transport
             if server_process.process:
                 # Terminate process
                 server_process.process.terminate()
@@ -136,6 +176,10 @@ class MCPManager:
                     # Force kill if needed
                     server_process.process.kill()
                     server_process.process.wait()
+
+            # Handle SSE transport
+            if server_process.sse_session:
+                await server_process.sse_session.close()
 
             # Remove from running servers
             del self.running_servers[server_id]
@@ -202,6 +246,43 @@ class MCPManager:
             ui.error(f"Error discovering tools for {server_name}: {str(e)}", "MCP")
             return []
 
+    async def _discover_tools_sse(self, session: aiohttp.ClientSession, url: str, server_name: str) -> List[MCPTool]:
+        """Discover tools from an SSE MCP server"""
+        try:
+            # Send list_tools request
+            request = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/list",
+                "params": {}
+            }
+
+            async with session.post(url, json=request, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                if response.status != 200:
+                    ui.warning(f"SSE server returned status {response.status} for tools/list", "MCP")
+                    return []
+
+                result = await response.json()
+
+                if "result" in result and "tools" in result["result"]:
+                    tools = []
+                    for tool_data in result["result"]["tools"]:
+                        tools.append(MCPTool(
+                            name=tool_data.get("name", "unknown"),
+                            description=tool_data.get("description", ""),
+                            input_schema=tool_data.get("inputSchema", {})
+                        ))
+                    return tools
+
+            return []
+
+        except asyncio.TimeoutError:
+            ui.warning(f"Timeout discovering tools for SSE server {server_name}", "MCP")
+            return []
+        except Exception as e:
+            ui.error(f"Error discovering tools for SSE server {server_name}: {str(e)}", "MCP")
+            return []
+
     def get_running_servers(self) -> Dict[int, MCPServerProcess]:
         """Get all currently running servers"""
         return self.running_servers.copy()
@@ -233,7 +314,7 @@ class MCPManager:
                     server_process = sp
                     break
 
-            if not server_process or not server_process.process:
+            if not server_process:
                 raise ValueError(f"Server {server_name} is not running")
 
             # Send tool call request
@@ -247,25 +328,45 @@ class MCPManager:
                 }
             }
 
-            request_json = json.dumps(request) + "\n"
+            # Handle stdio transport
+            if server_process.process:
+                request_json = json.dumps(request) + "\n"
 
-            if server_process.process.stdin:
-                server_process.process.stdin.write(request_json)
-                server_process.process.stdin.flush()
+                if server_process.process.stdin:
+                    server_process.process.stdin.write(request_json)
+                    server_process.process.stdin.flush()
 
-            # Read response
-            if server_process.process.stdout:
-                response_line = await asyncio.wait_for(
-                    asyncio.to_thread(server_process.process.stdout.readline),
-                    timeout=30.0
-                )
+                # Read response
+                if server_process.process.stdout:
+                    response_line = await asyncio.wait_for(
+                        asyncio.to_thread(server_process.process.stdout.readline),
+                        timeout=30.0
+                    )
 
-                if response_line:
-                    response = json.loads(response_line.strip())
-                    return response.get("result", {})
+                    if response_line:
+                        response = json.loads(response_line.strip())
+                        return response.get("result", {})
 
-            return {"error": "No response from server"}
+                return {"error": "No response from server"}
 
+            # Handle SSE transport
+            elif server_process.sse_session and server_process.sse_url:
+                async with server_process.sse_session.post(
+                    server_process.sse_url,
+                    json=request,
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    if response.status != 200:
+                        return {"error": f"SSE server returned status {response.status}"}
+
+                    result = await response.json()
+                    return result.get("result", {})
+
+            else:
+                return {"error": "Server has no valid transport"}
+
+        except asyncio.TimeoutError:
+            return {"error": f"Timeout calling tool {tool_name}"}
         except Exception as e:
             return {"error": f"Failed to call tool {tool_name}: {str(e)}"}
 

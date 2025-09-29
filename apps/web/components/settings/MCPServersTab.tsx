@@ -25,20 +25,23 @@ interface MCPServersTabProps {
 export function MCPServersTab({ projectId }: MCPServersTabProps) {
   const [servers, setServers] = useState<MCPServer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const loadServers = async () => {
     try {
-      // For now, show placeholder global servers
-      const globalServers = [
-        { id: 1, name: 'Memory Server', transport: 'stdio', is_active: false, scope: 'user' },
-        { id: 2, name: 'Fetch MCP', transport: 'stdio', is_active: false, scope: 'user' },
-        { id: 3, name: 'Claude Hooks', transport: 'stdio', is_active: false, scope: 'user' },
-        { id: 4, name: 'Hyperbrowser', transport: 'stdio', is_active: false, scope: 'user' },
-        { id: 5, name: 'Desktop Automation', transport: 'stdio', is_active: false, scope: 'user' }
-      ];
-      setServers(globalServers as MCPServer[]);
+      setError(null);
+      const response = await fetch(`${API_BASE}/api/projects/${projectId}/mcp`);
+
+      if (!response.ok) {
+        throw new Error(`Failed to load MCP servers: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setServers(data);
     } catch (error) {
       console.error('Failed to load MCP servers:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load MCP servers');
+      setServers([]);
     } finally {
       setLoading(false);
     }
@@ -49,16 +52,47 @@ export function MCPServersTab({ projectId }: MCPServersTabProps) {
   }, [projectId]);
 
   const toggleServer = async (serverId: number) => {
-    // Update local state for now
-    setServers(prev => prev.map(server =>
-      server.id === serverId
-        ? { ...server, is_active: !server.is_active }
-        : server
-    ));
+    const server = servers.find(s => s.id === serverId);
+    if (!server) return;
+
+    try {
+      const endpoint = server.is_active ? 'stop' : 'start';
+      const response = await fetch(`${API_BASE}/api/projects/${projectId}/mcp/${serverId}/${endpoint}`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to ${endpoint} MCP server`);
+      }
+
+      // Reload servers to get updated status
+      await loadServers();
+    } catch (error) {
+      console.error(`Failed to toggle MCP server:`, error);
+      setError(error instanceof Error ? error.message : 'Failed to toggle MCP server');
+    }
   };
 
   if (loading) {
     return <div className="flex items-center justify-center py-8">Loading MCP servers...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-4">
+          <div className="text-sm text-red-800 dark:text-red-300">
+            <strong>Error:</strong> {error}
+          </div>
+          <button
+            onClick={loadServers}
+            className="mt-2 text-sm text-red-600 dark:text-red-400 hover:underline"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (

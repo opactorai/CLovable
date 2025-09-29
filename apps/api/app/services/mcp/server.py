@@ -18,9 +18,12 @@ from mcp.types import (
     ImageContent,
     EmbeddedResource,
 )
+from sqlalchemy.orm import Session
 
 from app.models.mcp_servers import MCPServer as MCPServerModel
 from app.core.config import settings
+from app.db.session import SessionLocal
+from app.services.mcp.manager import mcp_manager
 
 
 class ClaudableMCPServer:
@@ -104,8 +107,13 @@ class ClaudableMCPServer:
         ])
 
         # Add tools from running MCP servers
-        # TODO: Implement actual MCP server communication
-        pass
+        all_tools = mcp_manager.get_all_tools()
+        for tool_name, tool_data in all_tools:
+            self.available_tools.append(Tool(
+                name=tool_name,
+                description=tool_data.description,
+                inputSchema=tool_data.input_schema
+            ))
 
     async def _handle_claudable_tools(self, name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         """Handle Claudable's own management tools"""
@@ -120,31 +128,60 @@ class ClaudableMCPServer:
 
     async def _handle_proxied_tools(self, name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         """Handle proxied tools from other MCP servers"""
-        server_name, tool_name = name.split('__', 1)
+        try:
+            result = await mcp_manager.call_tool(name, arguments)
 
-        # TODO: Implement actual proxying to MCP servers
-        return [TextContent(
-            type="text",
-            text=f"[PROXIED] Called {tool_name} on {server_name} with args: {json.dumps(arguments, indent=2)}"
-        )]
+            if "error" in result:
+                return [TextContent(
+                    type="text",
+                    text=f"Error calling {name}: {result['error']}"
+                )]
+
+            # Format the result as text
+            result_text = json.dumps(result, indent=2)
+            return [TextContent(type="text", text=result_text)]
+
+        except Exception as e:
+            return [TextContent(
+                type="text",
+                text=f"Failed to call {name}: {str(e)}"
+            )]
 
     async def _list_mcp_servers(self, arguments: Dict[str, Any]) -> List[TextContent]:
         """List configured MCP servers"""
-        # TODO: Get from database
-        servers = [
-            {"name": "memory-server", "status": "inactive", "transport": "stdio"},
-            {"name": "fetch-mcp", "status": "inactive", "transport": "stdio"},
-            {"name": "claude-hooks", "status": "inactive", "transport": "stdio"},
-        ]
+        try:
+            db = SessionLocal()
+            try:
+                servers_query = db.query(MCPServerModel).all()
 
-        status_filter = arguments.get("status", "all")
-        if status_filter != "all":
-            servers = [s for s in servers if s["status"] == status_filter]
+                servers = []
+                for server in servers_query:
+                    status = "active" if server.is_active else "inactive"
+                    servers.append({
+                        "id": server.id,
+                        "name": server.name,
+                        "status": status,
+                        "transport": server.transport,
+                        "command": server.command if server.transport == "stdio" else None,
+                        "url": server.url if server.transport == "sse" else None
+                    })
 
-        return [TextContent(
-            type="text",
-            text=f"MCP Servers ({status_filter}):\n{json.dumps(servers, indent=2)}"
-        )]
+                status_filter = arguments.get("status", "all")
+                if status_filter != "all":
+                    servers = [s for s in servers if s["status"] == status_filter]
+
+                return [TextContent(
+                    type="text",
+                    text=f"MCP Servers ({status_filter}):\n{json.dumps(servers, indent=2)}"
+                )]
+            finally:
+                db.close()
+
+        except Exception as e:
+            return [TextContent(
+                type="text",
+                text=f"Error listing MCP servers: {str(e)}"
+            )]
 
     async def _start_mcp_server(self, arguments: Dict[str, Any]) -> List[TextContent]:
         """Start an MCP server"""
@@ -152,8 +189,38 @@ class ClaudableMCPServer:
         if not server_name:
             return [TextContent(type="text", text="Server name is required")]
 
-        # TODO: Implement actual server starting
-        return [TextContent(type="text", text=f"Started MCP server: {server_name}")]
+        try:
+            db = SessionLocal()
+            try:
+                server = db.query(MCPServerModel).filter(MCPServerModel.name == server_name).first()
+
+                if not server:
+                    return [TextContent(
+                        type="text",
+                        text=f"MCP server '{server_name}' not found"
+                    )]
+
+                success = await mcp_manager.start_server(server, db)
+
+                if success:
+                    return [TextContent(
+                        type="text",
+                        text=f"Successfully started MCP server: {server_name}"
+                    )]
+                else:
+                    error_msg = server.status.get("error", "Unknown error") if server.status else "Unknown error"
+                    return [TextContent(
+                        type="text",
+                        text=f"Failed to start MCP server: {error_msg}"
+                    )]
+            finally:
+                db.close()
+
+        except Exception as e:
+            return [TextContent(
+                type="text",
+                text=f"Error starting MCP server: {str(e)}"
+            )]
 
     async def _stop_mcp_server(self, arguments: Dict[str, Any]) -> List[TextContent]:
         """Stop an MCP server"""
@@ -161,8 +228,37 @@ class ClaudableMCPServer:
         if not server_name:
             return [TextContent(type="text", text="Server name is required")]
 
-        # TODO: Implement actual server stopping
-        return [TextContent(type="text", text=f"Stopped MCP server: {server_name}")]
+        try:
+            db = SessionLocal()
+            try:
+                server = db.query(MCPServerModel).filter(MCPServerModel.name == server_name).first()
+
+                if not server:
+                    return [TextContent(
+                        type="text",
+                        text=f"MCP server '{server_name}' not found"
+                    )]
+
+                success = await mcp_manager.stop_server(server.id, db)
+
+                if success:
+                    return [TextContent(
+                        type="text",
+                        text=f"Successfully stopped MCP server: {server_name}"
+                    )]
+                else:
+                    return [TextContent(
+                        type="text",
+                        text=f"Failed to stop MCP server: {server_name}"
+                    )]
+            finally:
+                db.close()
+
+        except Exception as e:
+            return [TextContent(
+                type="text",
+                text=f"Error stopping MCP server: {str(e)}"
+            )]
 
     async def run(self):
         """Run the Claudable MCP server"""

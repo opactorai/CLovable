@@ -1,8 +1,9 @@
 """MCP Server management endpoints."""
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, validator, Field
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
+import logging
 
 from app.api.deps import get_db
 from app.models.projects import Project as ProjectModel
@@ -10,17 +11,47 @@ from app.models.mcp_servers import MCPServer as MCPServerModel
 from app.services.mcp.manager import mcp_manager
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class MCPServerCreate(BaseModel):
-    name: str
-    transport: str  # "stdio" or "sse"
-    command: Optional[str] = None
-    args: Optional[List[str]] = None
-    url: Optional[str] = None
-    env: Optional[Dict[str, str]] = None
-    scope: str = "project"  # "user" or "project"
-    is_active: bool = False
+    name: str = Field(..., min_length=1, max_length=255, description="Server name")
+    transport: str = Field(..., pattern="^(stdio|sse)$", description="Transport type: stdio or sse")
+    command: Optional[str] = Field(None, max_length=512, description="Command for stdio transport")
+    args: Optional[List[str]] = Field(None, description="Arguments for stdio transport")
+    url: Optional[str] = Field(None, max_length=512, description="URL for SSE transport")
+    env: Optional[Dict[str, str]] = Field(None, description="Environment variables")
+    scope: str = Field("project", pattern="^(user|project)$", description="Scope: user or project")
+    is_active: bool = Field(False, description="Whether server should start automatically")
+
+    @validator('name')
+    def validate_name(cls, v):
+        if not v.strip():
+            raise ValueError('Server name cannot be empty')
+        # Prevent special characters that could cause issues
+        if any(c in v for c in ['/', '\\', '..', '<', '>', '|', '&', ';']):
+            raise ValueError('Server name contains invalid characters')
+        return v.strip()
+
+    @validator('command')
+    def validate_command(cls, v, values):
+        if values.get('transport') == 'stdio' and not v:
+            raise ValueError('Command is required for stdio transport')
+        # Basic command validation - only allow known safe commands
+        if v:
+            cmd = v.strip().split()[0] if v.strip() else ''
+            allowed_commands = ['node', 'python', 'python3', 'npx', 'uvx']
+            if cmd not in allowed_commands:
+                logger.warning(f"Command '{cmd}' is not in allowed list: {allowed_commands}")
+        return v
+
+    @validator('url')
+    def validate_url(cls, v, values):
+        if values.get('transport') == 'sse' and not v:
+            raise ValueError('URL is required for SSE transport')
+        if v and not v.startswith(('http://', 'https://')):
+            raise ValueError('URL must start with http:// or https://')
+        return v
 
 
 class MCPServerUpdate(BaseModel):
@@ -50,13 +81,86 @@ class MCPServerResponse(BaseModel):
 @router.get("/{project_id}/mcp", response_model=List[MCPServerResponse])
 async def list_mcp_servers(project_id: str, db: Session = Depends(get_db)):
     """List MCP servers for a project."""
-    project = db.query(ProjectModel).filter(ProjectModel.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    try:
+        project = db.query(ProjectModel).filter(ProjectModel.id == project_id).first()
+        if not project:
+            logger.warning(f"Project not found: {project_id}")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    servers = db.query(MCPServerModel).filter(MCPServerModel.project_id == project_id).all()
-    return [
-        MCPServerResponse(
+        servers = db.query(MCPServerModel).filter(MCPServerModel.project_id == project_id).all()
+        logger.info(f"Listed {len(servers)} MCP servers for project {project_id}")
+
+        return [
+            MCPServerResponse(
+                id=server.id,
+                name=server.name,
+                transport=server.transport,
+                command=server.command,
+                args=server.args,
+                url=server.url,
+                env=server.env,
+                scope=server.scope,
+                is_active=server.is_active,
+                status=server.status
+            )
+            for server in servers
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing MCP servers for project {project_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to list MCP servers"
+        )
+
+
+@router.post("/{project_id}/mcp", response_model=MCPServerResponse, status_code=status.HTTP_201_CREATED)
+async def create_mcp_server(
+    project_id: str,
+    server_data: MCPServerCreate,
+    db: Session = Depends(get_db)
+):
+    """Create a new MCP server for a project."""
+    try:
+        project = db.query(ProjectModel).filter(ProjectModel.id == project_id).first()
+        if not project:
+            logger.warning(f"Project not found: {project_id}")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+        # Check for duplicate server names within the project
+        existing = db.query(MCPServerModel).filter(
+            MCPServerModel.project_id == project_id,
+            MCPServerModel.name == server_data.name
+        ).first()
+
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"MCP server with name '{server_data.name}' already exists for this project"
+            )
+
+        # Additional validation is done by Pydantic model
+        server = MCPServerModel(
+            project_id=project_id,
+            name=server_data.name,
+            transport=server_data.transport,
+            command=server_data.command,
+            args=server_data.args,
+            url=server_data.url,
+            env=server_data.env,
+            scope=server_data.scope,
+            is_active=server_data.is_active,
+            status={"running": False}
+        )
+
+        db.add(server)
+        db.commit()
+        db.refresh(server)
+
+        logger.info(f"Created MCP server '{server.name}' for project {project_id}")
+
+        return MCPServerResponse(
             id=server.id,
             name=server.name,
             transport=server.transport,
@@ -68,60 +172,15 @@ async def list_mcp_servers(project_id: str, db: Session = Depends(get_db)):
             is_active=server.is_active,
             status=server.status
         )
-        for server in servers
-    ]
-
-
-@router.post("/{project_id}/mcp", response_model=MCPServerResponse)
-async def create_mcp_server(
-    project_id: str,
-    server_data: MCPServerCreate,
-    db: Session = Depends(get_db)
-):
-    """Create a new MCP server for a project."""
-    project = db.query(ProjectModel).filter(ProjectModel.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    # Validate transport-specific fields
-    if server_data.transport == "stdio":
-        if not server_data.command:
-            raise HTTPException(status_code=400, detail="Command required for stdio transport")
-    elif server_data.transport == "sse":
-        if not server_data.url:
-            raise HTTPException(status_code=400, detail="URL required for sse transport")
-    else:
-        raise HTTPException(status_code=400, detail="Transport must be 'stdio' or 'sse'")
-
-    server = MCPServerModel(
-        project_id=project_id,
-        name=server_data.name,
-        transport=server_data.transport,
-        command=server_data.command,
-        args=server_data.args,
-        url=server_data.url,
-        env=server_data.env,
-        scope=server_data.scope,
-        is_active=server_data.is_active,
-        status={"running": False}
-    )
-
-    db.add(server)
-    db.commit()
-    db.refresh(server)
-
-    return MCPServerResponse(
-        id=server.id,
-        name=server.name,
-        transport=server.transport,
-        command=server.command,
-        args=server.args,
-        url=server.url,
-        env=server.env,
-        scope=server.scope,
-        is_active=server.is_active,
-        status=server.status
-    )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating MCP server for project {project_id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create MCP server"
+        )
 
 
 @router.put("/{project_id}/mcp/{server_id}", response_model=MCPServerResponse)
@@ -189,20 +248,37 @@ async def start_mcp_server(
     db: Session = Depends(get_db)
 ):
     """Start an MCP server."""
-    server = db.query(MCPServerModel).filter(
-        MCPServerModel.id == server_id,
-        MCPServerModel.project_id == project_id
-    ).first()
+    try:
+        server = db.query(MCPServerModel).filter(
+            MCPServerModel.id == server_id,
+            MCPServerModel.project_id == project_id
+        ).first()
 
-    if not server:
-        raise HTTPException(status_code=404, detail="MCP server not found")
+        if not server:
+            logger.warning(f"MCP server not found: {server_id} for project {project_id}")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MCP server not found")
 
-    success = await mcp_manager.start_server(server, db)
+        logger.info(f"Starting MCP server: {server.name} (ID: {server_id})")
+        success = await mcp_manager.start_server(server, db)
 
-    if success:
-        return {"message": f"MCP server {server.name} started successfully", "status": server.status}
-    else:
-        raise HTTPException(status_code=500, detail="Failed to start MCP server")
+        if success:
+            logger.info(f"MCP server {server.name} started successfully")
+            return {"message": f"MCP server {server.name} started successfully", "status": server.status}
+        else:
+            error_msg = server.status.get("error", "Unknown error") if server.status else "Unknown error"
+            logger.error(f"Failed to start MCP server {server.name}: {error_msg}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to start MCP server: {error_msg}"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error starting MCP server {server_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to start MCP server"
+        )
 
 
 @router.post("/{project_id}/mcp/{server_id}/stop")
@@ -212,20 +288,36 @@ async def stop_mcp_server(
     db: Session = Depends(get_db)
 ):
     """Stop an MCP server."""
-    server = db.query(MCPServerModel).filter(
-        MCPServerModel.id == server_id,
-        MCPServerModel.project_id == project_id
-    ).first()
+    try:
+        server = db.query(MCPServerModel).filter(
+            MCPServerModel.id == server_id,
+            MCPServerModel.project_id == project_id
+        ).first()
 
-    if not server:
-        raise HTTPException(status_code=404, detail="MCP server not found")
+        if not server:
+            logger.warning(f"MCP server not found: {server_id} for project {project_id}")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MCP server not found")
 
-    success = await mcp_manager.stop_server(server_id, db)
+        logger.info(f"Stopping MCP server: {server.name} (ID: {server_id})")
+        success = await mcp_manager.stop_server(server_id, db)
 
-    if success:
-        return {"message": f"MCP server {server.name} stopped successfully", "status": server.status}
-    else:
-        raise HTTPException(status_code=500, detail="Failed to stop MCP server")
+        if success:
+            logger.info(f"MCP server {server.name} stopped successfully")
+            return {"message": f"MCP server {server.name} stopped successfully", "status": server.status}
+        else:
+            logger.error(f"Failed to stop MCP server {server.name}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to stop MCP server"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error stopping MCP server {server_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to stop MCP server"
+        )
 
 
 @router.get("/{project_id}/mcp/{server_id}/tools")
