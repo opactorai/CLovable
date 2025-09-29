@@ -7,7 +7,7 @@ import ServiceConnectionModal from '@/components/ServiceConnectionModal';
 import { FaCog } from 'react-icons/fa';
 import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
+const API_BASE = '';
 
 interface GlobalSettingsProps {
   isOpen: boolean;
@@ -128,11 +128,15 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
   const { theme, toggle: toggleTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<'general' | 'ai-agents' | 'services' | 'about'>(initialTab);
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
-  const [selectedProvider, setSelectedProvider] = useState<'github' | 'supabase' | 'vercel' | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<'github' | 'supabase' | 'vercel' | 'openai' | 'anthropic' | 'google' | 'qwen' | null>(null);
   const [tokens, setTokens] = useState<{ [key: string]: ServiceToken | null }>({
     github: null,
     supabase: null,
-    vercel: null
+    vercel: null,
+    openai: null,
+    anthropic: null,
+    google: null,
+    qwen: null
   });
   const [cliStatus, setCLIStatus] = useState<CLIStatus>({});
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -141,11 +145,66 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [installModalOpen, setInstallModalOpen] = useState(false);
   const [selectedCLI, setSelectedCLI] = useState<CLIOption | null>(null);
+  const [backendUrlInput, setBackendUrlInput] = useState('');
+  const [backendUrlSaved, setBackendUrlSaved] = useState<string | null>(null);
+  const [backendAuthInput, setBackendAuthInput] = useState('');
+  const [backendAuthSaved, setBackendAuthSaved] = useState<string | null>(null);
 
   // Show toast function
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  // Load backend URL from cookie
+  useEffect(() => {
+    if (!isOpen) return;
+    try {
+      const match = document.cookie.match(/(?:^|; )backend_base_url=([^;]+)/);
+      const val = match ? decodeURIComponent(match[1]) : '';
+      if (val) {
+        setBackendUrlInput(val);
+        setBackendUrlSaved(val);
+      }
+      const authMatch = document.cookie.match(/(?:^|; )backend_auth_bearer=([^;]+)/);
+      const authVal = authMatch ? decodeURIComponent(authMatch[1]) : '';
+      if (authVal) {
+        setBackendAuthInput(authVal);
+        setBackendAuthSaved('********');
+      }
+    } catch {}
+  }, [isOpen]);
+
+  const saveBackendUrlCookie = () => {
+    try {
+      const val = backendUrlInput.trim();
+      if (!val.startsWith('http')) {
+        showToast('Enter a valid URL starting with http(s)://', 'error');
+        return;
+      }
+      const expires = new Date(Date.now() + 365*24*60*60*1000).toUTCString();
+      document.cookie = `backend_base_url=${encodeURIComponent(val)}; path=/; expires=${expires}`;
+      setBackendUrlSaved(val);
+      showToast('Backend URL saved for this browser', 'success');
+    } catch (e) {
+      showToast('Failed to save URL', 'error');
+    }
+  };
+
+  const saveBackendAuthCookie = () => {
+    try {
+      const val = backendAuthInput.trim();
+      if (!val) {
+        showToast('Enter a valid bearer token', 'error');
+        return;
+      }
+      const expires = new Date(Date.now() + 365*24*60*60*1000).toUTCString();
+      document.cookie = `backend_auth_bearer=${encodeURIComponent(val)}; path=/; expires=${expires}`;
+      setBackendAuthSaved('********');
+      showToast('Auth token saved for this browser', 'success');
+    } catch (e) {
+      showToast('Failed to save token', 'error');
+    }
   };
 
   // Load all service tokens and CLI data
@@ -158,12 +217,12 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
   }, [isOpen]);
 
   const loadAllTokens = async () => {
-    const providers = ['github', 'supabase', 'vercel'];
+    const providers = ['github', 'supabase', 'vercel', 'openai', 'anthropic', 'google', 'qwen'];
     const newTokens: { [key: string]: ServiceToken | null } = {};
     
     for (const provider of providers) {
       try {
-        const response = await fetch(`${API_BASE}/api/tokens/${provider}`);
+        const response = await fetch(`/api/tokens/${provider}`);
         if (response.ok) {
           newTokens[provider] = await response.json();
         } else {
@@ -177,7 +236,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
     setTokens(newTokens);
   };
 
-  const handleServiceClick = (provider: 'github' | 'supabase' | 'vercel') => {
+  const handleServiceClick = (provider: 'github' | 'supabase' | 'vercel' | 'openai' | 'anthropic' | 'google' | 'qwen') => {
     setSelectedProvider(provider);
     setServiceModalOpen(true);
   };
@@ -190,7 +249,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
 
   const loadGlobalSettings = async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/settings/global`);
+      const response = await fetch(`/api/settings/global`);
       if (response.ok) {
         const settings = await response.json();
         setGlobalSettings(settings);
@@ -209,7 +268,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
     setCLIStatus(checkingStatus);
     
     try {
-      const response = await fetch(`${API_BASE}/api/settings/cli-status`);
+      const response = await fetch(`/api/settings/cli-status`);
       if (response.ok) {
         const cliStatuses = await response.json();
         setCLIStatus(cliStatuses);
@@ -246,7 +305,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
     setSaveMessage(null);
     
     try {
-      const response = await fetch(`${API_BASE}/api/settings/global`, {
+      const response = await fetch(`/api/settings/global`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(globalSettings)
@@ -406,6 +465,51 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
           <div className="flex-1 p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
             {activeTab === 'general' && (
               <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Backend API</h3>
+                  <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Set the backend API base URL used by this browser session. This is a fallback if the server env is not configured.</p>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="url"
+                        placeholder="https://your-api.example.com"
+                        value={backendUrlInput}
+                        onChange={(e) => setBackendUrlInput(e.target.value)}
+                        className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
+                      />
+                      <button
+                        onClick={saveBackendUrlCookie}
+                        className="px-3 py-2 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm"
+                      >
+                        Save
+                      </button>
+                    </div>
+                    {backendUrlSaved && (
+                      <div className="text-xs text-gray-600 dark:text-gray-400">Current: {backendUrlSaved}</div>
+                    )}
+                    <div className="mt-4">
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Optional: Set a bearer token if your API requires Authorization.</p>
+                      <div className="flex gap-2 items-center mt-2">
+                        <input
+                          type="password"
+                          placeholder="Bearer token (JWT)"
+                          value={backendAuthInput}
+                          onChange={(e) => setBackendAuthInput(e.target.value)}
+                          className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
+                        />
+                        <button
+                          onClick={saveBackendAuthCookie}
+                          className="px-3 py-2 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm"
+                        >
+                          Save Token
+                        </button>
+                      </div>
+                      {backendAuthSaved && (
+                        <div className="text-xs text-gray-600 dark:text-gray-400">Token: {backendAuthSaved}</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
                 <div>
                   <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Appearance</h3>
                   <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-200 dark:border-gray-700">
@@ -661,7 +765,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                           )}
                           <button
-                            onClick={() => handleServiceClick(provider as 'github' | 'supabase' | 'vercel')}
+                            onClick={() => handleServiceClick(provider as any)}
                             className="px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg transition-all"
                           >
                             {token ? 'Update Token' : 'Add Token'}

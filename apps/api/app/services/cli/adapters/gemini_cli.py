@@ -146,6 +146,7 @@ class GeminiCLI(BaseCLI):
         images: Optional[List[Dict[str, Any]]] = None,
         model: Optional[str] = None,
         is_initial_prompt: bool = False,
+        api_key: Optional[str] = None,
     ) -> AsyncGenerator[Message, None]:
         client = await self._ensure_client()
         # Ensure provider markdown exists in project repo

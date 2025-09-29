@@ -1,0 +1,42 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "apps/web/package.json",
+      "use": "@vercel/next"
+    },
+    {
+      "src": "apps/api/app/main.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/apps/api/app/main.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/apps/web/$1"
+    }
+  ],
+  "env": {
+    "API_PORT": "8080",
+    "DATABASE_URL": "@database_url",
+    "PROJECTS_ROOT": "/tmp/projects",
+    "PREVIEW_PORT_START": "3100",
+    "PREVIEW_PORT_END": "3999",
+    "ENVIRONMENT": "production"
+  },
+  "functions": {
+    "apps/api/app/main.py": {
+      "memory": 1024,
+      "maxDuration": 60
+    }
+  },
+  "github": {
+    "enabled": true,
+    "autoAliases": true
+  }
+}
+

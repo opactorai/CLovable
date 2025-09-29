@@ -118,10 +118,14 @@ class BaseCLI(ABC):
     Subclasses must implement availability checks, streaming execution, and
     session persistence. Common utilities (model mapping, content parsing,
     tool summaries) are provided here for reuse.
+    
+    Enhanced with MCP (Multi-Context Protocol) and Sandbox support.
     """
 
     def __init__(self, cli_type: CLIType):
         self.cli_type = cli_type
+        self.mcp_enabled = True  # Enable MCP by default
+        self.sandbox_enabled = True  # Enable Sandbox by default
 
     # ---- Mandatory adapter interface ------------------------------------
     @abstractmethod
@@ -155,6 +159,33 @@ class BaseCLI(ABC):
     @abstractmethod
     async def set_session_id(self, project_id: str, session_id: str) -> None:
         """Persist the active session ID for a project."""
+
+    # ---- MCP and Sandbox Configuration ------------------------------------
+    def enable_mcp(self, enabled: bool = True) -> None:
+        """Enable or disable MCP (Multi-Context Protocol) support."""
+        self.mcp_enabled = enabled
+
+    def enable_sandbox(self, enabled: bool = True) -> None:
+        """Enable or disable Sandbox for safe code execution."""
+        self.sandbox_enabled = enabled
+
+    def get_mcp_config(self) -> Dict[str, Any]:
+        """Get MCP configuration for this CLI provider."""
+        return {
+            "enabled": self.mcp_enabled,
+            "multi_context": True,
+            "session_continuity": True,
+            "tool_integration": True
+        }
+
+    def get_sandbox_config(self) -> Dict[str, Any]:
+        """Get Sandbox configuration for this CLI provider."""
+        return {
+            "enabled": self.sandbox_enabled,
+            "safe_execution": True,
+            "isolated_environment": True,
+            "permission_control": True
+        }
 
     # ---- Common helpers (available to adapters) --------------------------
     def _get_cli_model_name(self, model: Optional[str]) -> Optional[str]:

@@ -89,6 +89,7 @@ class ClaudeCodeCLI(BaseCLI):
         images: Optional[List[Dict[str, Any]]] = None,
         model: Optional[str] = None,
         is_initial_prompt: bool = False,
+        api_key: Optional[str] = None,
     ) -> AsyncGenerator[Message, None]:
         """Execute instruction using Claude Code Python SDK"""
 
@@ -142,21 +143,39 @@ node_modules/
                 f"Added project structure info to initial prompt", "Claude SDK"
             )
 
-        # Configure tools based on initial prompt status
+        # Configure tools based on initial prompt status and MCP/Sandbox settings
+        base_tools = [
+            "Read",
+            "Write", 
+            "Edit",
+            "MultiEdit",
+            "Bash",
+            "Glob",
+            "Grep",
+            "LS",
+            "WebFetch",
+            "WebSearch",
+        ]
+        
+        # Add MCP tools if enabled
+        if self.mcp_enabled:
+            base_tools.extend([
+                "MCPTool",
+                "MCPConnect",
+                "MCPListTools",
+            ])
+        
+        # Add Sandbox tools if enabled
+        if self.sandbox_enabled:
+            base_tools.extend([
+                "SandboxExecute",
+                "SandboxCreate",
+                "SandboxDestroy",
+            ])
+
         if is_initial_prompt:
             # For initial prompts: use disallowed_tools to explicitly block TodoWrite
-            allowed_tools = [
-                "Read",
-                "Write",
-                "Edit",
-                "MultiEdit",
-                "Bash",
-                "Glob",
-                "Grep",
-                "LS",
-                "WebFetch",
-                "WebSearch",
-            ]
+            allowed_tools = base_tools.copy()
             disallowed_tools = ["TodoWrite"]
 
             ui.info(
@@ -171,25 +190,14 @@ node_modules/
                 system_prompt=system_prompt,
                 allowed_tools=allowed_tools,
                 disallowed_tools=disallowed_tools,
-                permission_mode="bypassPermissions",
+                permission_mode="bypassPermissions" if self.sandbox_enabled else "acceptEdits",
                 model=cli_model,
                 continue_conversation=True,
+                api_key=api_key,  # Use provided API key
             )
         else:
             # For non-initial prompts: include TodoWrite in allowed tools
-            allowed_tools = [
-                "Read",
-                "Write",
-                "Edit",
-                "MultiEdit",
-                "Bash",
-                "Glob",
-                "Grep",
-                "LS",
-                "WebFetch",
-                "WebSearch",
-                "TodoWrite",
-            ]
+            allowed_tools = base_tools + ["TodoWrite"]
 
             ui.info(
                 f"TodoWrite tool INCLUDED (is_initial_prompt: {is_initial_prompt})",
@@ -201,9 +209,10 @@ node_modules/
             options = ClaudeCodeOptions(
                 system_prompt=system_prompt,
                 allowed_tools=allowed_tools,
-                permission_mode="bypassPermissions",
+                permission_mode="bypassPermissions" if self.sandbox_enabled else "acceptEdits",
                 model=cli_model,
                 continue_conversation=True,
+                api_key=api_key,  # Use provided API key
             )
 
         ui.info(f"Using model: {cli_model}", "Claude SDK")

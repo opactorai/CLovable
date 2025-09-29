@@ -50,7 +50,14 @@ export default function Header() {
                 priority
               />
             </div>
-            <nav className="flex items-center gap-3" />
+            <nav className="flex items-center gap-3">
+              <a
+                href="/api-keys"
+                className="text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              >
+                API Keys
+              </a>
+            </nav>
           </div>
           <div className="flex items-center gap-3">
             {/* 글로벌 설정 */}

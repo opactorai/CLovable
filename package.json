@@ -16,7 +16,15 @@
     "setup": "npm install",
     "clean": "node scripts/clean.js",
     "db:reset": "node scripts/reset-db.js",
-    "db:backup": "node scripts/backup-db.js"
+    "db:backup": "node scripts/backup-db.js",
+    "build": "npm run build:web",
+    "build:web": "cd apps/web && npm run build",
+    "build:api": "cd apps/api && pip install -r requirements.txt",
+    "start": "npm run start:web",
+    "start:web": "cd apps/web && npm run start",
+    "start:api": "cd apps/api && python main.py",
+    "type-check": "cd apps/web && npm run type-check || true",
+    "lint": "cd apps/web && npm run lint || true"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

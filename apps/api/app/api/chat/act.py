@@ -21,9 +21,25 @@ from app.services.cli.base import CLIType
 from app.services.git_ops import commit_all
 from app.core.websocket.manager import manager
 from app.core.terminal_ui import ui
+from app.services.token_service import get_token
 
 
 router = APIRouter()
+
+
+def get_api_key_for_cli(cli_type: CLIType, db: Session) -> Optional[str]:
+    """Get the appropriate API key for a CLI type"""
+    if cli_type == CLIType.CLAUDE:
+        return get_token(db, "claude")
+    elif cli_type == CLIType.CURSOR:
+        return get_token(db, "cursor")
+    elif cli_type == CLIType.CODEX:
+        return get_token(db, "openai")
+    elif cli_type == CLIType.GEMINI:
+        return get_token(db, "google")
+    elif cli_type == CLIType.QWEN:
+        return get_token(db, "qwen")
+    return None
 
 
 class ImageAttachment(BaseModel):
@@ -150,6 +166,13 @@ async def execute_chat_task(
             }
         })
         
+        # Get API key for the CLI type
+        api_key = get_api_key_for_cli(cli_preference, db)
+        if api_key:
+            ui.info(f"Using API key for {cli_preference.value}", "CHAT")
+        else:
+            ui.warning(f"No API key found for {cli_preference.value}, using environment variables", "CHAT")
+        
         # Initialize CLI manager
         cli_manager = UnifiedCLIManager(
             project_id=project_id,
@@ -168,7 +191,8 @@ async def execute_chat_task(
             fallback_enabled=project_fallback_enabled,
             images=safe_images,
             model=project_selected_model,
-            is_initial_prompt=is_initial_prompt
+            is_initial_prompt=is_initial_prompt,
+            api_key=api_key
         )
         
         
@@ -315,6 +339,13 @@ async def execute_act_task(
             }
         })
         
+        # Get API key for the CLI type
+        api_key = get_api_key_for_cli(cli_preference, db)
+        if api_key:
+            ui.info(f"Using API key for {cli_preference.value}", "ACT")
+        else:
+            ui.warning(f"No API key found for {cli_preference.value}, using environment variables", "ACT")
+        
         # Initialize CLI manager
         cli_manager = UnifiedCLIManager(
             project_id=project_id,
@@ -333,7 +364,8 @@ async def execute_act_task(
             fallback_enabled=project_fallback_enabled,
             images=safe_images,
             model=project_selected_model,
-            is_initial_prompt=is_initial_prompt
+            is_initial_prompt=is_initial_prompt,
+            api_key=api_key
         )
         
         

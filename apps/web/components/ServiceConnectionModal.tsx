@@ -2,12 +2,12 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
+const API_BASE = '';
 
 interface ServiceConnectionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  provider: 'github' | 'supabase' | 'vercel';
+  provider: 'github' | 'supabase' | 'vercel' | 'openai' | 'anthropic' | 'google' | 'qwen';
   projectId?: string;
 }
 
@@ -41,7 +41,7 @@ export default function ServiceConnectionModal({
 
   const loadSavedToken = async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/tokens/${provider}`);
+      const response = await fetch(`/api/tokens/${provider}`);
       if (response.ok) {
         const tokenData = await response.json();
         setSavedToken(tokenData);
@@ -62,7 +62,7 @@ export default function ServiceConnectionModal({
     
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/api/tokens`, {
+      const response = await fetch(`/api/tokens`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -98,7 +98,7 @@ export default function ServiceConnectionModal({
     
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/api/tokens/${savedToken.id}`, {
+      const response = await fetch(`/api/tokens/${savedToken.id}`, {
         method: 'DELETE'
       });
       
@@ -123,7 +123,7 @@ export default function ServiceConnectionModal({
     setActionLoading(true);
     try {
       if (action === 'create-repo') {
-        const response = await fetch(`${API_BASE}/api/github/create-repo`, {
+        const response = await fetch(`/api/github/create-repo`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -158,7 +158,7 @@ export default function ServiceConnectionModal({
         const dbPass = prompt('Enter database password for new Supabase project:');
         if (!dbPass) return;
         
-        const response = await fetch(`${API_BASE}/api/supabase/create-project`, {
+        const response = await fetch(`/api/supabase/create-project`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -191,7 +191,7 @@ export default function ServiceConnectionModal({
     setActionLoading(true);
     try {
       if (action === 'deploy') {
-        const response = await fetch(`${API_BASE}/api/vercel/deploy`, {
+        const response = await fetch(`/api/vercel/deploy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -289,6 +289,70 @@ export default function ServiceConnectionModal({
             "Paste the token below and click 'Save Token'"
           ],
           actions: ['deploy']
+        };
+      case 'openai':
+        return {
+          title: 'OpenAI',
+          description: 'Connect your OpenAI API key to use GPT models',
+          tokenUrl: 'https://platform.openai.com/api-keys',
+          tokenName: 'API Key',
+          icon: (
+            <img src="/oai.png" alt="OpenAI" width={32} height={32} />
+          ),
+          instructions: [
+            'Go to OpenAI Platform → API Keys',
+            'Create a new API key and copy it',
+            'Paste the key below and save'
+          ],
+          actions: []
+        };
+      case 'anthropic':
+        return {
+          title: 'Anthropic',
+          description: 'Connect your Anthropic API key to use Claude models',
+          tokenUrl: 'https://console.anthropic.com/settings/keys',
+          tokenName: 'API Key',
+          icon: (
+            <img src="/claude.png" alt="Anthropic" width={32} height={32} />
+          ),
+          instructions: [
+            'Open Anthropic Console → API Keys',
+            'Create a key and copy it',
+            'Paste the key below and save'
+          ],
+          actions: []
+        };
+      case 'google':
+        return {
+          title: 'Google Gemini',
+          description: 'Connect your Google API key to use Gemini models',
+          tokenUrl: 'https://aistudio.google.com/app/apikey',
+          tokenName: 'API Key',
+          icon: (
+            <img src="/gemini.png" alt="Gemini" width={32} height={32} />
+          ),
+          instructions: [
+            'Open Google AI Studio → API Keys',
+            'Create a key and copy it',
+            'Paste the key below and save'
+          ],
+          actions: []
+        };
+      case 'qwen':
+        return {
+          title: 'Qwen',
+          description: 'Connect your Qwen API key to use Qwen models',
+          tokenUrl: 'https://bailian.console.aliyun.com/?apiKey',
+          tokenName: 'API Key',
+          icon: (
+            <img src="/qwen.png" alt="Qwen" width={32} height={32} />
+          ),
+          instructions: [
+            'Open Alibaba Cloud Bailian → API Keys',
+            'Create a key and copy it',
+            'Paste the key below and save'
+          ],
+          actions: []
         };
     }
   };
