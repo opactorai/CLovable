@@ -14,6 +14,7 @@ from app.api.project_services import router as project_services_router
 from app.api.github import router as github_router
 from app.api.vercel import router as vercel_router
 from app.api.users import router as users_router
+from app.api.user_api_keys import router as user_api_keys_router
 from app.core.logging import configure_logging
 from app.core.terminal_ui import ui
 from sqlalchemy import inspect
@@ -69,6 +70,7 @@ app.include_router(project_services_router)  # Project services API
 app.include_router(github_router)  # GitHub integration API
 app.include_router(vercel_router)  # Vercel integration API
 app.include_router(users_router)  # Users API
+app.include_router(user_api_keys_router)  # User API keys API
 
 
 @app.get("/health")
