@@ -18,12 +18,62 @@ from app.models.projects import Project as ProjectModel
 from app.models.messages import Message
 from app.models.project_services import ProjectServiceConnection
 from app.models.sessions import Session as SessionModel
+from app.models.mcp_servers import MCPServer
 from app.services.project.initializer import initialize_project
 from app.core.websocket.manager import manager as websocket_manager
 from app.services.local_runtime import get_npm_executable
 
 # Project ID validation regex
 PROJECT_ID_REGEX = re.compile(r"^[a-z0-9-]{3,}$")
+
+# Default MCP servers to seed for new projects
+DEFAULT_MCP_SERVERS = [
+    {
+        "name": "Memory Server",
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-memory"],
+        "scope": "project",
+        "is_active": False,
+    },
+    {
+        "name": "Fetch MCP",
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "fetch-mcp"],
+        "scope": "project",
+        "is_active": False,
+    },
+    {
+        "name": "Filesystem Server",
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+        "scope": "project",
+        "is_active": False,
+    },
+]
+
+def _seed_default_mcp_servers(db: Session, project_id: str):
+    """Seed default MCP servers for a new project"""
+    try:
+        for server_config in DEFAULT_MCP_SERVERS:
+            server = MCPServer(
+                project_id=project_id,
+                name=server_config["name"],
+                transport=server_config["transport"],
+                command=server_config["command"],
+                args=server_config["args"],
+                scope=server_config["scope"],
+                is_active=server_config["is_active"],
+                status={"running": False}
+            )
+            db.add(server)
+        db.commit()
+        print(f"✓ Seeded {len(DEFAULT_MCP_SERVERS)} default MCP servers for project {project_id}")
+    except Exception as e:
+        print(f"Warning: Failed to seed MCP servers for project {project_id}: {str(e)}")
+        db.rollback()
 
 # Pydantic models
 class ProjectCreate(BaseModel):
@@ -407,7 +457,10 @@ async def create_project(
     db.add(project)
     db.commit()
     db.refresh(project)
-    
+
+    # Seed default MCP servers for new project
+    _seed_default_mcp_servers(db, project.id)
+
     # Send immediate status update
     await websocket_manager.broadcast_to_project(project.id, {
         "type": "project_status",

@@ -17,76 +17,8 @@ interface MCPServer {
 }
 
 export function GlobalMCPConfig() {
-  const [servers, setServers] = useState<MCPServer[]>([
-    {
-      id: 1,
-      name: 'Memory Server',
-      transport: 'stdio',
-      command: 'npx',
-      args: ['-y', '@modelcontextprotocol/server-memory'],
-      status: 'inactive',
-      env: {},
-      tools: [
-        { name: 'store_memory', description: 'Store information in memory' },
-        { name: 'recall_memory', description: 'Recall stored information' },
-        { name: 'delete_memory', description: 'Delete stored memory' }
-      ]
-    },
-    {
-      id: 2,
-      name: 'Fetch MCP',
-      transport: 'stdio',
-      command: 'npx',
-      args: ['-y', 'fetch-mcp'],
-      status: 'inactive',
-      env: {},
-      tools: [
-        { name: 'fetch_url', description: 'Fetch content from a URL' },
-        { name: 'crawl_website', description: 'Crawl and extract website content' }
-      ]
-    },
-    {
-      id: 3,
-      name: 'Claude Hooks',
-      transport: 'stdio',
-      command: 'node',
-      args: ['~/.claude/hooks/claude-hooks-sdk/lib/mcp-hook-server.js'],
-      status: 'inactive',
-      env: {},
-      tools: [
-        { name: 'execute_hook', description: 'Execute a configured hook' },
-        { name: 'list_hooks', description: 'List available hooks' }
-      ]
-    },
-    {
-      id: 4,
-      name: 'Hyperbrowser',
-      transport: 'stdio',
-      command: 'npx',
-      args: ['--yes', 'hyperbrowser-mcp'],
-      status: 'inactive',
-      env: { HYPERBROWSER_API_KEY: 'your-key' },
-      tools: [
-        { name: 'browse_page', description: 'Browse a web page with AI' },
-        { name: 'extract_content', description: 'Extract content from web pages' },
-        { name: 'take_screenshot', description: 'Take screenshot of web page' }
-      ]
-    },
-    {
-      id: 5,
-      name: 'Desktop Automation',
-      transport: 'stdio',
-      command: 'npx',
-      args: ['-y', 'mcp-desktop-automation'],
-      status: 'inactive',
-      env: {},
-      tools: [
-        { name: 'click_element', description: 'Click on screen element' },
-        { name: 'type_text', description: 'Type text on screen' },
-        { name: 'screenshot', description: 'Take desktop screenshot' }
-      ]
-    }
-  ]);
+  const [servers, setServers] = useState<MCPServer[]>([]);
+  const [loading, setLoading] = useState(true);
   const [editingServer, setEditingServer] = useState<number | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [formData, setFormData] = useState({
