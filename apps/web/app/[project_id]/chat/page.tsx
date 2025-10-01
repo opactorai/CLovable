@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { MotionDiv, MotionH3, MotionP, MotionButton } from '../../../lib/motion';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -26,6 +26,76 @@ const assistantBrandColors: { [key: string]: string } = {
   codex: '#000000'
 };
 
+const CLI_LABELS: Record<string, string> = {
+  claude: 'Claude Code',
+  cursor: 'Cursor Agent',
+  codex: 'Codex CLI',
+  qwen: 'Qwen Coder',
+  gemini: 'Gemini CLI'
+};
+
+const CLI_ORDER = ['claude', 'cursor', 'codex', 'qwen', 'gemini'] as const;
+
+const MODEL_FALLBACKS: Record<string, { id: string; name: string; aliases?: string[] }[]> = {
+  claude: [
+    { id: 'claude-sonnet-4', name: 'Claude Sonnet 4', aliases: ['claude-sonnet-4-20250514', 'sonnet-4'] },
+    { id: 'claude-opus-4.1', name: 'Claude Opus 4.1', aliases: ['claude-opus-4-1-20250805', 'opus-4.1'] },
+    { id: 'claude-opus-4', name: 'Claude Opus 4', aliases: ['claude-opus-4-20250514', 'opus-4'] },
+    { id: 'claude-haiku-3.5', name: 'Claude Haiku 3.5', aliases: ['claude-3-5-haiku-20241022', 'haiku-3.5'] }
+  ],
+  cursor: [
+    { id: 'gpt-5', name: 'GPT-5' },
+    { id: 'claude-sonnet-4', name: 'Claude Sonnet 4', aliases: ['sonnet-4'] },
+    { id: 'claude-opus-4.1', name: 'Claude Opus 4.1', aliases: ['opus-4.1'] }
+  ],
+  codex: [
+    { id: 'gpt-5', name: 'GPT-5' },
+    { id: 'gpt-4o', name: 'GPT-4o' },
+    { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
+    { id: 'o1-preview', name: 'o1 Preview' },
+    { id: 'o1-mini', name: 'o1 Mini' }
+  ],
+  qwen: [
+    { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus', aliases: ['qwen-coder'] }
+  ],
+  gemini: [
+    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' }
+  ]
+};
+
+const MODEL_NAME_OVERRIDES: Record<string, string> = Object.values(MODEL_FALLBACKS).flat().reduce((acc, model) => {
+  acc[model.id] = model.name;
+  model.aliases?.forEach(alias => {
+    acc[alias] = model.name;
+  });
+  return acc;
+}, {} as Record<string, string>);
+
+const normalizeModelId = (cli: string, rawId: string): string => {
+  const defaults = MODEL_FALLBACKS[cli] || [];
+  for (const model of defaults) {
+    if (model.id === rawId) return model.id;
+    if (model.aliases?.includes(rawId)) return model.id;
+  }
+  return rawId;
+};
+
+const getModelDisplayName = (cli: string, modelId: string) => {
+  const normalized = normalizeModelId(cli, modelId);
+  if (MODEL_NAME_OVERRIDES[normalized]) {
+    return MODEL_NAME_OVERRIDES[normalized];
+  }
+  if (MODEL_NAME_OVERRIDES[modelId]) {
+    return MODEL_NAME_OVERRIDES[modelId];
+  }
+  const cleaned = normalized.replace(/[_-]+/g, ' ');
+  return cleaned
+    .split(' ')
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+};
+
 // Function to convert hex to CSS filter for tinting white images
 // Since the original image is white (#FFFFFF), we can apply filters more accurately
 const hexToFilter = (hex: string): string => {
@@ -43,6 +113,64 @@ const hexToFilter = (hex: string): string => {
 type Entry = { path: string; type: 'file'|'dir'; size?: number };
 type Params = { params: { project_id: string } };
 type ProjectStatus = 'initializing' | 'active' | 'failed';
+
+type CliStatusSnapshot = {
+  available?: boolean;
+  configured?: boolean;
+  models?: string[];
+};
+
+type ModelOption = {
+  id: string;
+  name: string;
+  cli: string;
+  cliName: string;
+  available: boolean;
+};
+
+const buildModelOptions = (statuses: Record<string, CliStatusSnapshot>): ModelOption[] => {
+  const options: ModelOption[] = [];
+  const seen = new Set<string>();
+
+  CLI_ORDER.forEach(cli => {
+    const status = statuses?.[cli] || {};
+    const fallback = MODEL_FALLBACKS[cli] || [];
+
+    const rawModels = status.models && status.models.length > 0
+      ? status.models
+      : fallback.map(model => model.id);
+
+    rawModels.forEach(rawModelId => {
+      const normalized = normalizeModelId(cli, rawModelId);
+      const key = `${cli}|${normalized}`;
+      if (seen.has(key)) return;
+
+      const isRecognized =
+        fallback.length === 0 ||
+        fallback.some(record =>
+          record.id === normalized ||
+          record.aliases?.includes(rawModelId) ||
+          record.aliases?.includes(normalized)
+        );
+
+      if (!isRecognized) {
+        return;
+      }
+
+      seen.add(key);
+
+      options.push({
+        id: normalized,
+        name: getModelDisplayName(cli, normalized),
+        cli,
+        cliName: CLI_LABELS[cli] || cli,
+        available: Boolean(status.available && status.configured)
+      });
+    });
+  });
+
+  return options;
+};
 
 // TreeView component for VSCode-style file explorer
 interface TreeViewProps {
@@ -199,13 +327,44 @@ export default function ChatPage({ params }: Params) {
   const deployPollRef = useRef<NodeJS.Timeout | null>(null);
   const [isStartingPreview, setIsStartingPreview] = useState(false);
   const [previewInitializationMessage, setPreviewInitializationMessage] = useState('Starting development server...');
+  const [cliStatuses, setCliStatuses] = useState<Record<string, CliStatusSnapshot>>({});
+  const [conversationId, setConversationId] = useState<string>(() => {
+    if (typeof window !== 'undefined' && window.crypto?.randomUUID) {
+      return window.crypto.randomUUID();
+    }
+    return '';
+  });
   const [preferredCli, setPreferredCli] = useState<string>('claude');
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [usingGlobalDefaults, setUsingGlobalDefaults] = useState<boolean>(true);
   const [thinkingMode, setThinkingMode] = useState<boolean>(false);
+  const [isUpdatingModel, setIsUpdatingModel] = useState<boolean>(false);
   const [currentRoute, setCurrentRoute] = useState<string>('/');
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isFileUpdating, setIsFileUpdating] = useState(false);
+  const modelOptions = useMemo(() => buildModelOptions(cliStatuses), [cliStatuses]);
+  const cliOptions = useMemo(
+    () => CLI_ORDER.map(cli => ({
+      id: cli,
+      name: CLI_LABELS[cli] || cli,
+      available: Boolean(cliStatuses[cli]?.available && cliStatuses[cli]?.configured)
+    })),
+    [cliStatuses]
+  );
+
+  const updatePreferredCli = useCallback((cli: string) => {
+    setPreferredCli(cli);
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('selectedAssistant', cli);
+    }
+  }, []);
+
+  const updateSelectedModel = useCallback((model: string) => {
+    setSelectedModel(model);
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('selectedModel', model);
+    }
+  }, []);
 
   // Guarded trigger that can be called from multiple places safely
   const triggerInitialPromptIfNeeded = useCallback(() => {
@@ -232,6 +391,176 @@ export default function ChatPage({ params }: Params) {
       sendInitialPrompt(initialPromptFromUrl);
     }, 300);
   }, [searchParams]);
+
+  const loadCliStatuses = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const response = await fetch(`${API_BASE}/api/chat/${projectId}/cli-status`);
+      if (!response.ok) throw new Error('Failed to load CLI statuses');
+
+      const data = await response.json();
+      const snapshot: Record<string, CliStatusSnapshot> = {};
+      CLI_ORDER.forEach(cli => {
+        if (data && data[cli]) {
+          snapshot[cli] = {
+            available: data[cli]?.available,
+            configured: data[cli]?.configured,
+            models: data[cli]?.models
+          };
+        }
+      });
+      setCliStatuses(snapshot);
+    } catch (error) {
+      console.error('Failed to load CLI statuses:', error);
+      setCliStatuses({});
+    }
+  }, [projectId]);
+
+  const handleModelChange = useCallback(
+    async (option: ModelOption, opts?: { skipCliUpdate?: boolean; overrideCli?: string }) => {
+      if (!projectId || !option) return;
+
+      const { skipCliUpdate = false, overrideCli } = opts || {};
+      const targetCli = overrideCli ?? option.cli;
+      const newModelId = option.id;
+
+      const previousCli = preferredCli;
+      const previousModel = selectedModel;
+
+      if (targetCli === previousCli && newModelId === previousModel) {
+        return;
+      }
+
+      setUsingGlobalDefaults(false);
+      updatePreferredCli(targetCli);
+      updateSelectedModel(newModelId);
+
+      setIsUpdatingModel(true);
+
+      try {
+        if (!skipCliUpdate && targetCli !== previousCli) {
+          const cliResponse = await fetch(`${API_BASE}/api/chat/${projectId}/cli-preference`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ preferred_cli: targetCli })
+          });
+
+          if (!cliResponse.ok) {
+            const errorText = await cliResponse.text();
+            throw new Error(errorText || 'Failed to update CLI preference');
+          }
+        }
+
+        const modelResponse = await fetch(`${API_BASE}/api/chat/${projectId}/model-preference`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model_id: newModelId })
+        });
+
+        if (!modelResponse.ok) {
+          const errorText = await modelResponse.text();
+          throw new Error(errorText || 'Failed to update model preference');
+        }
+
+        const data = await modelResponse.json();
+        const resolvedModel = normalizeModelId(targetCli, data?.selected_model || newModelId);
+        updateSelectedModel(resolvedModel);
+
+        const cliLabel = CLI_LABELS[targetCli] || targetCli;
+        const modelLabel = getModelDisplayName(targetCli, resolvedModel);
+        try {
+          await fetch(`${API_BASE}/api/chat/${projectId}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              content: `Switched to ${cliLabel} (${modelLabel})`,
+              role: 'system',
+              conversation_id: conversationId || undefined
+            })
+          });
+        } catch (messageError) {
+          console.warn('Failed to record model switch message:', messageError);
+        }
+
+        await loadCliStatuses();
+      } catch (error) {
+        console.error('Failed to update model preference:', error);
+        updatePreferredCli(previousCli);
+        updateSelectedModel(previousModel);
+        alert('Failed to update model. Please try again.');
+      } finally {
+        setIsUpdatingModel(false);
+      }
+    },
+    [projectId, preferredCli, selectedModel, conversationId, loadCliStatuses, updatePreferredCli, updateSelectedModel]
+  );
+
+  useEffect(() => {
+    loadCliStatuses();
+  }, [loadCliStatuses]);
+
+  const handleCliChange = useCallback(
+    async (cliId: string) => {
+      if (!projectId) return;
+      if (cliId === preferredCli) return;
+
+      setUsingGlobalDefaults(false);
+
+      const previousCli = preferredCli;
+      const previousModel = selectedModel;
+
+      setIsUpdatingModel(true);
+
+      try {
+        const cliResponse = await fetch(`${API_BASE}/api/chat/${projectId}/cli-preference`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ preferred_cli: cliId })
+        });
+
+        if (!cliResponse.ok) {
+          const errorText = await cliResponse.text();
+          throw new Error(errorText || 'Failed to update CLI preference');
+        }
+
+        const candidateModels = modelOptions.filter(option => option.cli === cliId);
+        const fallbackOption =
+          candidateModels.find(option => option.id === previousModel && option.available) ||
+          candidateModels.find(option => option.available) ||
+          candidateModels[0];
+
+        if (fallbackOption) {
+          await handleModelChange(fallbackOption, { skipCliUpdate: true, overrideCli: cliId });
+        } else {
+          updatePreferredCli(cliId);
+          updateSelectedModel('');
+          await loadCliStatuses();
+        }
+      } catch (error) {
+        console.error('Failed to update CLI preference:', error);
+        updatePreferredCli(previousCli);
+        updateSelectedModel(previousModel);
+        alert('Failed to update CLI. Please try again.');
+      } finally {
+        setIsUpdatingModel(false);
+      }
+    },
+    [projectId, preferredCli, selectedModel, modelOptions, handleModelChange, loadCliStatuses, updatePreferredCli, updateSelectedModel]
+  );
+
+  useEffect(() => {
+    if (!modelOptions.length) return;
+    const hasSelected = modelOptions.some(option => option.cli === preferredCli && option.id === selectedModel);
+    if (!hasSelected) {
+      const fallbackOption = modelOptions.find(option => option.cli === preferredCli && option.available)
+        || modelOptions.find(option => option.cli === preferredCli)
+        || modelOptions.find(option => option.available)
+        || modelOptions[0];
+      if (fallbackOption) {
+        void handleModelChange(fallbackOption);
+      }
+    }
+  }, [modelOptions, preferredCli, selectedModel, handleModelChange]);
 
   const loadDeployStatus = useCallback(async () => {
     try {
@@ -787,27 +1116,27 @@ export default function ChatPage({ params }: Params) {
           // Only set if not already set by project
           if (!hasCliSet) {
             console.log('🔄 Setting CLI from global:', defaultCli);
-            setPreferredCli(defaultCli);
+            updatePreferredCli(defaultCli);
           }
           
           // Set the model for the CLI if not already set
           if (!hasModelSet) {
             const cliSettings = globalSettings.cli_settings?.[hasCliSet || defaultCli];
             if (cliSettings?.model) {
-              setSelectedModel(cliSettings.model);
+              updateSelectedModel(cliSettings.model);
             } else {
               // Set default model based on CLI
               const currentCli = hasCliSet || defaultCli;
               if (currentCli === 'claude') {
-                setSelectedModel('claude-sonnet-4');
+                updateSelectedModel('claude-sonnet-4');
               } else if (currentCli === 'cursor') {
-                setSelectedModel('gpt-5');
+                updateSelectedModel('gpt-5');
               } else if (currentCli === 'codex') {
-                setSelectedModel('gpt-5');
+                updateSelectedModel('gpt-5');
               } else if (currentCli === 'qwen') {
-                setSelectedModel('qwen3-coder-plus');
+                updateSelectedModel('qwen3-coder-plus');
               } else if (currentCli === 'gemini') {
-                setSelectedModel('gemini-2.5-pro');
+                updateSelectedModel('gemini-2.5-pro');
               }
             }
           }
@@ -816,8 +1145,8 @@ export default function ChatPage({ params }: Params) {
           const response = await fetch(`${API_BASE}/api/settings`);
           if (response.ok) {
             const settings = await response.json();
-            if (!hasCliSet) setPreferredCli(settings.preferred_cli || 'claude');
-            if (!hasModelSet) setSelectedModel(settings.preferred_cli === 'claude' ? 'claude-sonnet-4' : 'gpt-5');
+            if (!hasCliSet) updatePreferredCli(settings.preferred_cli || 'claude');
+            if (!hasModelSet) updateSelectedModel(settings.preferred_cli === 'claude' ? 'claude-sonnet-4' : 'gpt-5');
           }
         }
       }
@@ -826,8 +1155,8 @@ export default function ChatPage({ params }: Params) {
       // Only set fallback if not already set
       const hasCliSet = projectSettings?.cli || preferredCli;
       const hasModelSet = projectSettings?.model || selectedModel;
-      if (!hasCliSet) setPreferredCli('claude');
-      if (!hasModelSet) setSelectedModel('claude-sonnet-4');
+      if (!hasCliSet) updatePreferredCli('claude');
+      if (!hasModelSet) updateSelectedModel('claude-sonnet-4');
     }
   }
 
@@ -845,11 +1174,12 @@ export default function ChatPage({ params }: Params) {
         // Set CLI and model from project settings if available
         if (project.preferred_cli) {
           console.log('✅ Setting CLI from project:', project.preferred_cli);
-          setPreferredCli(project.preferred_cli);
+          updatePreferredCli(project.preferred_cli);
         }
         if (project.selected_model) {
           console.log('✅ Setting model from project:', project.selected_model);
-          setSelectedModel(project.selected_model);
+          const normalizedProjectModel = normalizeModelId(project.preferred_cli || preferredCli, project.selected_model);
+          updateSelectedModel(normalizedProjectModel);
         }
         // Determine if we should follow global defaults (no project-specific prefs)
         const followGlobal = !project.preferred_cli && !project.selected_model;
@@ -1001,8 +1331,8 @@ export default function ChatPage({ params }: Params) {
         instruction: finalMessage, 
         images: processedImages,
         is_initial_prompt: false, // Mark as continuation message
-        cli_preference: preferredCli, // Add CLI preference
-        selected_model: selectedModel, // Add selected model
+        cli_preference: preferredCli,
+        conversation_id: conversationId || undefined,
         request_id: requestId // ★ NEW: request_id 추가
       };
       
@@ -1024,6 +1354,9 @@ export default function ChatPage({ params }: Params) {
       }
       
       const result = await r.json();
+      if (result?.conversation_id) {
+        setConversationId(result.conversation_id);
+      }
       
       // ★ NEW: UserRequest 생성
       createRequest(requestId, result.session_id, finalMessage, mode);
@@ -1126,6 +1459,8 @@ export default function ChatPage({ params }: Params) {
         instruction: initialPrompt,
         images: [], // No images for initial prompt
         is_initial_prompt: true, // Mark as initial prompt
+        cli_preference: preferredCli,
+        conversation_id: conversationId || undefined,
         request_id: requestId // ★ NEW: request_id 추가
       };
       
@@ -1143,6 +1478,9 @@ export default function ChatPage({ params }: Params) {
       }
       
       const result = await r.json();
+      if (result?.conversation_id) {
+        setConversationId(result.conversation_id);
+      }
       
       // ★ NEW: UserRequest 생성 (display original prompt, not enhanced)
       createRequest(requestId, result.session_id, initialPrompt, 'act');
@@ -1294,17 +1632,17 @@ export default function ChatPage({ params }: Params) {
     if (!globalSettings) return;
 
     const cli = globalSettings.default_cli || 'claude';
-    setPreferredCli(cli);
+    updatePreferredCli(cli);
 
     const modelFromGlobal = globalSettings.cli_settings?.[cli]?.model;
     if (modelFromGlobal) {
-      setSelectedModel(modelFromGlobal);
+      updateSelectedModel(modelFromGlobal);
     } else {
       // Fallback per CLI
-      if (cli === 'claude') setSelectedModel('claude-sonnet-4');
-      else if (cli === 'cursor') setSelectedModel('gpt-5');
-      else if (cli === 'codex') setSelectedModel('gpt-5');
-      else setSelectedModel('');
+      if (cli === 'claude') updateSelectedModel('claude-sonnet-4');
+      else if (cli === 'cursor') updateSelectedModel('gpt-5');
+      else if (cli === 'codex') updateSelectedModel('gpt-5');
+      else updateSelectedModel('');
     }
   }, [globalSettings, usingGlobalDefaults]);
 
@@ -1484,6 +1822,12 @@ export default function ChatPage({ params }: Params) {
                 selectedModel={selectedModel}
                 thinkingMode={thinkingMode}
                 onThinkingModeChange={setThinkingMode}
+                modelOptions={modelOptions}
+                onModelChange={handleModelChange}
+                modelChangeDisabled={isUpdatingModel}
+                cliOptions={cliOptions}
+                onCliChange={handleCliChange}
+                cliChangeDisabled={isUpdatingModel}
               />
             </div>
           </div>

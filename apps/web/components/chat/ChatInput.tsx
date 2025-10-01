@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { SendHorizontal, MessageSquare, Image, Wrench } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
@@ -10,6 +10,20 @@ interface UploadedImage {
   filename: string;
   path: string;
   url: string;
+}
+
+interface ModelPickerOption {
+  id: string;
+  name: string;
+  cli: string;
+  cliName: string;
+  available: boolean;
+}
+
+interface CliPickerOption {
+  id: string;
+  name: string;
+  available: boolean;
 }
 
 interface ChatInputProps {
@@ -23,6 +37,12 @@ interface ChatInputProps {
   selectedModel?: string;
   thinkingMode?: boolean;
   onThinkingModeChange?: (enabled: boolean) => void;
+  modelOptions?: ModelPickerOption[];
+  onModelChange?: (option: ModelPickerOption) => void;
+  modelChangeDisabled?: boolean;
+  cliOptions?: CliPickerOption[];
+  onCliChange?: (cliId: string) => void;
+  cliChangeDisabled?: boolean;
 }
 
 export default function ChatInput({ 
@@ -35,7 +55,13 @@ export default function ChatInput({
   preferredCli = 'claude',
   selectedModel = '',
   thinkingMode = false,
-  onThinkingModeChange
+  onThinkingModeChange,
+  modelOptions = [],
+  onModelChange,
+  modelChangeDisabled = false,
+  cliOptions = [],
+  onCliChange,
+  cliChangeDisabled = false
 }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
@@ -43,6 +69,21 @@ export default function ChatInput({
   const [isDragOver, setIsDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const modelOptionsForCli = useMemo(
+    () => modelOptions.filter(option => option.cli === preferredCli),
+    [modelOptions, preferredCli]
+  );
+
+  const selectedModelValue = useMemo(() => {
+    return modelOptionsForCli.some(opt => opt.id === selectedModel) ? selectedModel : '';
+  }, [modelOptionsForCli, selectedModel]);
+
+  useEffect(() => {
+    if (!disabled && !cliChangeDisabled && !modelChangeDisabled) {
+      textareaRef.current?.focus();
+    }
+  }, [disabled, cliChangeDisabled, modelChangeDisabled]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -142,47 +183,6 @@ export default function ChatInput({
     }
   };
 
-  // Drag and drop handlers
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (projectId && preferredCli !== 'cursor' && preferredCli !== 'qwen') {
-      setIsDragOver(true);
-    }
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // Only set to false if we're leaving the container completely
-    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-      setIsDragOver(false);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (projectId && preferredCli !== 'cursor' && preferredCli !== 'qwen') {
-      e.dataTransfer.dropEffect = 'copy';
-    } else {
-      e.dataTransfer.dropEffect = 'none';
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-
-    if (!projectId || preferredCli === 'cursor' || preferredCli === 'qwen') return;
-
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      handleFiles(files);
-    }
-  };
-
   useEffect(() => {
     adjustTextareaHeight();
   }, [message]);
@@ -235,83 +235,57 @@ export default function ChatInput({
     };
   }, [projectId, preferredCli]);
 
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (projectId && preferredCli !== 'cursor' && preferredCli !== 'qwen') {
+      setIsDragOver(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragOver(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (projectId && preferredCli !== 'cursor' && preferredCli !== 'qwen') {
+      e.dataTransfer.dropEffect = 'copy';
+    } else {
+      e.dataTransfer.dropEffect = 'none';
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    if (!projectId || preferredCli === 'cursor' || preferredCli === 'qwen') return;
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFiles(files);
+    }
+  };
+
   return (
-    <div className="flex max-h-[calc(100%-37px)] shrink-0 flex-col overflow-visible">
-      <div className="relative top-6">
-        <div className="[&_[data-nudge]:not(:first-child)]:hidden"></div>
-      </div>
-      
-      {/* Image thumbnails */}
-      {uploadedImages.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-2 mr-2 md:mr-0">
-          {uploadedImages.map((image, index) => (
-            <div key={image.id} className="relative group">
-              <img 
-                src={image.url} 
-                alt={image.filename}
-                className="w-20 h-20 object-cover rounded-lg border border-gray-200 dark:border-gray-600"
-              />
-              <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs px-1 py-0.5 rounded-b-lg">
-                Image #{index + 1}
-              </div>
-              <button
-                type="button"
-                onClick={() => removeImage(image.id)}
-                className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-      
-      <form 
-        onSubmit={handleSubmit}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-        className={`group flex flex-col gap-2 rounded-3xl border transition-all duration-150 ease-in-out relative mr-2 md:mr-0 p-3 ${
-          isDragOver 
-            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-lg' 
-            : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'
-        }`}
-      >
-        <div data-state="closed" style={{ cursor: 'text' }}>
-          <div className="relative flex flex-1 items-center">
-            <textarea
-              ref={textareaRef}
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="flex w-full ring-offset-background placeholder:text-gray-500 dark:placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 resize-none text-[16px] leading-snug md:text-base max-h-[200px] bg-transparent focus:bg-transparent flex-1 m-1 rounded-md p-0 text-gray-900 dark:text-gray-100"
-              id="chatinput"
-              placeholder={placeholder}
-              disabled={disabled}
-              style={{ minHeight: '40px', height: '40px' }}
-            />
-          </div>
-        </div>
-        
-        {/* Drag overlay */}
-        {isDragOver && projectId && preferredCli !== 'cursor' && preferredCli !== 'qwen' && (
-          <div className="absolute inset-0 bg-blue-50/90 dark:bg-blue-900/30 rounded-3xl flex items-center justify-center z-10 border-2 border-dashed border-blue-500">
-            <div className="text-center">
-              <div className="text-2xl mb-2">📸</div>
-              <div className="text-sm font-medium text-blue-600 dark:text-blue-400">
-                Drop images here
-              </div>
-              <div className="text-xs text-blue-500 dark:text-blue-500 mt-1">
-                Supports: JPG, PNG, GIF, WEBP
-              </div>
-            </div>
-          </div>
-        )}
-        
-        <div className="flex items-center gap-1">
+    <form
+      onSubmit={handleSubmit}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      className="bg-white dark:bg-black border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden"
+    >
+      <div className="p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            {/* Image Upload Button */}
             {projectId && (
               (preferredCli === 'cursor' || preferredCli === 'qwen') ? (
                 <div 
@@ -338,91 +312,123 @@ export default function ChatInput({
                 </label>
               )
             )}
-            
-            {/* Agent and Model Display */}
-            {preferredCli && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-full">
-                {/* Agent Icon */}
-                <img 
-                  src={preferredCli === 'claude' ? '/claude.png' : 
-                       preferredCli === 'cursor' ? '/cursor.png' : 
-                       preferredCli === 'qwen' ? '/qwen.png' :
-                       preferredCli === 'gemini' ? '/gemini.png' :
-                       '/oai.png'} 
-                  alt={preferredCli}
-                  className="w-4 h-4"
-                />
-                <span>
-                  {preferredCli === 'claude' ? 'Claude Code' : 
-                   preferredCli === 'cursor' ? 'Cursor Agent' : 
-                   preferredCli === 'qwen' ? 'Qwen Coder' :
-                   preferredCli === 'gemini' ? 'Gemini CLI' :
-                   'Codex CLI'}
-                </span>
-                {selectedModel && (
-                  <>
-                    <span className="text-gray-400 dark:text-gray-600">•</span>
-                    <span className="text-gray-500 dark:text-gray-500">
-                      {selectedModel === 'claude-sonnet-4' ? 'Sonnet 4' : 
-                       selectedModel === 'claude-opus-4.1' ? 'Opus 4.1' :
-                       selectedModel === 'gpt-5' ? 'GPT-5' :
-                       selectedModel === 'qwen3-coder-plus' ? 'Qwen3 Coder Plus' :
-                       selectedModel === 'gemini-2.5-pro' ? 'Gemini 2.5 Pro' :
-                       selectedModel === 'gemini-2.5-flash' ? 'Gemini 2.5 Flash' :
-                       selectedModel}
-                    </span>
-                  </>
-                )}
-              </div>
-            )}
           </div>
-          
-          <div className="ml-auto flex items-center gap-2">
-            {/* Mode Toggle Switch */}
-            <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-full p-0.5">
-              <button
-                type="button"
-                onClick={() => onModeChange?.('act')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
-                  mode === 'act'
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                }`}
-                title="Act Mode: AI can modify code and create/delete files"
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-col text-[11px] text-gray-500 dark:text-gray-400">
+              <span>Assistant</span>
+              <select
+                value={preferredCli}
+                onChange={(e) => {
+                  onCliChange?.(e.target.value);
+                  requestAnimationFrame(() => textareaRef.current?.focus());
+                }}
+                disabled={cliChangeDisabled || !onCliChange}
+                className="mt-1 w-32 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 text-xs py-1 px-2 focus:outline-none focus:ring-2 focus:ring-gray-300 dark:focus:ring-gray-600 disabled:opacity-60"
               >
-                <Wrench className="h-3.5 w-3.5" />
-                <span>Act</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onModeChange?.('chat')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
-                  mode === 'chat'
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                }`}
-                title="Chat Mode: AI provides answers without modifying code"
-              >
-                <MessageSquare className="h-3.5 w-3.5" />
-                <span>Chat</span>
-              </button>
+                {cliOptions.length === 0 && <option value={preferredCli}>{preferredCli}</option>}
+                {cliOptions.map(option => (
+                  <option key={option.id} value={option.id} disabled={!option.available}>
+                    {option.name}{!option.available ? ' (Unavailable)' : ''}
+                  </option>
+                ))}
+              </select>
             </div>
-            
-            
-            {/* Send Button */}
-            <button
-              id="chatinput-send-message-button"
-              type="submit"
-              className="flex size-8 items-center justify-center rounded-full bg-gray-900 dark:bg-white text-white dark:text-gray-900 transition-all duration-150 ease-out disabled:cursor-not-allowed disabled:opacity-50 hover:scale-110 disabled:hover:scale-100"
-              disabled={disabled || (!message.trim() && uploadedImages.length === 0) || isUploading}
-            >
-              <SendHorizontal className="h-4 w-4" />
-            </button>
+            <div className="flex flex-col text-[11px] text-gray-500 dark:text-gray-400">
+              <span>Model</span>
+              <select
+                value={selectedModelValue}
+                onChange={(e) => {
+                  const option = modelOptionsForCli.find(opt => opt.id === e.target.value);
+                  if (option) {
+                    onModelChange?.(option);
+                    requestAnimationFrame(() => textareaRef.current?.focus());
+                  }
+                }}
+                disabled={modelChangeDisabled || !onModelChange || modelOptionsForCli.length === 0}
+                className="mt-1 w-40 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 text-xs py-1 px-2 focus:outline-none focus:ring-2 focus:ring-gray-300 dark:focus:ring-gray-600 disabled:opacity-60"
+              >
+                {modelOptionsForCli.length === 0 && <option value="">No models available</option>}
+                {modelOptionsForCli.length > 0 && selectedModelValue === '' && (
+                  <option value="" disabled>Select model</option>
+                )}
+                {modelOptionsForCli.map(option => (
+                  <option key={option.id} value={option.id} disabled={!option.available}>
+                    {option.name}{!option.available ? ' (Unavailable)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
-      </form>
-      
-      <div className="z-10 h-2 w-full bg-background"></div>
-    </div>
+
+        <div className="relative">
+          <textarea
+            ref={textareaRef}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleKeyDown}
+            className="w-full ring-offset-background placeholder:text-gray-500 dark:placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 resize-none text-[16px] leading-snug md:text-base bg-transparent focus:bg-transparent rounded-md p-2 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700"
+            id="chatinput"
+            placeholder={placeholder}
+            disabled={false}
+            style={{ minHeight: '60px' }}
+          />
+          {isDragOver && projectId && preferredCli !== 'cursor' && preferredCli !== 'qwen' && (
+            <div className="pointer-events-none absolute inset-0 bg-blue-50/90 dark:bg-blue-900/30 rounded-md flex items-center justify-center z-10 border-2 border-dashed border-blue-500">
+              <div className="text-center">
+                <div className="text-2xl mb-2">📸</div>
+                <div className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                  Drop images here
+                </div>
+                <div className="text-xs text-blue-500 dark:text-blue-500 mt-1">
+                  Supports: JPG, PNG, GIF, WEBP
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-full p-0.5">
+            <button
+              type="button"
+              onClick={() => onModeChange?.('act')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                mode === 'act'
+                  ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+              title="Act Mode: AI can modify code and create/delete files"
+            >
+              <Wrench className="h-3.5 w-3.5" />
+              <span>Act</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onModeChange?.('chat')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                mode === 'chat'
+                  ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+              title="Chat Mode: AI provides answers without modifying code"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              <span>Chat</span>
+            </button>
+          </div>
+
+          <button
+            id="chatinput-send-message-button"
+            type="submit"
+            className="flex size-8 items-center justify-center rounded-full bg-gray-900 dark:bg-white text-white dark:text-gray-900 transition-all duration-150 ease-out disabled:cursor-not-allowed disabled:opacity-50 hover:scale-110 disabled:hover:scale-100"
+            disabled={disabled || (!message.trim() && uploadedImages.length === 0) || isUploading}
+          >
+            <SendHorizontal className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </form>
   );
 }
