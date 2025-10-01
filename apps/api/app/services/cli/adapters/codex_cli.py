@@ -7,6 +7,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
+import shlex
 import subprocess
 import uuid
 from datetime import datetime
@@ -25,27 +27,57 @@ class CodexCLI(BaseCLI):
         super().__init__(CLIType.CODEX)
         self.db_session = db_session
         self._session_store = {}  # Fallback for when db_session is not available
+        self._codex_executable: Optional[str] = None
+
+    def _augment_path(self, env: Dict[str, str]) -> Dict[str, str]:
+        extra_paths = []
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            extra_paths.append(os.path.join(appdata, "npm"))
+        localapp = os.environ.get("LOCALAPPDATA")
+        if localapp:
+            extra_paths.append(os.path.join(localapp, "Programs", "nodejs"))
+        path_value = env.get("PATH", "")
+        env["PATH"] = os.pathsep.join([p for p in extra_paths if p] + ([path_value] if path_value else []))
+        return env
+
+    def _locate_codex_executable(self) -> Optional[str]:
+        if self._codex_executable and os.path.exists(self._codex_executable):
+            return self._codex_executable
+
+        candidates = []
+        detected = shutil.which("codex")
+        if detected:
+            candidates.append(detected)
+
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            candidates.append(os.path.join(appdata, "npm", "codex.cmd"))
+            candidates.append(os.path.join(appdata, "npm", "codex.exe"))
+        localapp = os.environ.get("LOCALAPPDATA")
+        if localapp:
+            candidates.append(os.path.join(localapp, "Programs", "nodejs", "codex.cmd"))
+            candidates.append(os.path.join(localapp, "Programs", "nodejs", "codex.exe"))
+
+        for candidate in candidates:
+            if candidate and os.path.exists(candidate):
+                self._codex_executable = candidate
+                return self._codex_executable
+        return None
+
+    def _build_invocation(self, exe: str, *args: str) -> List[str]:
+        if exe.lower().endswith((".cmd", ".bat")) and os.name == "nt":
+            return ["cmd.exe", "/c", exe, *args]
+        return [exe, *args]
 
     async def check_availability(self) -> Dict[str, Any]:
         """Check if Codex CLI is available"""
         print(f"[DEBUG] CodexCLI.check_availability called")
         try:
-            # Check if codex is installed and working
-            print(f"[DEBUG] Running command: codex --version")
-            result = await asyncio.create_subprocess_shell(
-                "codex --version",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await result.communicate()
-
-            print(f"[DEBUG] Command result: returncode={result.returncode}")
-            print(f"[DEBUG] stdout: {stdout.decode().strip()}")
-            print(f"[DEBUG] stderr: {stderr.decode().strip()}")
-
-            if result.returncode != 0:
+            codex_exe = self._locate_codex_executable()
+            if not codex_exe:
                 error_msg = (
-                    f"Codex CLI not installed or not working (returncode: {result.returncode}). stderr: {stderr.decode().strip()}"
+                    "Codex CLI not found on PATH. Install with `npm install -g @openai/codex` and ensure the npm bin directory is on PATH."
                 )
                 print(f"[DEBUG] {error_msg}")
                 return {
@@ -54,7 +86,30 @@ class CodexCLI(BaseCLI):
                     "error": error_msg,
                 }
 
-            print(f"[DEBUG] Codex CLI available!")
+            print(f"[DEBUG] Running command: {codex_exe} --version")
+            env = self._augment_path(os.environ.copy())
+            cmd = self._build_invocation(codex_exe, "--version")
+            result = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=env)
+            stdout, stderr = await result.communicate()
+
+            stdout_text = stdout.decode(errors="ignore").strip()
+            stderr_text = stderr.decode(errors="ignore").strip()
+            print(f"[DEBUG] Command result: returncode={result.returncode}")
+            print(f"[DEBUG] stdout: {stdout_text}")
+            print(f"[DEBUG] stderr: {stderr_text}")
+
+            if result.returncode != 0:
+                error_msg = (
+                    f"Codex CLI not installed or not working (returncode: {result.returncode}). stderr: {stderr_text}"
+                )
+                print(f"[DEBUG] {error_msg}")
+                return {
+                    "available": False,
+                    "configured": False,
+                    "error": error_msg,
+                }
+
+            print(f"[DEBUG] Codex CLI available at {codex_exe}!")
             return {
                 "available": True,
                 "configured": True,
@@ -81,6 +136,10 @@ class CodexCLI(BaseCLI):
         is_initial_prompt: bool = False,
     ) -> AsyncGenerator[Message, None]:
         """Execute Codex CLI with auto-approval and message buffering"""
+
+        codex_exe = self._locate_codex_executable()
+        if not codex_exe:
+            raise RuntimeError("Codex CLI not available. Install with `npm install -g @openai/codex` and ensure it is on PATH.")
 
         # Ensure AGENTS.md exists in project repo with system prompt (essential)
         # If needed, set CLAUDABLE_DISABLE_AGENTS_MD=1 to skip.
@@ -117,11 +176,11 @@ class CodexCLI(BaseCLI):
             "Use exec_command to run, build, and test as needed. "
             "Assume full permissions. Keep taking concrete actions until the task is complete. "
             "Prefer concise status updates over questions. "
-            "Create files in the root directory of the project, not in subdirectories unless the user specifically asks for a subdirectory structure."
+            "Respect the existing project structure (e.g. Next.js app directory) when creating or modifying files. "
+            "In Next.js projects scaffolded by create-next-app, the main UI lives in app/page.tsx and related files under app/. Prioritize editing those files unless the user explicitly requests otherwise."
         )
 
-        cmd = [
-            "codex",
+        base_args = [
             "--cd",
             workdir_abs,
             "proto",
@@ -135,6 +194,10 @@ class CodexCLI(BaseCLI):
             "use_experimental_streamable_shell_tool=true",
             "-c",
             "sandbox_mode=danger-full-access",
+            "-c",
+            "max_turns=20",
+            "-c",
+            "max_thinking_tokens=4096",
             "-c",
             f"instructions={json.dumps(auto_instructions)}",
         ]
@@ -150,7 +213,7 @@ class CodexCLI(BaseCLI):
         if enable_resume:
             stored_rollout_path = await self.get_rollout_path(project_id)
             if stored_rollout_path and os.path.exists(stored_rollout_path):
-                cmd.extend(["-c", f"experimental_resume={stored_rollout_path}"])
+                base_args.extend(["-c", f"experimental_resume={stored_rollout_path}"])
                 ui.info(
                     f"Resuming Codex from stored rollout: {stored_rollout_path}", "Codex"
                 )
@@ -158,7 +221,7 @@ class CodexCLI(BaseCLI):
                 # Try to find latest rollout file for this project
                 latest_rollout = self._find_latest_rollout_for_project(project_id)
                 if latest_rollout and os.path.exists(latest_rollout):
-                    cmd.extend(["-c", f"experimental_resume={latest_rollout}"])
+                    base_args.extend(["-c", f"experimental_resume={latest_rollout}"])
                     ui.info(
                         f"Resuming Codex from latest rollout: {latest_rollout}", "Codex"
                     )
@@ -167,14 +230,22 @@ class CodexCLI(BaseCLI):
         else:
             ui.debug("Codex resume disabled (fresh session)", "Codex")
 
+        command = self._build_invocation(codex_exe, *base_args)
+        env = self._augment_path(os.environ.copy())
+        ui.debug(
+            "Executing Codex command: " + " ".join(shlex.quote(part) for part in command),
+            "Codex",
+        )
+
         try:
             # Start Codex process
             process = await asyncio.create_subprocess_exec(
-                *cmd,
+                *command,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=project_repo_path,
+                env=env,
             )
 
             # Message buffering
@@ -449,16 +520,32 @@ Do not create subdirectories unless specifically requested by the user.
                             "apply_patch", {"changes": changes}
                         )
                         ui.debug(f"Generated summary: {summary}", "Codex")
+
+                        files_modified = []
+                        if isinstance(changes, dict):
+                            files_modified = list(changes.keys())
+                        elif isinstance(changes, list):
+                            for entry in changes:
+                                if isinstance(entry, dict):
+                                    path_value = entry.get("path") or entry.get("file")
+                                    if path_value:
+                                        files_modified.append(path_value)
+
+                        metadata = {
+                            "cli_type": self.cli_type.value,
+                            "tool_name": "Edit",
+                            "changes_made": True,
+                        }
+                        if files_modified:
+                            metadata["files_modified"] = files_modified
+
                         yield Message(
                             id=str(uuid.uuid4()),
                             project_id=project_path,
                             role="assistant",
                             message_type="tool_use",
                             content=summary,
-                            metadata_json={
-                                "cli_type": self.cli_type.value,
-                                "tool_name": "Edit",
-                            },
+                            metadata_json=metadata,
                             session_id=session_id,
                             created_at=datetime.utcnow(),
                         )

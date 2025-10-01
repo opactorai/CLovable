@@ -1202,20 +1202,17 @@ export default function ChatPage({ params }: Params) {
   const previousActiveState = useRef(false);
   
   useEffect(() => {
-    // Task 시작 시 - preview 서버 중지
-    if (hasActiveRequests && previewUrl) {
-      console.log('🔄 Auto-stopping preview server due to active request');
-      stop();
-    }
-    
-    // Task 완료 시 - preview 서버 자동 시작
-    if (previousActiveState.current && !hasActiveRequests && !previewUrl) {
-      console.log('✅ Task completed, auto-starting preview server');
+    if (!hasActiveRequests && !previewUrl && !isStartingPreview) {
+      if (!previousActiveState.current) {
+        console.log('🔄 Preview not running; auto-starting');
+      } else {
+        console.log('✅ Task completed, ensuring preview server is running');
+      }
       start();
     }
-    
+
     previousActiveState.current = hasActiveRequests;
-  }, [hasActiveRequests, previewUrl]);
+  }, [hasActiveRequests, previewUrl, isStartingPreview]);
 
   // Poll for file changes in code view
   useEffect(() => {
