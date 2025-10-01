@@ -2,6 +2,8 @@
 Project Preview Management
 Handles preview server operations for projects
 """
+import os
+
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
@@ -9,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.models.projects import Project as ProjectModel
+from app.core.config import settings
 from app.services.local_runtime import (
     start_preview_process,
     stop_preview_process,
@@ -53,16 +56,31 @@ async def start_preview(
     # Check if preview is already running
     status = preview_status(project_id)
     if status == "running":
-        # Get existing port from somewhere or use default
+        # Return stored preview info if available
         return PreviewStatusResponse(
             running=True,
-            port=None,  # TODO: Store port information
-            url=None,
+            port=project.preview_port,
+            url=project.preview_url,
             process_id=None
         )
     
+    # Ensure project has a repository path
+    repo_path = project.repo_path
+
+    if not repo_path:
+        inferred_path = os.path.join(settings.projects_root, project_id, "repo")
+        if os.path.exists(inferred_path):
+            project.repo_path = inferred_path
+            db.commit()
+            repo_path = inferred_path
+        else:
+            raise HTTPException(
+                status_code=409,
+                detail="Project repository is not initialized yet. Please wait for project setup to complete."
+            )
+
     # Start preview
-    process_name, port = start_preview_process(project_id, project.repo_path, port=body.port)
+    process_name, port = start_preview_process(project_id, repo_path, port=body.port)
     result = {
         "success": True,
         "port": port,
@@ -76,6 +94,7 @@ async def start_preview(
     # Update project status
     project.status = "preview_running"
     project.preview_url = result.get("url")
+    project.preview_port = result.get("port")
     db.commit()
     
     return PreviewStatusResponse(
@@ -117,6 +136,7 @@ async def stop_preview(project_id: str, db: Session = Depends(get_db)):
     # Update project status
     project.status = "idle"
     project.preview_url = None
+    project.preview_port = None
     db.commit()
     
     return {"message": "Preview stopped successfully"}
@@ -134,8 +154,8 @@ async def get_preview_status(project_id: str, db: Session = Depends(get_db)):
     
     return PreviewStatusResponse(
         running=(status == "running"),
-        port=None,  # TODO: Store port information
-        url=None,
+        port=project.preview_port if status == "running" else None,
+        url=project.preview_url if status == "running" else None,
         process_id=None,
         error=None
     )
@@ -158,7 +178,7 @@ async def get_preview_logs_endpoint(
     
     return PreviewLogsResponse(
         logs=logs,
-        running=status.get("running", False)
+        running=(status == "running")
     )
 
 
@@ -180,8 +200,23 @@ async def restart_preview(
         stop_preview_process(project_id)
         # No need to check result as stop_preview_process returns None
     
+    # Ensure project has a repository path
+    repo_path = project.repo_path
+
+    if not repo_path:
+        inferred_path = os.path.join(settings.projects_root, project_id, "repo")
+        if os.path.exists(inferred_path):
+            project.repo_path = inferred_path
+            db.commit()
+            repo_path = inferred_path
+        else:
+            raise HTTPException(
+                status_code=409,
+                detail="Project repository is not initialized yet. Please wait for project setup to complete."
+            )
+
     # Start preview
-    process_name, port = start_preview_process(project_id, project.repo_path, port=body.port)
+    process_name, port = start_preview_process(project_id, repo_path, port=body.port)
     result = {
         "success": True,
         "port": port,
