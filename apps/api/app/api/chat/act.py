@@ -10,7 +10,10 @@ import asyncio
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
+import os
+
 from app.api.deps import get_db
+from app.core.config import settings
 from app.models.projects import Project
 from app.models.messages import Message
 from app.models.sessions import Session as ChatSession
@@ -21,6 +24,29 @@ from app.services.cli.base import CLIType
 from app.services.git_ops import commit_all
 from app.core.websocket.manager import manager
 from app.core.terminal_ui import ui
+def build_project_info(project: Project, db: Session) -> dict:
+    """Ensure project has a usable repo path and collect runtime info."""
+    repo_path = project.repo_path
+
+    if not repo_path or not os.path.exists(repo_path):
+        inferred_path = os.path.join(settings.projects_root, project.id, "repo")
+        if os.path.exists(inferred_path):
+            project.repo_path = inferred_path
+            db.commit()
+            repo_path = inferred_path
+        else:
+            raise HTTPException(
+                status_code=409,
+                detail="Project repository is not initialized yet. Please wait for project setup to complete."
+            )
+
+    return {
+        'id': project.id,
+        'repo_path': repo_path,
+        'preferred_cli': project.preferred_cli or "claude",
+        'fallback_enabled': project.fallback_enabled if project.fallback_enabled is not None else True,
+        'selected_model': project.selected_model
+    }
 
 
 router = APIRouter()
@@ -83,13 +109,7 @@ async def execute_act_instruction(
             db.commit()
         
         # Extract project info to avoid DetachedInstanceError in background task
-        project_info = {
-            'id': project.id,
-            'repo_path': project.repo_path,
-            'preferred_cli': project.preferred_cli or "claude",
-            'fallback_enabled': project.fallback_enabled if project.fallback_enabled is not None else True,
-            'selected_model': project.selected_model
-        }
+        project_info = build_project_info(project, db)
         
         # Execute the task
         return await execute_act_task(
@@ -656,13 +676,7 @@ async def run_act(
         ui.error(f"WebSocket failed: {e}", "ACT API")
     
     # Extract project info to avoid DetachedInstanceError in background task
-    project_info = {
-        'id': project.id,
-        'repo_path': project.repo_path,
-        'preferred_cli': project.preferred_cli or "claude",
-        'fallback_enabled': project.fallback_enabled if project.fallback_enabled is not None else True,
-        'selected_model': project.selected_model
-    }
+    project_info = build_project_info(project, db)
     
     # Add background task
     background_tasks.add_task(
@@ -797,14 +811,8 @@ async def run_chat(
     except Exception as e:
         ui.error(f"WebSocket failed: {e}", "CHAT API")
     
-    # Extract project info to avoid DetachedInstanceError in background task
-    project_info = {
-        'id': project.id,
-        'repo_path': project.repo_path,
-        'preferred_cli': project.preferred_cli or "claude",
-        'fallback_enabled': project.fallback_enabled if project.fallback_enabled is not None else True,
-        'selected_model': project.selected_model
-    }
+    # Extract project info (with validated repo_path) to avoid DetachedInstanceError
+    project_info = build_project_info(project, db)
     
     # Add background task for chat (same as act but with different event type)
     background_tasks.add_task(

@@ -20,6 +20,7 @@ from app.models.project_services import ProjectServiceConnection
 from app.models.sessions import Session as SessionModel
 from app.services.project.initializer import initialize_project
 from app.core.websocket.manager import manager as websocket_manager
+from app.services.local_runtime import get_npm_executable
 
 # Project ID validation regex
 PROJECT_ID_REGEX = re.compile(r"^[a-z0-9-]{3,}$")
@@ -161,8 +162,9 @@ async def install_dependencies_background(project_id: str, project_path: str):
         if os.path.exists(package_json_path):
             print(f"Installing dependencies for project {project_id}...")
 
+            npm_cmd = get_npm_executable()
             process = await asyncio.create_subprocess_exec(
-                "npm", "install",
+                npm_cmd, "install",
                 cwd=project_path,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
