@@ -108,10 +108,12 @@ class ClaudeCodeCLI(BaseCLI):
 
             system_prompt = get_system_prompt()
             ui.debug(f"System prompt loaded: {len(system_prompt)} chars", "Claude SDK")
+            full_system_prompt = system_prompt
 
-            # Windows has an 8191 character command-line limit. The Claude CLI
-            # shells out with the system prompt as an argument, so we trim very
-            # large prompts to avoid "The command line is too long" errors.
+            # Windows has an 8191 character command-line limit when prompts are passed
+            # via command arguments. We'll only trim in fallback scenarios where we
+            # cannot use a temporary settings file.
+            trimmed_system_prompt = system_prompt
             if os.name == "nt":
                 max_prompt_chars = 3000
                 if len(system_prompt) > max_prompt_chars:
@@ -122,16 +124,17 @@ class ClaudeCodeCLI(BaseCLI):
                     ui.warning(
                         (
                             "System prompt exceeded Windows command length; "
-                            "truncated to avoid failures"
+                            "using trimmed prompt fallback if temporary settings fail"
                         ),
                         "Claude SDK",
                     )
-                    system_prompt = trimmed_prompt
+                    trimmed_system_prompt = trimmed_prompt
         except Exception as e:
             ui.error(f"Failed to load system prompt: {e}", "Claude SDK")
-            system_prompt = (
+            full_system_prompt = (
                 "You are Claude Code, an AI coding assistant specialized in building modern web applications."
             )
+            trimmed_system_prompt = full_system_prompt
 
         # Get CLI-specific model name
         cli_model = self._get_cli_model_name(model) or "claude-sonnet-4-20250514"
@@ -183,7 +186,7 @@ node_modules/
             except Exception as settings_error:
                 ui.warning(f"Failed to load existing Claude settings: {settings_error}", "Claude SDK")
         session_settings = dict(base_settings)
-        session_settings["customSystemPrompt"] = system_prompt
+        session_settings["customSystemPrompt"] = full_system_prompt
         try:
             temp_settings = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8")
             json.dump(session_settings, temp_settings, ensure_ascii=False)
@@ -234,7 +237,7 @@ node_modules/
             if session_settings_path:
                 option_kwargs["settings"] = session_settings_path
             else:
-                option_kwargs["system_prompt"] = system_prompt
+                option_kwargs["system_prompt"] = trimmed_system_prompt
             options = ClaudeCodeOptions(**option_kwargs)
         else:
             # For non-initial prompts: include TodoWrite in allowed tools
@@ -272,7 +275,7 @@ node_modules/
             if session_settings_path:
                 option_kwargs["settings"] = session_settings_path
             else:
-                option_kwargs["system_prompt"] = system_prompt
+                option_kwargs["system_prompt"] = trimmed_system_prompt
             options = ClaudeCodeOptions(**option_kwargs)
 
         ui.info(f"Using model: {cli_model}", "Claude SDK")

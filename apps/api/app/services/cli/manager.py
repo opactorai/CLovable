@@ -41,6 +41,50 @@ class UnifiedCLIManager:
             CLIType.GEMINI: GeminiCLI(db_session=db),
         }
 
+    async def _attempt_fallback(
+        self,
+        failed_cli: CLIType,
+        instruction: str,
+        images: Optional[List[Dict[str, Any]]],
+        model: Optional[str],
+        is_initial_prompt: bool,
+    ) -> Optional[Dict[str, Any]]:
+        fallback_type = CLIType.CLAUDE
+        if failed_cli == fallback_type:
+            return None
+
+        fallback_cli = self.cli_adapters.get(fallback_type)
+        if not fallback_cli:
+            ui.warning("Fallback CLI Claude not configured", "CLI")
+            return None
+
+        status = await fallback_cli.check_availability()
+        if not status.get("available") or not status.get("configured"):
+            ui.error(
+                f"Fallback CLI {fallback_type.value} unavailable: {status.get('error', 'unknown error')}",
+                "CLI",
+            )
+            return None
+
+        ui.warning(
+            f"CLI {failed_cli.value} unavailable; falling back to {fallback_type.value}",
+            "CLI",
+        )
+
+        try:
+            result = await self._execute_with_cli(
+                fallback_cli, instruction, images, model, is_initial_prompt
+            )
+            result["fallback_used"] = True
+            result["fallback_from"] = failed_cli.value
+            return result
+        except Exception as error:
+            ui.error(
+                f"Fallback CLI {fallback_type.value} failed: {error}",
+                "CLI",
+            )
+            return None
+
     async def execute_instruction(
         self,
         instruction: str,
@@ -65,17 +109,40 @@ class UnifiedCLIManager:
                     )
                 except Exception as e:
                     ui.error(f"CLI {cli_type.value} failed: {e}", "CLI")
+                    if fallback_enabled:
+                        fallback_result = await self._attempt_fallback(
+                            cli_type, instruction, images, model, is_initial_prompt
+                        )
+                        if fallback_result:
+                            return fallback_result
                     return {
                         "success": False,
                         "error": str(e),
                         "cli_attempted": cli_type.value,
                     }
             else:
+                ui.warning(
+                    f"CLI {cli_type.value} unavailable: {status.get('error', 'CLI not available')}",
+                    "CLI",
+                )
+                if fallback_enabled:
+                    fallback_result = await self._attempt_fallback(
+                        cli_type, instruction, images, model, is_initial_prompt
+                    )
+                    if fallback_result:
+                        return fallback_result
                 return {
                     "success": False,
                     "error": status.get("error", "CLI not available"),
                     "cli_attempted": cli_type.value,
                 }
+
+        if fallback_enabled:
+            fallback_result = await self._attempt_fallback(
+                cli_type, instruction, images, model, is_initial_prompt
+            )
+            if fallback_result:
+                return fallback_result
 
         return {
             "success": False,
@@ -99,6 +166,7 @@ class UnifiedCLIManager:
 
         messages_collected: List[Message] = []
         has_changes = False
+        files_modified: set[str] = set()
         has_error = False  # Track if any error occurred
         result_success: Optional[bool] = None  # Track result event success status
 
@@ -120,6 +188,11 @@ class UnifiedCLIManager:
             if message.message_type == "error":
                 has_error = True
                 ui.error(f"CLI error detected: {message.content[:100]}", "CLI")
+
+            if message.metadata_json:
+                files = message.metadata_json.get("files_modified")
+                if isinstance(files, (list, tuple, set)):
+                    files_modified.update(str(f) for f in files)
 
             # Check for Cursor result event (stored in metadata)
             if message.metadata_json:
