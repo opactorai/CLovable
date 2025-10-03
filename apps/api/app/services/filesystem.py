@@ -10,9 +10,26 @@ def ensure_dir(path: str) -> None:
 
 
 def init_git_repo(repo_path: str) -> None:
-    subprocess.run(["git", "init"], cwd=repo_path, check=True)
-    subprocess.run(["git", "add", "-A"], cwd=repo_path, check=True)
-    subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo_path, check=True)
+    from app.core.terminal_ui import ui
+
+    git_cmd = shutil.which("git.exe" if os.name == "nt" else "git") or shutil.which("git")
+    if not git_cmd:
+        raise Exception(
+            "Git is not available on the PATH. Please install Git and ensure the 'git' command is accessible."
+        )
+
+    try:
+        subprocess.run([git_cmd, "init"], cwd=repo_path, check=True)
+        subprocess.run([git_cmd, "add", "-A"], cwd=repo_path, check=True)
+        subprocess.run([git_cmd, "commit", "-m", "Initial commit"], cwd=repo_path, check=True)
+    except FileNotFoundError as e:
+        ui.error(f"Git command not found: {e}", "Filesystem")
+        raise Exception(
+            "Git command could not be executed. Verify that Git is installed and available in your PATH."
+        )
+    except subprocess.CalledProcessError as e:
+        ui.error(f"Failed to initialize git repository: {e}", "Filesystem")
+        raise Exception("Failed to initialize git repository. See logs for details.")
 
 
 def scaffold_nextjs_minimal(repo_path: str) -> None:
@@ -26,9 +43,18 @@ def scaffold_nextjs_minimal(repo_path: str) -> None:
     project_name = Path(repo_path).name
     
     try:
+        npx_available = any(
+            shutil.which(candidate)
+            for candidate in (["npx", "npx.cmd"] if os.name == "nt" else ["npx"])
+        )
+
+        if not npx_available:
+            raise Exception(
+                "Cannot find 'npx'. Install Node.js 18+ and ensure the 'npx' command is available on your PATH."
+            )
         # Create Next.js app with TypeScript and Tailwind CSS
-        cmd = [
-            "npx", 
+        base_cmd = [
+            "npx",
             "create-next-app@latest", 
             project_name,
             "--typescript",
@@ -40,6 +66,10 @@ def scaffold_nextjs_minimal(repo_path: str) -> None:
             "--skip-install",  # We'll install dependencies later (handled by backend)
             "--yes"            # Auto-accept all prompts
         ]
+        if os.name == "nt":
+            cmd = ["cmd.exe", "/c"] + base_cmd
+        else:
+            cmd = base_cmd
         
         # Set environment for non-interactive mode
         env = os.environ.copy()
@@ -75,16 +105,24 @@ def scaffold_nextjs_minimal(repo_path: str) -> None:
         ui.debug(f"stderr: {e.stderr}", "Filesystem")
         
         # Provide more specific error messages
-        if "EACCES" in str(e.stderr):
+        stderr_lower = (e.stderr or "").lower()
+        if "is not recognized" in stderr_lower or "command not found" in stderr_lower:
+            error_msg = "Cannot execute 'npx'. Install Node.js 18+ and ensure npx is on PATH."
+        elif "eacces" in stderr_lower:
             error_msg = "Permission denied. Please check directory permissions."
-        elif "ENOENT" in str(e.stderr):
+        elif "enoent" in stderr_lower:
             error_msg = "Command not found. Please ensure Node.js and npm are installed."
-        elif "network" in str(e.stderr).lower():
+        elif "network" in stderr_lower:
             error_msg = "Network error. Please check your internet connection."
         else:
             error_msg = f"Failed to create Next.js project: {e.stderr or e.stdout or str(e)}"
-        
+
         raise Exception(error_msg)
+    except FileNotFoundError as e:
+        ui.error(f"create-next-app command not found: {e}", "Filesystem")
+        raise Exception(
+            "Unable to execute create-next-app. Ensure Node.js and npm are installed and 'npx' is available on PATH."
+        )
 
 
 def write_env_file(project_dir: str, content: str) -> None:
