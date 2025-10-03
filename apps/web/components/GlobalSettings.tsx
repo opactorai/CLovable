@@ -40,7 +40,7 @@ const CLI_OPTIONS: CLIOption[] = [
     installCommand: 'npm install -g @anthropic-ai/claude-code',
     enabled: true,
     models: [
-      { id: 'claude-sonnet-4', name: 'Claude Sonnet 4' },
+      { id: 'claude-sonnet-4.5', name: 'Claude Sonnet 4.5' },
       { id: 'claude-opus-4.1', name: 'Claude Opus 4.1' },
     ]
   },
@@ -56,7 +56,7 @@ const CLI_OPTIONS: CLIOption[] = [
     enabled: true,
     models: [
       { id: 'gpt-5', name: 'GPT-5' },
-      { id: 'claude-sonnet-4', name: 'Claude Sonnet 4' },
+      { id: 'claude-sonnet-4.5', name: 'Claude Sonnet 4.5' },
     ]
   },
   {

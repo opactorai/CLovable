@@ -67,7 +67,7 @@ class ClaudeCodeCLI(BaseCLI):
                 "mode": "CLI",
                 "models": self.get_supported_models(),
                 "default_models": [
-                    "claude-sonnet-4-20250514",
+                    "claude-sonnet-4-5-20250929",
                     "claude-opus-4-1-20250805",
                 ],
             }
@@ -137,7 +137,7 @@ class ClaudeCodeCLI(BaseCLI):
             trimmed_system_prompt = full_system_prompt
 
         # Get CLI-specific model name
-        cli_model = self._get_cli_model_name(model) or "claude-sonnet-4-20250514"
+        cli_model = self._get_cli_model_name(model) or "claude-sonnet-4-5-20250929"
 
         # Add project directory structure for initial prompts
         if is_initial_prompt:
