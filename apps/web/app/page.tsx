@@ -52,7 +52,7 @@ export default function HomePage() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [prompt, setPrompt] = useState('');
   const [selectedAssistant, setSelectedAssistant] = useState('claude');
-  const [selectedModel, setSelectedModel] = useState('claude-sonnet-4');
+  const [selectedModel, setSelectedModel] = useState('claude-sonnet-4.5');
   const [usingGlobalDefaults, setUsingGlobalDefaults] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [cliStatus, setCLIStatus] = useState<{ [key: string]: { installed: boolean; checking: boolean; version?: string; error?: string; } }>({});
@@ -61,12 +61,12 @@ export default function HomePage() {
   // Define models for each assistant statically
   const modelsByAssistant = {
     claude: [
-      { id: 'claude-sonnet-4', name: 'Claude Sonnet 4' },
+      { id: 'claude-sonnet-4.5', name: 'Claude Sonnet 4.5' },
       { id: 'claude-opus-4.1', name: 'Claude Opus 4.1' }
     ],
     cursor: [
       { id: 'gpt-5', name: 'GPT-5' },
-      { id: 'claude-sonnet-4', name: 'Claude Sonnet 4' },
+      { id: 'claude-sonnet-4.5', name: 'Claude Sonnet 4.5' },
       { id: 'claude-opus-4.1', name: 'Claude Opus 4.1' }
     ],
     codex: [
@@ -127,7 +127,7 @@ export default function HomePage() {
       setSelectedModel(modelFromGlobal);
     } else {
       // Fallback per CLI
-      if (cli === 'claude') setSelectedModel('claude-sonnet-4');
+      if (cli === 'claude') setSelectedModel('claude-sonnet-4.5');
       else if (cli === 'cursor') setSelectedModel('gpt-5');
       else if (cli === 'codex') setSelectedModel('gpt-5');
       else if (cli === 'qwen') setSelectedModel('qwen3-coder-plus');
@@ -679,7 +679,7 @@ export default function HomePage() {
     
     // Set default model for each assistant
     if (assistant === 'claude') {
-      setSelectedModel('claude-sonnet-4');
+      setSelectedModel('claude-sonnet-4.5');
     } else if (assistant === 'cursor') {
       setSelectedModel('gpt-5');
     } else if (assistant === 'codex') {
@@ -1151,8 +1151,8 @@ export default function HomePage() {
                       if (!found) {
                         if (selectedAssistant === 'cursor' && selectedModel === 'gpt-5') {
                           return 'GPT-5';
-                        } else if (selectedAssistant === 'claude' && selectedModel === 'claude-sonnet-4') {
-                          return 'Claude Sonnet 4';
+                        } else if (selectedAssistant === 'claude' && selectedModel === 'claude-sonnet-4.5') {
+                          return 'Claude Sonnet 4.5';
                         } else if (selectedAssistant === 'codex' && selectedModel === 'gpt-5') {
                           return 'GPT-5';
                         } else if (selectedAssistant === 'qwen' && selectedModel === 'qwen3-coder-plus') {

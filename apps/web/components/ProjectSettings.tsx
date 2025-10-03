@@ -31,7 +31,7 @@ const CLI_OPTIONS: CLIOption[] = [
     installCommand: 'npm install -g @anthropic-ai/claude-code',
     models: [
       { id: 'claude-opus-4.1', name: 'Claude Opus 4.1', description: 'Most intelligent model for complex coding tasks' },
-      { id: 'claude-sonnet-4', name: 'Claude Sonnet 4', description: 'Superior coding with 1M context window' },
+      { id: 'claude-sonnet-4.5', name: 'Claude Sonnet 4.5', description: 'Superior coding with 1M context window' },
     ],
     features: ['Advanced reasoning', 'Code generation', '1M context window']
   },
@@ -46,7 +46,7 @@ const CLI_OPTIONS: CLIOption[] = [
     installCommand: 'Download from cursor.com',
     models: [
       { id: 'gpt-5', name: 'GPT-5', description: 'Best coding model with expert-level intelligence' },
-      { id: 'claude-sonnet-4', name: 'Claude Sonnet 4', description: 'State-of-the-art coding capabilities' },
+      { id: 'claude-sonnet-4.5', name: 'Claude Sonnet 4.5', description: 'State-of-the-art coding capabilities' },
       { id: 'claude-opus-4.1', name: 'Claude Opus 4.1', description: 'Most powerful model for complex tasks' },
     ],
     features: ['IDE integration', 'Frontier models', 'Real-time coding']
@@ -165,7 +165,7 @@ export default function ProjectSettings({ isOpen, onClose, projectId, projectNam
     default_cli: 'claude',
     fallback_enabled: true,
     cli_settings: {
-      claude: { model: 'claude-sonnet-4-20250514', enabled: true },
+      claude: { model: 'claude-sonnet-4-5-20250929', enabled: true },
       cursor: { model: 'cursor-smart', enabled: true },
       qwen: { model: 'qwen3-coder-plus', enabled: true },
       gemini: { model: 'gemini-2.5-pro', enabled: true },

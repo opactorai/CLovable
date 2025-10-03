@@ -124,7 +124,7 @@ async def get_cli_status() -> Dict[str, Any]:
 GLOBAL_SETTINGS = {
     "default_cli": "claude",
     "cli_settings": {
-        "claude": {"model": "claude-sonnet-4"},
+        "claude": {"model": "claude-sonnet-4.5"},
         "cursor": {"model": "gpt-5"}
     }
 }

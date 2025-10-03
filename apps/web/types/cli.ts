@@ -42,7 +42,7 @@ export const CLI_OPTIONS: CLIOption[] = [
     configured: false,
     enabled: true,
     models: [
-      { id: 'claude-sonnet-4', name: 'Claude Sonnet 4' },
+      { id: 'claude-sonnet-4.5', name: 'Claude Sonnet 4.5' },
       { id: 'claude-opus-4.1', name: 'Claude Opus 4.1' },
       { id: 'claude-3.5-sonnet', name: 'Claude 3.5 Sonnet' },
       { id: 'claude-3-opus', name: 'Claude 3 Opus' },
@@ -58,7 +58,7 @@ export const CLI_OPTIONS: CLIOption[] = [
     enabled: true,
     models: [
       { id: 'gpt-5', name: 'GPT-5' },
-      { id: 'claude-sonnet-4', name: 'Claude Sonnet 4' },
+      { id: 'claude-sonnet-4.5', name: 'Claude Sonnet 4.5' },
       { id: 'claude-opus-4.1', name: 'Claude Opus 4.1' },
       { id: 'gpt-4', name: 'GPT-4' },
       { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' }
