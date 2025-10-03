@@ -6,6 +6,7 @@ import time
 import hashlib
 import threading
 import re
+import shutil
 from contextlib import closing
 from typing import Optional, Dict
 from app.core.config import settings
@@ -14,6 +15,35 @@ from app.core.config import settings
 # Global process registry to track running Next.js processes
 _running_processes: Dict[str, subprocess.Popen] = {}
 _process_logs: Dict[str, list] = {}  # Store process logs for each project
+_npm_executable: Optional[str] = None
+
+
+def _get_npm_executable() -> str:
+    """Locate the npm executable respecting platform specifics."""
+    global _npm_executable
+
+    if _npm_executable and os.path.exists(_npm_executable):
+        return _npm_executable
+
+    candidates = [
+        "npm.cmd",
+        "npm.exe",
+        "npm",
+    ] if os.name == "nt" else ["npm"]
+
+    for candidate in candidates:
+        path = shutil.which(candidate)
+        if path:
+            _npm_executable = path
+            return path
+
+    raise RuntimeError(
+        "npm command not found. Install Node.js (includes npm) and ensure it is available on PATH."
+    )
+
+def get_npm_executable() -> str:
+    """Public accessor for npm executable path."""
+    return _get_npm_executable()
 
 def _monitor_preview_errors(project_id: str, process: subprocess.Popen):
     """간단한 Preview 서버 에러 모니터링"""
@@ -308,6 +338,10 @@ def start_preview_process(project_id: str, repo_path: str, port: Optional[int] =
     port = port or find_free_preview_port()
     process_name = f"next-dev-{project_id}"
     
+    # Basic validation of repository path
+    if not repo_path or not isinstance(repo_path, str):
+        raise RuntimeError("Invalid repository path: repo_path is not set")
+    
     # Check if project has package.json
     package_json_path = os.path.join(repo_path, "package.json")
     if not os.path.exists(package_json_path):
@@ -350,11 +384,13 @@ def start_preview_process(project_id: str, repo_path: str, port: Optional[int] =
         except Exception as _e:
             print(f"Warning during npm normalization: {_e}")
 
+        npm_cmd = _get_npm_executable()
+
         # Only install dependencies if needed
         if _should_install_dependencies(repo_path):
             print(f"Installing dependencies for project {project_id} with npm...")
             install_result = subprocess.run(
-                ["npm", "install"],
+                [npm_cmd, "install"],
                 cwd=repo_path,
                 env=env,
                 capture_output=True,
@@ -373,14 +409,20 @@ def start_preview_process(project_id: str, repo_path: str, port: Optional[int] =
         
         # Start development server
         print(f"Starting Next.js dev server for project {project_id} on port {port}...")
-        process = subprocess.Popen(
-            ["npm", "run", "dev", "--", "-p", str(port)],
+        popen_kwargs = dict(
             cwd=repo_path,
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            preexec_fn=os.setsid  # Create new process group for easier cleanup
+        )
+        if os.name == 'posix':
+            popen_kwargs["preexec_fn"] = os.setsid  # Unix: new process group
+        elif os.name == 'nt':
+            popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+        process = subprocess.Popen(
+            [npm_cmd, "run", "dev", "--", "-p", str(port)],
+            **popen_kwargs
         )
         
         # Wait a moment for the server to start
@@ -424,19 +466,26 @@ def stop_preview_process(project_id: str, cleanup_cache: bool = False) -> None:
     
     if process:
         try:
-            # Terminate the entire process group
-            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-            
+            if os.name == 'posix':
+                # Terminate the entire process group (Unix)
+                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+            else:
+                # Graceful terminate on Windows
+                process.terminate()
+
             # Wait for process to terminate gracefully
             try:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 # Force kill if it doesn't terminate gracefully
-                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                if os.name == 'posix':
+                    os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                else:
+                    process.kill()
                 process.wait()
-                
+
             print(f"Stopped Next.js dev server for project {project_id} (PID: {process.pid})")
-            
+
         except (OSError, ProcessLookupError):
             # Process already terminated
             pass
@@ -453,8 +502,9 @@ def stop_preview_process(project_id: str, cleanup_cache: bool = False) -> None:
         try:
             repo_path = os.path.join(settings.projects_root, project_id, "repo")
             if os.path.exists(repo_path):
+                npm_cmd = _get_npm_executable()
                 subprocess.run(
-                    ["npm", "cache", "clean", "--force"],
+                    [npm_cmd, "cache", "clean", "--force"],
                     cwd=repo_path,
                     capture_output=True,
                     timeout=30
@@ -564,33 +614,10 @@ def get_preview_error_logs(project_id: str) -> str:
     if not process:
         return "No preview process running"
     
-    # Get all available output
-    logs = []
-    try:
-        if process.stdout and hasattr(process.stdout, 'read'):
-            # Read all available data
-            import fcntl
-            import os
-            fd = process.stdout.fileno()
-            flags = fcntl.fcntl(fd, fcntl.F_GETFL)
-            fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
-            
-            try:
-                while True:
-                    line = process.stdout.readline()
-                    if not line:
-                        break
-                    logs.append(line)
-            except (IOError, OSError):
-                pass  # No more data available
-    except Exception as e:
-        return f"Error reading logs: {str(e)}"
-    
-    if not logs:
-        return "No error logs available"
-    
-    # Join all logs and return
-    return ''.join(logs)
+    # Prefer aggregated logs collected by the monitor thread for portability
+    if project_id in _process_logs and _process_logs[project_id]:
+        return '\n'.join(_process_logs[project_id])
+    return "No error logs available"
 
 def get_preview_logs(project_id: str, lines: int = 100) -> str:
     """
@@ -603,30 +630,8 @@ def get_preview_logs(project_id: str, lines: int = 100) -> str:
     Returns:
         String containing the logs
     """
-    process = _running_processes.get(project_id)
-    
-    if not process or not process.stdout:
-        return "No logs available - process not running or no output"
-    
-    # Read available output without blocking
-    logs = []
-    try:
-        # Set stdout to non-blocking mode
-        import fcntl
-        import os
-        fd = process.stdout.fileno()
-        flags = fcntl.fcntl(fd, fcntl.F_GETFL)
-        fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
-        
-        # Read available lines
-        while len(logs) < lines:
-            line = process.stdout.readline()
-            if not line:
-                break
-            logs.append(line)
-        
-    except (IOError, OSError):
-        # No more data available
-        pass
-    
-    return ''.join(logs[-lines:]) if logs else "No recent logs available"
+    # Return recent aggregated logs stored in memory
+    logs = _process_logs.get(project_id, [])
+    if not logs:
+        return "No recent logs available"
+    return '\n'.join(logs[-lines:])
