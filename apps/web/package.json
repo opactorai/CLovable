@@ -6,20 +6,24 @@
     "dev": "node scripts/dev.js",
     "dev:no-open": "next dev --turbo",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "vercel-build": "next build"
   },
   "dependencies": {
+    "@vercel/kv": "^1.0.0",
     "clsx": "2.1.1",
     "critters": "^0.0.23",
     "framer-motion": "11.3.31",
     "highlight.js": "11.9.0",
     "lucide-react": "^0.540.0",
-    "next": "14.2.5",
+    "next": "^14.2.33",
     "open": "^10.2.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
+    "react-hot-toast": "^2.6.0",
+    "react-icons": "4.12.0",
     "react-markdown": "^10.1.0",
-    "react-syntax-highlighter": "^15.5.0"
+    "react-syntax-highlighter": "^15.6.6"
   },
   "devDependencies": {
     "@types/node": "24.2.1",

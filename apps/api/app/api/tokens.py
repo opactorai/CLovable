@@ -30,10 +30,13 @@ class TokenResponse(BaseModel):
     created_at: datetime
     last_used: Optional[datetime] = None
 
+ALLOWED_PROVIDERS = ['github', 'supabase', 'vercel', 'openai', 'anthropic', 'google', 'qwen']
+
+
 @router.post("/", response_model=TokenResponse)
 async def create_token(body: TokenCreate, db: Session = Depends(get_db)):
     """Save a new service token"""
-    if body.provider not in ['github', 'supabase', 'vercel']:
+    if body.provider not in ALLOWED_PROVIDERS:
         raise HTTPException(status_code=400, detail="Invalid provider")
     
     if not body.token.strip():
@@ -60,7 +63,7 @@ async def create_token(body: TokenCreate, db: Session = Depends(get_db)):
 @router.get("/{provider}", response_model=TokenResponse)
 async def get_token(provider: str, db: Session = Depends(get_db)):
     """Get service token by provider"""
-    if provider not in ['github', 'supabase', 'vercel']:
+    if provider not in ALLOWED_PROVIDERS:
         raise HTTPException(status_code=400, detail="Invalid provider")
     
     service_token = get_service_token(db, provider)
@@ -88,7 +91,7 @@ async def delete_token(token_id: str, db: Session = Depends(get_db)):
 @router.get("/internal/{provider}/token")
 async def get_token_internal(provider: str, db: Session = Depends(get_db)):
     """Get token for internal use (used by service integrations)"""
-    if provider not in ['github', 'supabase', 'vercel']:
+    if provider not in ALLOWED_PROVIDERS:
         raise HTTPException(status_code=400, detail="Invalid provider")
     
     token = get_token(db, provider)

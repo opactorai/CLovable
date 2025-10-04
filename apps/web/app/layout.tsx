@@ -7,10 +7,29 @@ import Header from '@/components/Header'
 import { Metadata } from 'next'
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_API_BASE || 'https://your-app.vercel.app'),
   title: 'Claudable',
   description: 'Claudable Application',
   icons: {
-    icon: '/Claudable_Icon.png',
+    icon: '/icon.png',
+    shortcut: '/icon.png',
+    apple: '/icon.png',
+  },
+  openGraph: {
+    title: 'Claudable',
+    description: 'Build what you want • Deploy instantly',
+    url: '/',
+    siteName: 'Claudable',
+    images: [
+      { url: '/icon.png', width: 512, height: 512, alt: 'Claudable' },
+    ],
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Claudable',
+    description: 'Build what you want • Deploy instantly',
+    images: ['/icon.png'],
   },
 }
 
