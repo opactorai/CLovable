@@ -76,6 +76,47 @@ class ActResponse(BaseModel):
     message: str
 
 
+def build_conversation_context(
+    project_id: str,
+    conversation_id: str | None,
+    db: Session,
+    *,
+    exclude_message_id: str | None = None,
+    limit: int = 20
+) -> str:
+    """Return a formatted snippet of recent chat history for context transfer."""
+
+    query = db.query(Message).filter(Message.project_id == project_id)
+    if conversation_id:
+        query = query.filter(Message.conversation_id == conversation_id)
+
+    history: list[Message] = []
+    for msg in query.order_by(Message.created_at.desc()):
+        if exclude_message_id and msg.id == exclude_message_id:
+            continue
+        if msg.metadata_json and msg.metadata_json.get("hidden_from_ui"):
+            continue
+        if msg.role not in ("user", "assistant"):
+            continue
+        history.append(msg)
+        if len(history) >= limit:
+            break
+
+    if not history:
+        return ""
+
+    history.reverse()
+    lines = []
+    for msg in history:
+        role = "User" if msg.role == "user" else "Assistant"
+        content = (msg.content or "").strip()
+        if not content:
+            continue
+        lines.append(f"{role}:\n{content}")
+
+    return "\n".join(lines)
+
+
 async def execute_act_instruction(
     project_id: str,
     instruction: str,
@@ -136,7 +177,9 @@ async def execute_chat_task(
     db: Session,
     cli_preference: CLIType = None,
     fallback_enabled: bool = True,
-    is_initial_prompt: bool = False
+    is_initial_prompt: bool = False,
+    _request_id: str | None = None,
+    user_message_id: str | None = None
 ):
     """Background task for executing Chat instructions"""
     try:
@@ -182,8 +225,26 @@ async def execute_chat_task(
         # Qwen Coder does not support images yet; drop them to prevent errors
         safe_images = [] if cli_preference == CLIType.QWEN else images
 
+        instruction_payload = instruction
+        if not is_initial_prompt:
+            context_block = build_conversation_context(
+                project_id,
+                conversation_id,
+                db,
+                exclude_message_id=user_message_id
+            )
+            if context_block:
+                instruction_payload = (
+                    "You are continuing an ongoing coding session. Reference the recent conversation history below before acting.\n"
+                    "<conversation_history>\n"
+                    f"{context_block}\n"
+                    "</conversation_history>\n\n"
+                    "Latest user instruction: \n"
+                    f"{instruction}"
+                )
+
         result = await cli_manager.execute_instruction(
-            instruction=instruction,
+            instruction=instruction_payload,
             cli_type=cli_preference,
             fallback_enabled=project_fallback_enabled,
             images=safe_images,
@@ -291,7 +352,8 @@ async def execute_act_task(
     cli_preference: CLIType = None,
     fallback_enabled: bool = True,
     is_initial_prompt: bool = False,
-    request_id: str = None
+    request_id: str = None,
+    user_message_id: str | None = None
 ):
     """Background task for executing Act instructions"""
     try:
@@ -347,8 +409,26 @@ async def execute_act_task(
         # Qwen Coder does not support images yet; drop them to prevent errors
         safe_images = [] if cli_preference == CLIType.QWEN else images
 
+        instruction_payload = instruction
+        if not is_initial_prompt:
+            context_block = build_conversation_context(
+                project_id,
+                conversation_id,
+                db,
+                exclude_message_id=user_message_id
+            )
+            if context_block:
+                instruction_payload = (
+                    "You are continuing an ongoing coding session. Reference the recent conversation history below before acting.\n"
+                    "<conversation_history>\n"
+                    f"{context_block}\n"
+                    "</conversation_history>\n\n"
+                    "Latest user instruction: \n"
+                    f"{instruction}"
+                )
+
         result = await cli_manager.execute_instruction(
-            instruction=instruction,
+            instruction=instruction_payload,
             cli_type=cli_preference,
             fallback_enabled=project_fallback_enabled,
             images=safe_images,
@@ -690,7 +770,8 @@ async def run_act(
         cli_preference,
         fallback_enabled,
         body.is_initial_prompt,
-        request_id
+        request_id,
+        user_message.id
     )
     return ActResponse(
         session_id=session.id,
@@ -825,7 +906,9 @@ async def run_chat(
         db,
         cli_preference,
         fallback_enabled,
-        body.is_initial_prompt
+        body.is_initial_prompt,
+        None,
+        user_message.id
     )
     
     return ActResponse(
