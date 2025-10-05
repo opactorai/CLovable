@@ -67,12 +67,12 @@ function setupWithUv() {
   // Install requirements with uv
   console.log('  Installing Python packages with uv...');
   try {
-    execSync('uv pip install -r requirements.txt', { cwd: apiDir, stdio: 'ignore' });
+    execSync('uv pip install -r requirements.txt --python .venv/bin/python', { cwd: apiDir, stdio: 'ignore' });
     console.log('  Python packages installed');
   } catch (error) {
     console.error('\nFailed to install Python packages with uv');
     console.error('\nHow to fix:');
-    console.error('   Option 1: cd apps/api && uv pip install -r requirements.txt');
+    console.error('   Option 1: cd apps/api && uv pip install -r requirements.txt --python .venv/bin/python');
     console.error('   Option 2: Remove .venv and try with pip:');
     console.error('             rm -rf apps/api/.venv && npm install');
     process.exit(1);
