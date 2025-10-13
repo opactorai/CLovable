@@ -4,14 +4,14 @@
 <div align="center">
 <h3>Connect CLI Agent • Build what you want • Deploy instantly</h3>
 
-<p>Powered by <a href="https://opactor.ai">OPACTOR</a></p>
+<p>Available as a web service at <a href="https://clink.new">clink.new</a></p>
 </div>
 <p align="center">
 <a href="https://discord.gg/NJNbafHNQC">
 <img src="https://img.shields.io/badge/Discord-Join%20Community-7289da?style=flat&logo=discord&logoColor=white" alt="Join Discord Community">
 </a>
-<a href="https://opactor.ai">
-<img src="https://img.shields.io/badge/OPACTOR-Website-000000?style=flat&logo=web&logoColor=white" alt="OPACTOR Website">
+<a href="https://clink.new">
+<img src="https://img.shields.io/badge/Clink-Web%20Service-000000?style=flat&logo=web&logoColor=white" alt="Clink Web Service">
 </a>
 <a href="https://twitter.com/aaron_xong">
 <img src="https://img.shields.io/badge/Follow-@aaron__xong-000000?style=flat&logo=x&logoColor=white" alt="Follow Aaron">
@@ -24,7 +24,15 @@ Claudable is a powerful Next.js-based web app builder that combines **C**laude C
 
 This open-source project empowers you to build and deploy professional web applications easily for **free**.
 
-How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and describe what you want to build. That's it. There is no additional subscription cost for app builder. 
+How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and describe what you want to build. That's it. There is no additional subscription cost for app builder.
+
+## Try Clink - Web Service
+<div align="center">
+<a href="https://clink.new">
+<img src="./assets/clink.png" alt="Clink - Link, Click, Ship" style="width: 100%; max-width: 800px;">
+</a>
+<p>Don't want to set up locally? Try <a href="https://clink.new"><strong>Clink</strong></a> - the web-based version with instant access!</p>
+</div>
 
 ## Features
 <img src="./assets/gif/Claudable_v2_cc_4_1080p.gif" alt="Claudable Demo" style="width: 100%; max-width: 800px;">
