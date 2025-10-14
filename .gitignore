@@ -90,5 +90,6 @@ docker-data/
 # Project workspaces
 data/
 docs/
+dev-docs/
 
 .claude/
