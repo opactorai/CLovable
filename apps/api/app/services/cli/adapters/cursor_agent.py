@@ -307,7 +307,7 @@ class CursorAgentCLI(BaseCLI):
         # Add model - prioritize parameter over environment variable
         cli_model = self._get_cli_model_name(model) or os.getenv("CURSOR_MODEL")
         if cli_model:
-            cmd.extend(["-m", cli_model])
+            cmd.extend(["--model", cli_model])
             print(f"🔧 [Cursor] Using model: {cli_model}")
 
         project_repo_path = os.path.join(project_path, "repo")
