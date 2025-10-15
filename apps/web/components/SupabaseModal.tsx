@@ -304,6 +304,23 @@ export default function SupabaseModal({ isOpen, onClose, projectId, projectName,
     }
   };
 
+  // Handle ESC key to close modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
@@ -408,10 +425,10 @@ export default function SupabaseModal({ isOpen, onClose, projectId, projectName,
                   <select
                     value={selectedOrgId}
                     onChange={(e) => setSelectedOrgId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 [&>option]:bg-white [&>option]:dark:bg-gray-700 [&>option]:text-gray-900 [&>option]:dark:text-white"
                   >
                     {organizations.map(org => (
-                      <option key={org.id} value={org.id}>
+                      <option key={org.id} value={org.id} className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                         {org.name}
                       </option>
                     ))}
@@ -438,10 +455,10 @@ export default function SupabaseModal({ isOpen, onClose, projectId, projectName,
                   <select
                     value={selectedRegion}
                     onChange={(e) => setSelectedRegion(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 [&>option]:bg-white [&>option]:dark:bg-gray-700 [&>option]:text-gray-900 [&>option]:dark:text-white"
                   >
                     {regions.map(region => (
-                      <option key={region.id} value={region.id}>
+                      <option key={region.id} value={region.id} className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                         {region.name}
                       </option>
                     ))}

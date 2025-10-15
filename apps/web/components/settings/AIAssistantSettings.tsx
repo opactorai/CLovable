@@ -7,9 +7,10 @@ import { useCLI } from '@/hooks/useCLI';
 
 interface AIAssistantSettingsProps {
   projectId: string;
+  onOpenGlobalSettings?: () => void;
 }
 
-export function AIAssistantSettings({ projectId }: AIAssistantSettingsProps) {
+export function AIAssistantSettings({ projectId, onOpenGlobalSettings }: AIAssistantSettingsProps) {
   const { cliOptions, preference } = useCLI({ projectId });
 
   const selectedCLIOption = cliOptions.find(opt => opt.id === preference?.preferred_cli);
@@ -90,7 +91,17 @@ export function AIAssistantSettings({ projectId }: AIAssistantSettingsProps) {
           {/* Note */}
           <div className="text-center">
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              To modify these settings, use Global Settings
+              To modify these settings, use{' '}
+              {onOpenGlobalSettings ? (
+                <button
+                  onClick={onOpenGlobalSettings}
+                  className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 underline decoration-dotted underline-offset-2 transition-colors cursor-pointer"
+                >
+                  Global Settings
+                </button>
+              ) : (
+                <span className="text-gray-700 dark:text-gray-300">Global Settings</span>
+              )}
             </p>
           </div>
         </div>
