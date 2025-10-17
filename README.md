@@ -69,7 +69,7 @@ Claudable supports multiple AI coding agents, giving you the flexibility to choo
 **[Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup)** - Anthropic's advanced AI coding agent with Claude Opus 4.1
 - **Features**: Deep codebase awareness, MCP support, Unix philosophy, direct terminal integration
 - **Context**: Native 256K tokens
-- **Pricing**: Included with ChatGPT Plus/Pro/Team/Edu/Enterprise plans
+- **Pricing**: Included with Claude Pro/Max plans
 - **Installation**:
   ```bash
   npm install -g @anthropic-ai/claude-code
