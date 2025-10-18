@@ -39,6 +39,7 @@ const CLI_ORDER = ['claude', 'cursor', 'codex', 'qwen', 'gemini'] as const;
 const MODEL_FALLBACKS: Record<string, { id: string; name: string; aliases?: string[] }[]> = {
   claude: [
     { id: 'claude-sonnet-4', name: 'Claude Sonnet 4', aliases: ['claude-sonnet-4-20250514', 'sonnet-4'] },
+    { id: 'claude-sonnet-4.5', name: 'Claude Sonnet 4.5', aliases: ['claude-sonnet-4-5-20250929', 'sonnet-4.5'] },
     { id: 'claude-opus-4.1', name: 'Claude Opus 4.1', aliases: ['claude-opus-4-1-20250805', 'opus-4.1'] },
     { id: 'claude-opus-4', name: 'Claude Opus 4', aliases: ['claude-opus-4-20250514', 'opus-4'] },
     { id: 'claude-haiku-3.5', name: 'Claude Haiku 3.5', aliases: ['claude-3-5-haiku-20241022', 'haiku-3.5'] }
