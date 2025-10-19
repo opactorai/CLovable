@@ -70,6 +70,32 @@ class CodexCLI(BaseCLI):
             return ["cmd.exe", "/c", exe, *args]
         return [exe, *args]
 
+    @staticmethod
+    def _extract_event_payload(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Normalize event payloads emitted by different Codex CLI entrypoints.
+
+        Older `proto` streams use {"msg": {...}}, whereas newer `exec --json`
+        streams emit {"event": {...}} or flatten the payload. This helper
+        returns the inner dictionary when available or None when the shape is
+        unknown.
+        """
+        if not isinstance(event, dict):
+            return None
+
+        msg = event.get("msg")
+        if isinstance(msg, dict):
+            return msg
+
+        evt = event.get("event")
+        if isinstance(evt, dict):
+            return evt
+
+        if isinstance(event.get("type"), str):
+            return event
+
+        return None
+
     async def check_availability(self) -> Dict[str, Any]:
         """Check if Codex CLI is available"""
         print(f"[DEBUG] CodexCLI.check_availability called")
@@ -168,7 +194,7 @@ class CodexCLI(BaseCLI):
         if not os.path.exists(project_repo_path):
             project_repo_path = project_path  # Fallback to project_path if repo subdir doesn't exist
 
-        # Build Codex command - --cd must come BEFORE proto subcommand
+        # Build Codex command - --cd must come before the subcommand
         workdir_abs = os.path.abspath(project_repo_path)
         auto_instructions = (
             "Act autonomously without asking for user confirmations. "
@@ -183,24 +209,32 @@ class CodexCLI(BaseCLI):
         base_args = [
             "--cd",
             workdir_abs,
-            "proto",
-            "-c",
-            "include_apply_patch_tool=true",
-            "-c",
-            "include_plan_tool=true",
-            "-c",
-            "tools.web_search_request=true",
-            "-c",
-            "use_experimental_streamable_shell_tool=true",
-            "-c",
-            "sandbox_mode=danger-full-access",
-            "-c",
-            "max_turns=20",
-            "-c",
-            "max_thinking_tokens=4096",
-            "-c",
-            f"instructions={json.dumps(auto_instructions)}",
+            "exec",
+            "--json",
+            "--include-plan-tool",
+            "--skip-git-repo-check",
+            "--dangerously-bypass-approvals-and-sandbox",
         ]
+        if cli_model:
+            base_args.extend(["--model", cli_model])
+        base_args.extend(
+            [
+                "-c",
+                "include_apply_patch_tool=true",
+                "-c",
+                "tools.web_search_request=true",
+                "-c",
+                "use_experimental_streamable_shell_tool=true",
+                "-c",
+                "sandbox_mode=danger-full-access",
+                "-c",
+                "max_turns=20",
+                "-c",
+                "max_thinking_tokens=4096",
+                "-c",
+                f"instructions={json.dumps(auto_instructions)}",
+            ]
+        )
 
         # Optionally resume from a previous rollout. Disabled by default to avoid
         # stale system prompts or behaviors leaking between runs.
@@ -230,7 +264,115 @@ class CodexCLI(BaseCLI):
         else:
             ui.debug("Codex resume disabled (fresh session)", "Codex")
 
+        # Build final instruction (optionally with project context)
+        final_instruction = instruction
+        if is_initial_prompt:
+            try:
+                repo_files: List[str] = []
+                if os.path.exists(project_repo_path):
+                    for item in os.listdir(project_repo_path):
+                        if not item.startswith(".git") and item != "AGENTS.md":
+                            repo_files.append(item)
+
+                if repo_files:
+                    project_context = f"""
+
+<current_project_context>
+Current files in project directory: {', '.join(sorted(repo_files))}
+Work directly in the current directory. Do not create subdirectories unless specifically requested.
+</current_project_context>"""
+                    final_instruction = instruction + project_context
+                    ui.info("Added current project files context to Codex", "Codex")
+                else:
+                    project_context = """
+
+<current_project_context>
+This is an empty project directory. Create files directly in the current working directory.
+Do not create subdirectories unless specifically requested by the user.
+</current_project_context>"""
+                    final_instruction = instruction + project_context
+                    ui.info("Added empty project context to Codex", "Codex")
+            except Exception as e:
+                ui.warning(f"Failed to add project context: {e}", "Codex")
+
+        image_args: List[str] = []
+        temp_image_paths: List[str] = []
+        final_instruction_with_images = final_instruction
+
+        if images:
+            import base64 as _b64
+            import tempfile as _tmp
+
+            def _iget(obj, key, default=None):
+                try:
+                    if isinstance(obj, dict):
+                        return obj.get(key, default)
+                    return getattr(obj, key, default)
+                except Exception:
+                    return default
+
+            image_refs: List[str] = []
+
+            for i, image_data in enumerate(images):
+                local_path = _iget(image_data, "path")
+                if local_path:
+                    ui.info(
+                        f"📷 Image #{i+1} path sent to Codex: {local_path}", "Codex"
+                    )
+                    image_args.extend(["--image", str(local_path)])
+                    image_refs.append(f"[Image #{i+1}]")
+                    continue
+
+                b64_str = _iget(image_data, "base64_data") or _iget(image_data, "data")
+                if not b64_str:
+                    url_val = _iget(image_data, "url")
+                    if isinstance(url_val, str) and url_val.startswith("data:") and "," in url_val:
+                        b64_str = url_val.split(",", 1)[1]
+
+                if not b64_str:
+                    ui.warning(f"Skipping image #{i+1} (no data provided)", "Codex")
+                    continue
+
+                try:
+                    approx_bytes = int(len(b64_str) * 0.75)
+                    if approx_bytes > 10 * 1024 * 1024:
+                        ui.warning("Skipping image >10MB", "Codex")
+                        continue
+
+                    img_bytes = _b64.b64decode(b64_str, validate=False)
+                    mime_type = _iget(image_data, "mime_type") or "image/png"
+                    suffix = ".png"
+                    if "jpeg" in mime_type or "jpg" in mime_type:
+                        suffix = ".jpg"
+                    elif "gif" in mime_type:
+                        suffix = ".gif"
+                    elif "webp" in mime_type:
+                        suffix = ".webp"
+
+                    with _tmp.NamedTemporaryFile(
+                        delete=False, suffix=suffix, dir=project_repo_path
+                    ) as tmpf:
+                        tmpf.write(img_bytes)
+                        temp_image_paths.append(tmpf.name)
+                        image_args.extend(["--image", tmpf.name])
+                        image_refs.append(f"[Image #{i+1}]")
+                        ui.info(
+                            f"📷 Image #{i+1} saved to temporary path: {tmpf.name}",
+                            "Codex",
+                        )
+                except Exception as e:
+                    ui.warning(f"Failed to decode attached image: {e}", "Codex")
+
+            if image_refs:
+                image_context = (
+                    f"\n\nI've attached {len(image_refs)} image(s) for you to analyze: "
+                    f"{', '.join(image_refs)}"
+                )
+                final_instruction_with_images = final_instruction + image_context
+
         command = self._build_invocation(codex_exe, *base_args)
+        if image_args:
+            command.extend(image_args)
         env = self._augment_path(os.environ.copy())
         ui.debug(
             "Executing Codex command: " + " ".join(shlex.quote(part) for part in command),
@@ -250,7 +392,19 @@ class CodexCLI(BaseCLI):
 
             # Message buffering
             agent_message_buffer = ""
-            current_request_id = None
+
+            # Send initial instruction payload via stdin (exec expects prompt on stdin)
+            if process.stdin:
+                try:
+                    payload = final_instruction_with_images
+                    if not payload.endswith("\n"):
+                        payload = payload + "\n"
+                    process.stdin.write(payload.encode("utf-8"))
+                    await process.stdin.drain()
+                    process.stdin.close()
+                    ui.debug("Sent initial instruction to Codex", "Codex")
+                except Exception as e:
+                    ui.warning(f"Failed to send instruction to Codex: {e}", "Codex")
 
             # Wait for session_configured
             session_ready = False
@@ -269,17 +423,43 @@ class CodexCLI(BaseCLI):
 
                 try:
                     event = json.loads(line_str)
-                    if event.get("msg", {}).get("type") == "session_configured":
-                        session_info = event["msg"]
-                        codex_session_id = session_info.get("session_id")
+                    event_payload = self._extract_event_payload(event)
+                    if not event_payload:
+                        timeout_count += 1
+                        continue
+                    event_type = event_payload.get("type")
+                    if event_type == "error":
+                        error_payload = event_payload.get("message") or event_payload
+                        ui.error(f"Codex reported startup error: {error_payload}", "Codex")
+                        raise RuntimeError(f"Codex startup error: {error_payload}")
+
+                    if event_type or event_payload:
+                        session_info = event_payload
+
+                        codex_session_id = (
+                            session_info.get("session_id")
+                            or session_info.get("thread_id")
+                            or session_info.get("turn_id")
+                        )
                         if codex_session_id:
                             await self.set_session_id(project_id, codex_session_id)
 
                         ui.success(
-                            f"Codex session configured: {codex_session_id}", "Codex"
+                            f"Codex session ready ({event_type or 'startup_event'}): {codex_session_id}",
+                            "Codex",
                         )
 
-                        # Send init message (hidden)
+                        # Send init message (hidden) so the UI knows Codex is live
+                        init_metadata = {
+                            "cli_type": self.cli_type.value,
+                            "hidden_from_ui": True,
+                            "event_type": event_type or "startup_event",
+                        }
+                        if codex_session_id:
+                            init_metadata["session_ref"] = codex_session_id
+                        if session_info.get("model"):
+                            init_metadata["model"] = session_info["model"]
+
                         yield Message(
                             id=str(uuid.uuid4()),
                             project_id=project_path,
@@ -288,16 +468,10 @@ class CodexCLI(BaseCLI):
                             content=(
                                 f"🚀 Codex initialized (Model: {session_info.get('model', cli_model)})"
                             ),
-                            metadata_json={
-                                "cli_type": self.cli_type.value,
-                                "hidden_from_ui": True,
-                            },
+                            metadata_json=init_metadata,
                             session_id=session_id,
                             created_at=datetime.utcnow(),
                         )
-
-                        # After initialization, set approval policy to auto-approve
-                        await self._set_codex_approval_policy(process, session_id or "")
 
                         session_ready = True
                         break
@@ -307,138 +481,11 @@ class CodexCLI(BaseCLI):
 
             if not session_ready:
                 ui.error("Failed to initialize Codex session", "Codex")
-                return
-
-            # Send user input
-            request_id = f"msg_{uuid.uuid4().hex[:8]}"
-            current_request_id = request_id
-
-            # Add project directory context for initial prompts
-            final_instruction = instruction
-            if is_initial_prompt:
                 try:
-                    # Get actual files in the project repo directory
-                    repo_files: List[str] = []
-                    if os.path.exists(project_repo_path):
-                        for item in os.listdir(project_repo_path):
-                            if not item.startswith(".git") and item != "AGENTS.md":
-                                repo_files.append(item)
-
-                    if repo_files:
-                        project_context = f"""
-
-<current_project_context>
-Current files in project directory: {', '.join(sorted(repo_files))}
-Work directly in the current directory. Do not create subdirectories unless specifically requested.
-</current_project_context>"""
-                        final_instruction = instruction + project_context
-                        ui.info(
-                            f"Added current project files context to Codex", "Codex"
-                        )
-                    else:
-                        project_context = """
-
-<current_project_context>
-This is an empty project directory. Create files directly in the current working directory.
-Do not create subdirectories unless specifically requested by the user.
-</current_project_context>"""
-                        final_instruction = instruction + project_context
-                        ui.info(f"Added empty project context to Codex", "Codex")
-                except Exception as e:
-                    ui.warning(f"Failed to add project context: {e}", "Codex")
-
-            # Build instruction with image references
-            if images:
-                image_refs = []
-                for i in range(len(images)):
-                    image_refs.append(f"[Image #{i+1}]")
-                image_context = (
-                    f"\n\nI've attached {len(images)} image(s) for you to analyze: {', '.join(image_refs)}"
-                )
-                final_instruction_with_images = final_instruction + image_context
-            else:
-                final_instruction_with_images = final_instruction
-
-            items: List[Dict[str, Any]] = [{"type": "text", "text": final_instruction_with_images}]
-
-            # Add images if provided
-            if images:
-                import base64 as _b64
-                import tempfile as _tmp
-
-                def _iget(obj, key, default=None):
-                    try:
-                        if isinstance(obj, dict):
-                            return obj.get(key, default)
-                        return getattr(obj, key, default)
-                    except Exception:
-                        return default
-
-                for i, image_data in enumerate(images):
-                    # Support direct local path
-                    local_path = _iget(image_data, "path")
-                    if local_path:
-                        ui.info(
-                            f"📷 Image #{i+1} path sent to Codex: {local_path}", "Codex"
-                        )
-                        items.append({"type": "local_image", "path": str(local_path)})
-                        continue
-
-                    # Support base64 via either 'base64_data' or legacy 'data'
-                    b64_str = _iget(image_data, "base64_data") or _iget(image_data, "data")
-                    # Or a data URL in 'url'
-                    if not b64_str:
-                        url_val = _iget(image_data, "url")
-                        if isinstance(url_val, str) and url_val.startswith("data:") and "," in url_val:
-                            b64_str = url_val.split(",", 1)[1]
-
-                    if b64_str:
-                        try:
-                            # Optional size guard (~3/4 of base64 length)
-                            approx_bytes = int(len(b64_str) * 0.75)
-                            if approx_bytes > 10 * 1024 * 1024:
-                                ui.warning("Skipping image >10MB", "Codex")
-                                continue
-
-                            img_bytes = _b64.b64decode(b64_str, validate=False)
-                            mime_type = _iget(image_data, "mime_type") or "image/png"
-                            suffix = ".png"
-                            if "jpeg" in mime_type or "jpg" in mime_type:
-                                suffix = ".jpg"
-                            elif "gif" in mime_type:
-                                suffix = ".gif"
-                            elif "webp" in mime_type:
-                                suffix = ".webp"
-
-                            with _tmp.NamedTemporaryFile(delete=False, suffix=suffix) as tmpf:
-                                tmpf.write(img_bytes)
-                                ui.info(
-                                    f"📷 Image #{i+1} saved to temporary path: {tmpf.name}",
-                                    "Codex",
-                                )
-                                items.append({"type": "local_image", "path": tmpf.name})
-                        except Exception as e:
-                            ui.warning(f"Failed to decode attached image: {e}", "Codex")
-
-            # Send to Codex
-            user_input = {"id": request_id, "op": {"type": "user_input", "items": items}}
-
-            if process.stdin:
-                json_str = json.dumps(user_input)
-                process.stdin.write(json_str.encode("utf-8") + b"\n")
-                await process.stdin.drain()
-
-                # Log items being sent to agent
-                if images and len(items) > 1:
-                    ui.debug(
-                        f"Sending {len(items)} items to Codex (1 text + {len(items)-1} images)",
-                        "Codex",
-                    )
-                    for item in items:
-                        if item.get("type") == "local_image":
-                            ui.debug(f"  - Image: {item.get('path')}", "Codex")
-
-                ui.debug(f"Sent user input: {request_id}", "Codex")
+                    await process.wait()
+                except Exception:
+                    pass
+                return
 
             # Process streaming events
             async for line in process.stdout:
@@ -448,23 +495,107 @@ Do not create subdirectories unless specifically requested by the user.
 
                 try:
                     event = json.loads(line_str)
-                    event_id = event.get("id", "")
-                    msg_type = event.get("msg", {}).get("type")
+                    event_payload = self._extract_event_payload(event)
+                    if not event_payload:
+                        continue
+                    msg_type = event_payload.get("type")
+                    if not msg_type:
+                        continue
 
-                    # Only process events for current request (exclude system events)
-                    if (
-                        current_request_id
-                        and event_id != current_request_id
-                        and msg_type not in [
-                            "session_configured",
-                            "mcp_list_tools_response",
-                        ]
-                    ):
+                    if msg_type in [
+                        "session_configured",
+                        "mcp_list_tools_response",
+                        "thread.started",
+                        "turn.started",
+                    ]:
+                        continue
+
+                    # Handle new Codex item.* events (v0.47+)
+                    if msg_type.startswith("item."):
+                        item_payload = event_payload.get("item")
+                        if not isinstance(item_payload, dict):
+                            continue
+
+                        item_type = str(item_payload.get("type", "")).lower()
+                        item_status = str(item_payload.get("status", "")).lower()
+
+                        if item_type == "agent_message":
+                            text = item_payload.get("text")
+                            if isinstance(text, str) and text.strip():
+                                yield Message(
+                                    id=str(uuid.uuid4()),
+                                    project_id=project_path,
+                                    role="assistant",
+                                    message_type="chat",
+                                    content=text,
+                                    metadata_json={"cli_type": self.cli_type.value},
+                                    session_id=session_id,
+                                    created_at=datetime.utcnow(),
+                                )
+                            continue
+
+                        if item_type == "command_execution":
+                            command_value = item_payload.get("command")
+                            if isinstance(command_value, list):
+                                cmd_str = " ".join(command_value)
+                            else:
+                                cmd_str = str(command_value) if command_value else ""
+
+                            if cmd_str and msg_type == "item.started":
+                                summary = self._create_tool_summary(
+                                    "exec_command", {"command": cmd_str}
+                                )
+                                yield Message(
+                                    id=str(uuid.uuid4()),
+                                    project_id=project_path,
+                                    role="assistant",
+                                    message_type="tool_use",
+                                    content=summary,
+                                    metadata_json={
+                                        "cli_type": self.cli_type.value,
+                                        "tool_name": "Bash",
+                                    },
+                                    session_id=session_id,
+                                    created_at=datetime.utcnow(),
+                                )
+                            elif cmd_str and msg_type == "item.completed":
+                                exit_code = item_payload.get("exit_code")
+                                aggregated_output = item_payload.get(
+                                    "aggregated_output"
+                                )
+                                summary = self._create_tool_summary(
+                                    "exec_command_end",
+                                    {
+                                        "command": cmd_str,
+                                        "exit_code": exit_code,
+                                        "status": item_status or "completed",
+                                    },
+                                )
+                                if aggregated_output:
+                                    summary += "\n\n" + aggregated_output.strip()
+                                yield Message(
+                                    id=str(uuid.uuid4()),
+                                    project_id=project_path,
+                                    role="assistant",
+                                    message_type="tool_result",
+                                    content=summary,
+                                    metadata_json={
+                                        "cli_type": self.cli_type.value,
+                                        "tool_name": "Bash",
+                                        "exit_code": exit_code,
+                                        "status": item_status or "completed",
+                                    },
+                                    session_id=session_id,
+                                    created_at=datetime.utcnow(),
+                                )
+                            continue
+
+                        # Skip other item.* types (reasoning, plan, etc.) for now
                         continue
 
                     # Buffer agent message deltas
                     if msg_type == "agent_message_delta":
-                        agent_message_buffer += event["msg"]["delta"]
+                        agent_message_buffer += event_payload.get("delta", "")
                         continue
 
                     # Only flush buffered assistant text on final assistant message or at task completion.
@@ -473,7 +604,7 @@ Do not create subdirectories unless specifically requested by the user.
                         # If Codex sent a final message without deltas, use it directly
                         if not agent_message_buffer:
                             try:
-                                final_msg = event.get("msg", {}).get("message")
+                                final_msg = event_payload.get("message")
                                 if isinstance(final_msg, str) and final_msg:
                                     agent_message_buffer = final_msg
                             except Exception:
@@ -495,7 +626,11 @@ Do not create subdirectories unless specifically requested by the user.
 
                     # Handle specific events
                     if msg_type == "exec_command_begin":
-                        cmd_str = " ".join(event["msg"]["command"])
+                        command_parts = event_payload.get("command", [])
+                        if isinstance(command_parts, list):
+                            cmd_str = " ".join(command_parts)
+                        else:
+                            cmd_str = str(command_parts)
                         summary = self._create_tool_summary(
                             "exec_command", {"command": cmd_str}
                         )
@@ -514,7 +649,7 @@ Do not create subdirectories unless specifically requested by the user.
                         )
 
                     elif msg_type == "patch_apply_begin":
-                        changes = event["msg"].get("changes", {})
+                        changes = event_payload.get("changes", {})
                         ui.debug(f"Patch apply begin - changes: {changes}", "Codex")
                         summary = self._create_tool_summary(
                             "apply_patch", {"changes": changes}
@@ -551,7 +686,7 @@ Do not create subdirectories unless specifically requested by the user.
                         )
 
                     elif msg_type == "web_search_begin":
-                        query = event["msg"].get("query", "")
+                        query = event_payload.get("query", "")
                         summary = self._create_tool_summary(
                             "web_search", {"query": query}
                         )
@@ -570,7 +705,7 @@ Do not create subdirectories unless specifically requested by the user.
                         )
 
                     elif msg_type == "mcp_tool_call_begin":
-                        inv = event["msg"].get("invocation", {})
+                        inv = event_payload.get("invocation", {})
                         server = inv.get("server")
                         tool = inv.get("tool")
                         summary = self._create_tool_summary(
@@ -635,7 +770,7 @@ Do not create subdirectories unless specifically requested by the user.
                         break
 
                     elif msg_type == "error":
-                        error_msg = event["msg"]["message"]
+                        error_msg = event_payload.get("message", "Unknown Codex error")
                         ui.error(f"Codex error: {error_msg}", "Codex")
                         yield Message(
                             id=str(uuid.uuid4()),
@@ -666,18 +801,6 @@ Do not create subdirectories unless specifically requested by the user.
                     created_at=datetime.utcnow(),
                 )
 
-            # Clean shutdown
-            if process.stdin:
-                try:
-                    shutdown_cmd = {"id": "shutdown", "op": {"type": "shutdown"}}
-                    json_str = json.dumps(shutdown_cmd)
-                    process.stdin.write(json_str.encode("utf-8") + b"\n")
-                    await process.stdin.drain()
-                    process.stdin.close()
-                    ui.debug("Sent shutdown command to Codex", "Codex")
-                except Exception as e:
-                    ui.debug(f"Failed to send shutdown: {e}", "Codex")
-
             await process.wait()
 
         except FileNotFoundError:
@@ -702,6 +825,14 @@ Do not create subdirectories unless specifically requested by the user.
                 session_id=session_id,
                 created_at=datetime.utcnow(),
             )
+        finally:
+            for tmp_path in temp_image_paths:
+                try:
+                    if tmp_path and os.path.exists(tmp_path):
+                        os.unlink(tmp_path)
+                        ui.debug(f"Removed temporary image: {tmp_path}", "Codex")
+                except Exception:
+                    ui.debug(f"Failed to remove temporary image: {tmp_path}", "Codex")
 
     async def get_session_id(self, project_id: str) -> Optional[str]:
         """Get stored session ID for project"""
