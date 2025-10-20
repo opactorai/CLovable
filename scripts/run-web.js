@@ -1,48 +1,112 @@
 #!/usr/bin/env node
 
+/**
+ * Next.js development server launcher with automatic port management.
+ * Expects scripts/setup-env.js to have been executed beforehand.
+ */
+
 const { spawn } = require('child_process');
 const path = require('path');
 const os = require('os');
-require('dotenv').config();
+const dotenv = require('dotenv');
+const { ensureEnvironment } = require('./setup-env');
 
-const webDir = path.join(__dirname, '..', 'apps', 'web');
+const rootDir = path.join(__dirname, '..');
 const isWindows = os.platform() === 'win32';
 
-// Get Web port from environment or use default
-const webPort = process.env.WEB_PORT || 3000;
+dotenv.config({ path: path.join(rootDir, '.env') });
+dotenv.config({ path: path.join(rootDir, '.env.local') });
 
-// Start the Web server
-console.log(`Starting Web server on http://localhost:${webPort}...`);
+function parseCliArgs(argv) {
+  const passthrough = [];
+  let preferredPort;
 
-const webProcess = spawn(
-  'npm',
-  ['run', 'dev', '--', '--port', webPort.toString()],
-  { 
-    cwd: webDir,
-    stdio: 'inherit',
-    shell: isWindows
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+
+    if (arg === '--port' || arg === '-p') {
+      const value = argv[i + 1];
+      if (value && !value.startsWith('-')) {
+        const parsed = Number.parseInt(value, 10);
+        if (!Number.isNaN(parsed)) {
+          preferredPort = parsed;
+        }
+        i += 1;
+        continue;
+      }
+    } else if (arg.startsWith('--port=')) {
+      const value = arg.slice('--port='.length);
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isNaN(parsed)) {
+        preferredPort = parsed;
+      }
+      continue;
+    } else if (arg.startsWith('-p=')) {
+      const value = arg.slice('-p='.length);
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isNaN(parsed)) {
+        preferredPort = parsed;
+      }
+      continue;
+    }
+
+    passthrough.push(arg);
   }
-);
 
-webProcess.on('error', (error) => {
-  console.error('\nFailed to start Web server');
-  console.error('Error:', error.message);
-  console.error('\nHow to fix:');
-  console.error('   1. Check if Node modules are installed:');
-  console.error('      ls apps/web/node_modules');
-  console.error('\n   2. If not, run:');
-  console.error('      npm install');
-  console.error('\n   3. Check if port is available:');
-  console.error(`      lsof -i :${webPort} (Mac/Linux)`);
-  console.error(`      netstat -ano | findstr :${webPort} (Windows)`);
-  console.error('\n   4. Check .env.local file:');
-  console.error('      cat apps/web/.env.local');
+  return { preferredPort, passthrough };
+}
+
+async function start() {
+  const argv = process.argv.slice(2);
+  const { preferredPort, passthrough } = parseCliArgs(argv);
+
+  const { port, url } = await ensureEnvironment({
+    preferredPort,
+  });
+
+  const resolvedPort = port;
+  const resolvedUrl = url;
+
+  process.env.PORT = resolvedPort.toString();
+  process.env.WEB_PORT = resolvedPort.toString();
+  process.env.NEXT_PUBLIC_APP_URL = resolvedUrl;
+
+  console.log(`🚀 Starting Next.js dev server on ${resolvedUrl}`);
+
+  const child = spawn(
+    'npx',
+    ['next', 'dev', '--port', resolvedPort.toString(), ...passthrough],
+    {
+      cwd: rootDir,
+      stdio: 'inherit',
+      shell: isWindows,
+      env: {
+        ...process.env,
+        PORT: resolvedPort.toString(),
+        WEB_PORT: resolvedPort.toString(),
+        NEXT_PUBLIC_APP_URL: resolvedUrl,
+        BROWSER: process.env.BROWSER || 'none',
+        NEXT_TELEMETRY_DISABLED: '1',
+      },
+    }
+  );
+
+  child.on('error', (error) => {
+    console.error('\n❌ Failed to start Next.js dev server');
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+
+  child.on('exit', (code) => {
+    if (typeof code === 'number' && code !== 0) {
+      console.error(`\n❌ Next.js dev server exited with code ${code}`);
+      process.exit(code);
+    }
+  });
+}
+
+start().catch((error) => {
+  console.error('\n❌ Failed to launch dev server');
+  console.error(error instanceof Error ? error.message : error);
   process.exit(1);
-});
-
-webProcess.on('exit', (code) => {
-  if (code !== 0 && code !== null) {
-    console.error(`Web server exited with code ${code}`);
-    process.exit(code);
-  }
 });
