@@ -38,7 +38,8 @@ const assistantBrandColors: { [key: string]: string } = {
   cursor: '#6B7280',
   qwen: '#A855F7',
   gemini: '#4285F4',
-  codex: '#000000'
+  codex: '#000000',
+  iflow: '#00A6ED'
 };
 
 export default function HomePage() {
@@ -78,6 +79,12 @@ export default function HomePage() {
     gemini: [
       { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
       { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' }
+    ],
+    iflow: [
+      { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus' },
+      { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus' },
+      { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus' },
+      { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus' }
     ]
   };
   
@@ -688,6 +695,8 @@ export default function HomePage() {
       setSelectedModel('qwen3-coder-plus');
     } else if (assistant === 'gemini') {
       setSelectedModel('gemini-2.5-pro');
+    } else if (assistant === 'iflow') {
+      setSelectedModel('qwen3-coder-plus');
     }
     
     setShowAssistantDropdown(false);
@@ -705,7 +714,8 @@ export default function HomePage() {
     { id: 'codex', name: 'Codex CLI', icon: '/oai.png' },
     { id: 'cursor', name: 'Cursor Agent', icon: '/cursor.png' },
     { id: 'gemini', name: 'Gemini CLI', icon: '/gemini.png' },
-    { id: 'qwen', name: 'Qwen Coder', icon: '/qwen.png' }
+    { id: 'qwen', name: 'Qwen Coder', icon: '/qwen.png' },
+    { id: 'iflow', name: 'iFlow CLI', icon: '/iflow.png' }
   ];
 
   return (

@@ -4,7 +4,7 @@ import json
 from typing import Dict, Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from app.services.cli.unified_manager import CursorAgentCLI
+from app.services.cli.unified_manager import CursorAgentCLI, IFlowCLI
 from app.services.cli.base import CLIType
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -20,6 +20,11 @@ CLI_OPTIONS = [
         "id": "cursor",
         "name": "Cursor Agent",
         "check_command": ["cursor-agent", "--version"]
+    },
+    {
+        "id": "iflow",
+        "name": "iFlow CLI",
+        "check_command": ["iflow", "--version"]
     },
 ]
 
@@ -84,13 +89,14 @@ async def get_cli_status() -> Dict[str, Any]:
     results = {}
     
     # 새로운 UnifiedCLIManager의 CLI 인스턴스 사용
-    from app.services.cli.unified_manager import ClaudeCodeCLI, CursorAgentCLI, CodexCLI, QwenCLI, GeminiCLI
+    from app.services.cli.unified_manager import ClaudeCodeCLI, CursorAgentCLI, CodexCLI, QwenCLI, GeminiCLI, IFlowCLI
     cli_instances = {
         "claude": ClaudeCodeCLI(),
         "cursor": CursorAgentCLI(),
         "codex": CodexCLI(),
         "qwen": QwenCLI(),
-        "gemini": GeminiCLI()
+        "gemini": GeminiCLI(),
+        "iflow": IFlowCLI()
     }
     
     # 모든 CLI를 병렬로 확인
@@ -125,7 +131,11 @@ GLOBAL_SETTINGS = {
     "default_cli": "claude",
     "cli_settings": {
         "claude": {"model": "claude-sonnet-4.5"},
-        "cursor": {"model": "gpt-5"}
+        "cursor": {"model": "gpt-5"},
+        "iflow": {"model": "qwen3-coder-plus"},
+        "qwen": {"model": "qwen3-coder-plus"},
+        "gemini": {"model": "gemini-2.5-pro"},
+        "codex": {"model": "gpt-5"}
     }
 }
 

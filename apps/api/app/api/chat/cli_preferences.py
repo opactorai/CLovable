@@ -40,6 +40,7 @@ class AllCLIStatusResponse(BaseModel):
     codex: CLIStatusResponse
     qwen: CLIStatusResponse
     gemini: CLIStatusResponse
+    iflow: CLIStatusResponse
     preferred_cli: str
 
 
@@ -193,6 +194,7 @@ async def get_all_cli_status(project_id: str, db: Session = Depends(get_db)):
     codex_status = await manager.check_cli_status(CLIType.CODEX)
     qwen_status = await manager.check_cli_status(CLIType.QWEN)
     gemini_status = await manager.check_cli_status(CLIType.GEMINI)
+    iflow_status = await manager.check_cli_status(CLIType.IFLOW)
 
     return AllCLIStatusResponse(
         claude=to_resp("claude", claude_status),
@@ -200,5 +202,6 @@ async def get_all_cli_status(project_id: str, db: Session = Depends(get_db)):
         codex=to_resp("codex", codex_status),
         qwen=to_resp("qwen", qwen_status),
         gemini=to_resp("gemini", gemini_status),
+        iflow=to_resp("iflow", iflow_status),
         preferred_cli=preferred_cli,
     )

@@ -99,6 +99,22 @@ MODEL_MAPPING: Dict[str, Dict[str, str]] = {
         "gemini-2.5-pro": "gemini-2.5-pro",
         "gemini-2.5-flash": "gemini-2.5-flash",
     },
+    "iflow": {
+        # Unified name → provider mapping
+        "qwen3-coder-plus": "qwen3-coder-plus",
+        "qwen3-max": "qwen3-max",
+        "qwen3-coder": "qwen3-coder",
+        "qwen3-vl-plus": "qwen3-vl-plus",
+        "kimi-k2-0905": "kimi-k2-0905",
+        "kimi-k2": "kimi-k2",
+        "glm-4.6": "glm-4.6",
+        "glm-4.5": "glm-4.5",
+        # Allow direct
+        "deepseek-v3.2": "deepseek-v3.2",
+        "deepseek-v3.1": "deepseek-v3.1",
+        "deepseek-r1": "deepseek-r1",
+        "deepseek-v3": "deepseek-v3",
+    },
 }
 
 
@@ -110,6 +126,7 @@ class CLIType(str, Enum):
     CODEX = "codex"
     QWEN = "qwen"
     GEMINI = "gemini"
+    IFLOW = "iflow"
 
 
 class BaseCLI(ABC):

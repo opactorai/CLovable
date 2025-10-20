@@ -100,5 +100,20 @@ export const CLI_OPTIONS: CLIOption[] = [
     models: [
       { id: 'gpt-5', name: 'GPT-5' }
     ]
+  },
+  {
+    id: 'iflow',
+    name: 'iFlow',
+    description: 'Free AI models including Qwen3 Coder, Kimi K2, GLM-4.5, and DeepSeek-V3.1',
+    icon: '/iflow.png',
+    available: true,
+    configured: false,
+    enabled: true,
+    models: [
+      { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus' },
+      { id: 'kimi-k2', name: 'Kimi K2' },
+      { id: 'glm-4.5', name: 'GLM-4.5' },
+      { id: 'deepseek-v3.1', name: 'DeepSeek-V3.1' }
+    ]
   }
 ];

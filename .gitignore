@@ -92,3 +92,6 @@ data/
 docs/
 
 .claude/
+.specify/
+.iflow/
+IFLOW.md

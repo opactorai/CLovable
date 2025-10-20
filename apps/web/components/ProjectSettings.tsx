@@ -95,6 +95,20 @@ const CLI_OPTIONS: CLIOption[] = [
       { id: 'o3-mini', name: 'OpenAI o3-mini', description: 'Cost-efficient reasoning model for coding, math, and science' },
     ],
     features: ['Built-in thinking', '1M context tokens', 'Open-source CLI']
+  },
+  {
+    id: 'iflow',
+    name: 'iFlow CLI',
+    icon: '🌊',
+    description: 'iFlow CLI with Qwen3 Coder',
+    color: 'from-blue-500 to-cyan-600',
+    checkCommand: 'iflow --version',
+    downloadUrl: 'https://github.com/iflow-ai/iflow-cli',
+    installCommand: 'npm install -g iflow-cli',
+    models: [
+      { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus', description: 'Agentic coding model (ACP)' },
+    ],
+    features: ['Agentic coding', '1M context window', 'Open-source CLI']
   }
 ];
 
@@ -170,6 +184,7 @@ export default function ProjectSettings({ isOpen, onClose, projectId, projectNam
       qwen: { model: 'qwen3-coder-plus', enabled: true },
       gemini: { model: 'gemini-2.5-pro', enabled: true },
       codex: { model: 'gpt-4-turbo', enabled: true },
+      iflow: { model: 'qwen3-coder-plus', enabled: true },
     }
   });
   const [cliStatus, setCLIStatus] = useState<CLIStatus>({});
@@ -268,7 +283,8 @@ export default function ProjectSettings({ isOpen, onClose, projectId, projectNam
             cursor: { model: 'gpt-5', enabled: false },
             qwen: { model: 'qwen3-coder-480b-a35b', enabled: false },
             gemini: { model: 'gemini-2.5-pro', enabled: false },
-            codex: { model: 'gpt-5', enabled: false }
+            codex: { model: 'gpt-5', enabled: false },
+            iflow: { model: 'qwen3-coder-plus', enabled: false }
           }
         });
       }
@@ -283,7 +299,8 @@ export default function ProjectSettings({ isOpen, onClose, projectId, projectNam
           cursor: { model: 'gpt-5', enabled: false },
           qwen: { model: 'qwen3-coder-480b', enabled: false },
           gemini: { model: 'gemini-2.5-pro', enabled: false },
-          codex: { model: 'gpt-5', enabled: false }
+          codex: { model: 'gpt-5', enabled: false },
+          iflow: { model: 'qwen3-coder-plus', enabled: false }
         }
       });
     }
