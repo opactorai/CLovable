@@ -1,17 +1,17 @@
 # Claudable
 
-<img src="./assets/Claudable.png" alt="Claudable" style="width: 100%;" />
+<img src="./assets/Claudable_main.png" alt="CLovable" style="border-radius: 12px; width: 100%;" />
 <div align="center">
-<h3>Connect CLI Agent • Build what you want • Deploy instantly</h3>
+<h3>Connect Claude Code. Build what you want. Deploy instantly.</h3>
 
-<p>Available as a web service at <a href="https://clink.new">clink.new</a></p>
+<p>Powered by <a href="https://opactor.ai">OPACTOR</a></p>
 </div>
 <p align="center">
 <a href="https://discord.gg/NJNbafHNQC">
 <img src="https://img.shields.io/badge/Discord-Join%20Community-7289da?style=flat&logo=discord&logoColor=white" alt="Join Discord Community">
 </a>
-<a href="https://clink.new">
-<img src="https://img.shields.io/badge/Clink-Web%20Service-000000?style=flat&logo=web&logoColor=white" alt="Clink Web Service">
+<a href="https://opactor.ai">
+<img src="https://img.shields.io/badge/OPACTOR-Website-000000?style=flat&logo=web&logoColor=white" alt="OPACTOR Website">
 </a>
 <a href="https://twitter.com/aaron_xong">
 <img src="https://img.shields.io/badge/Follow-@aaron__xong-000000?style=flat&logo=x&logoColor=white" alt="Follow Aaron">
@@ -24,18 +24,10 @@ Claudable is a powerful Next.js-based web app builder that combines **C**laude C
 
 This open-source project empowers you to build and deploy professional web applications easily for **free**.
 
-How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and describe what you want to build. That's it. There is no additional subscription cost for app builder.
-
-## Try Clink - Web Service
-<div align="center">
-<a href="https://clink.new">
-<img src="./assets/clink.png" alt="Clink - Link, Click, Ship" style="width: 100%; max-width: 800px;">
-</a>
-<p>Don't want to set up locally? Try <a href="https://clink.new"><strong>Clink</strong></a> - the web-based version with instant access!</p>
-</div>
+How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and describe what you want to build. That's it. There is no additional subscription cost for app builder. 
 
 ## Features
-<img src="./assets/gif/Claudable_v2_cc_4_1080p.gif" alt="Claudable Demo" style="width: 100%; max-width: 800px;">
+<img src="./assets/Claudable_short.gif" alt="Claudable Demo" style="width: 100%; max-width: 800px;">
 
 - **Powerful Agent Performance**: Leverage the full power of Claude Code and Cursor CLI Agent capabilities with native MCP support
 - **Natural Language to Code**: Simply describe what you want to build, and Claudable generates production-ready Next.js code
@@ -47,80 +39,22 @@ How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and 
 - **Supabase Database**: Connect production PostgreSQL with authentication ready to use
 - **Automated Error Detection**: Detect errors in your app and fix them automatically
 
-## Demo Examples
-
-### Codex CLI Example
-<img src="./assets/gif/Claudable_v2_codex_1_1080p.gif" alt="Codex CLI Demo" style="width: 100%; max-width: 800px;">
-
-### Qwen Code Example
-<img src="./assets/gif/Claudable_v2_qwen_1_1080p.gif" alt="Qwen Code Demo" style="width: 100%; max-width: 800px;">
-
-## Supported AI Coding Agents
-
-Claudable supports multiple AI coding agents, giving you the flexibility to choose the best tool for your needs:
-
-- **Claude Code** - Anthropic's advanced AI coding agent
-- **Codex CLI** - OpenAI's lightweight coding agent
-- **Cursor CLI** - Powerful multi-model AI agent
-- **Gemini CLI** - Google's open-source AI agent
-- **Qwen Code** - Alibaba's open-source coding CLI
-
-### Claude Code (Recommended)
-**[Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup)** - Anthropic's advanced AI coding agent with Claude Opus 4.1
-- **Features**: Deep codebase awareness, MCP support, Unix philosophy, direct terminal integration
-- **Context**: Native 256K tokens
-- **Pricing**: Included with ChatGPT Plus/Pro/Team/Edu/Enterprise plans
-- **Installation**:
+## Technology Stack
+**AI Cooding Agent:**
+- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup)**: Advanced AI coding agent. We strongly recommend you to use Claude Code for the best experience.
   ```bash
+  # Install
   npm install -g @anthropic-ai/claude-code
+  # Login
   claude  # then > /login
   ```
-
-### Codex CLI
-**[Codex CLI](https://github.com/openai/codex)** - OpenAI's lightweight coding agent with GPT-5 support
-- **Features**: High reasoning capabilities, local execution, multiple operating modes (interactive, auto-edit, full-auto)
-- **Context**: Varies by model
-- **Pricing**: Included with ChatGPT Plus/Pro/Business/Edu/Enterprise plans
-- **Installation**:
+- **[Cursor CLI](https://docs.cursor.com/en/cli/overview)**: Intelligent coding agent for complex coding tasks. It's little bit slower than Claude Code, but it's more powerful.
   ```bash
-  npm install -g @openai/codex
-  codex  # login with ChatGPT account
-  ```
-
-### Cursor CLI
-**[Cursor CLI](https://cursor.com/en/cli)** - Powerful AI agent with access to cutting-edge models
-- **Features**: Multi-model support (Anthropic, OpenAI, Gemini), MCP integration, AGENTS.md support
-- **Context**: Model dependent
-- **Pricing**: Free tier available, Pro plans for advanced features
-- **Installation**:
-  ```bash
+  # Install
   curl https://cursor.com/install -fsS | bash
+  # Login
   cursor-agent login
   ```
-
-### Gemini CLI
-**[Gemini CLI](https://developers.google.com/gemini-code-assist/docs/gemini-cli)** - Google's open-source AI agent with Gemini 2.5 Pro
-- **Features**: 1M token context window, Google Search grounding, MCP support, extensible architecture
-- **Context**: 1M tokens (with free tier: 60 req/min, 1000 req/day)
-- **Pricing**: Free with Google account, paid tiers for higher limits
-- **Installation**:
-  ```bash
-  npm install -g @google/gemini-cli
-  gemini  # follow authentication flow
-  ```
-
-### Qwen Code
-**[Qwen Code](https://github.com/QwenLM/qwen-code)** - Alibaba's open-source CLI for Qwen3-Coder models
-- **Features**: 256K-1M token context, multiple model sizes (0.5B to 480B), Apache 2.0 license
-- **Context**: 256K native, 1M with extrapolation
-- **Pricing**: Completely free and open-source
-- **Installation**:
-  ```bash
-  npm install -g @qwen-code/qwen-code@latest
-  qwen --version
-  ```
-
-## Technology Stack
 
 **Database & Deployment:**
 - **[Supabase](https://supabase.com/)**: Connect production-ready PostgreSQL database directly to your project.
@@ -158,6 +92,75 @@ Your application will be available at:
 - API Documentation: http://localhost:8080/docs
 
 **Note**: Ports are automatically detected. If the default ports are in use, the next available ports will be assigned.
+
+## Environment Variables
+
+- Only example templates are committed. Real `.env` files are git‑ignored.
+- Auto‑creation: `npm install` runs `scripts/setup-env.js` to create
+  - `./.env` with local ports and SQLite path
+  - `apps/web/.env.local` configured for same‑origin (empty `NEXT_PUBLIC_*`)
+- Secrets: configure `ANTHROPIC_API_KEY` (or `CLAUDE_API_KEY`) in your shell or local `.env`. Never commit secrets.
+- Next.js fullstack (this branch): leave `NEXT_PUBLIC_API_BASE` and `NEXT_PUBLIC_WS_BASE` empty to use same‑origin API and Socket.IO at `/ws`.
+- Python API (main branch): set
+  - `NEXT_PUBLIC_API_BASE=http://localhost:8080`
+  - `NEXT_PUBLIC_WS_BASE=ws://localhost:8080`
+
+Convenience
+```bash
+# Regenerate env files
+npm run setup   # or: node scripts/setup-env.js
+
+# Clean and reinstall if things drift
+npm run clean && npm install
+```
+
+Fresh dev DB (default)
+- On `npm run dev`, we start from a fresh SQLite database by default. Any existing `data/cc.db` is removed and Prisma schema is applied automatically.
+- To keep your local data, set an env var before running dev:
+```bash
+export KEEP_DB=1   # or CC_KEEP_DB=1
+npm run dev
+```
+- Manual clean reset (if you disabled auto-clean):
+```bash
+npm run db:backup   # optional
+npm run db:reset    # y to confirm
+cd apps/web && npx prisma db push
+```
+
+## Desktop App (Electron)
+
+### Download Pre-built App
+
+**macOS Users:** Download the ready-to-use desktop app directly!
+
+- **Apple Silicon (M1/M2/M3):** [Download Claudable-0.1.0-arm64.dmg](https://github.com/opactorai/Claudable/releases/download/v0.1.0/Claudable-0.1.0-arm64.dmg) (292MB)
+- **Intel Mac:** [Download Claudable-0.1.0.dmg](https://github.com/opactorai/Claudable/releases/download/v0.1.0/Claudable-0.1.0.dmg) (297MB)
+
+**Installation:**
+1. Download the DMG file for your Mac type
+2. Open the DMG file
+3. Drag Claudable to your Applications folder
+4. Launch Claudable from Applications or Launchpad
+
+### Build From Source
+
+Build and distribute a desktop app that bundles the web UI and runs the local API automatically.
+
+```bash
+# Build production Next.js and package Electron app
+npm run build:desktop
+
+# Output installers
+# - macOS: apps/desktop/dist/*.dmg
+# - Windows: apps/desktop/dist/*.exe
+# - Linux: apps/desktop/dist/*.AppImage
+```
+
+Notes:
+- First launch will set up a Python virtual environment in your user data folder and install API dependencies (internet required). Subsequent launches are fast and offline.
+- The desktop app serves the UI at http://localhost:8080 and proxies /api/* to the local Python API.
+- If port 8080 is in use, close the conflicting app before launching the desktop app.
 
 ## Setup
 
@@ -280,6 +283,19 @@ If you encounter the error: `Error output dangerously skip permissions cannot be
 - Anon Key: Public key for client-side
 - Service Role Key: Secret key for server-side
 
+## Design Comparison
+
+*Same prompt, different results*
+
+### Claudable
+<img src="./assets/Claudable_ex.png" alt="Claudable Design" style="border-radius: 12px; width: 100%;" />
+
+[View Claudable Live Demo →](https://claudable-preview.vercel.app/)
+
+### Lovable
+<img src="./assets/Lovable_ex.png" alt="Lovable Design" style="border-radius: 12px; width: 100%;" />
+
+[View Lovable Live Demo →](https://preview--goal-track-studio.lovable.app/)
 
 ## License
 

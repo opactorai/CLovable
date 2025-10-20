@@ -1,32 +1,72 @@
 {
-  "name": "cc-lovable",
-  "version": "1.0.0",
+  "name": "claudable",
+  "version": "2.0.0",
+  "description": "AI-Powered Web App Builder - Build apps with natural language using Claude Code, Cursor, and more",
   "private": true,
-  "description": "CC Lovable Development Environment",
-  "workspaces": [
-    "apps/web"
-  ],
   "scripts": {
-    "dev": "npm run ensure:env && npm run ensure:venv && concurrently --raw \"npm run dev:api\" --prefix \"[WEB] \" \"npm run dev:web\"",
-    "dev:api": "node scripts/run-api.js",
+    "dev": "node scripts/run-web.js",
     "dev:web": "node scripts/run-web.js",
     "ensure:env": "node scripts/setup-env.js",
-    "ensure:venv": "node scripts/setup-venv.js",
-    "postinstall": "npm run ensure:env && npm run ensure:venv",
-    "setup": "npm install",
-    "clean": "node scripts/clean.js",
-    "db:reset": "node scripts/reset-db.js",
-    "db:backup": "node scripts/backup-db.js"
-  },
-  "devDependencies": {
-    "concurrently": "^8.2.2",
-    "dotenv": "^16.4.5"
-  },
-  "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=9.0.0"
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio",
+    "prisma:reset": "prisma migrate reset",
+    "setup": "npm install && prisma generate && prisma db push",
+    "check-cli": "node scripts/check-claude-cli.js",
+    "postinstall": "npm run ensure:env"
   },
   "dependencies": {
-    "react-icons": "^5.5.0"
+    "@anthropic-ai/claude-agent-sdk": "^0.1.22",
+    "@prisma/client": "^6.1.0",
+    "dotenv": "^16.4.5",
+    "framer-motion": "^11.11.17",
+    "highlight.js": "^11.10.0",
+    "lucide-react": "^0.460.0",
+    "next": "15.1.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "react-icons": "^5.5.0",
+    "react-markdown": "^10.0.0",
+    "ws": "^8.18.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/ws": "^8.18.1",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.17.0",
+    "eslint-config-next": "15.1.0",
+    "postcss": "^8.4.49",
+    "prettier": "^3.4.2",
+    "prisma": "^6.1.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "keywords": [
+    "ai",
+    "claude",
+    "cursor",
+    "app-builder",
+    "nextjs",
+    "code-generation",
+    "no-code",
+    "low-code"
+  ],
+  "author": "Claudable Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/claudable.git"
   }
 }
