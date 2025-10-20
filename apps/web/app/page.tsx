@@ -82,9 +82,10 @@ export default function HomePage() {
     ],
     iflow: [
       { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus' },
-      { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus' },
-      { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus' },
-      { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus' }
+      { id: 'kimi-k2-0905', name: 'Kimi K2 0905' },
+      { id: 'glm-4.6', name: 'GLM-4.6' },
+      { id: 'deepseek-v3.2', name: 'DeepSeek-V3.2' }
+
     ]
   };
   
@@ -1099,13 +1100,13 @@ export default function HomePage() {
                   >
                     <div className="w-4 h-4 rounded overflow-hidden">
                       <img 
-                        src={selectedAssistant === 'claude' ? '/claude.png' : selectedAssistant === 'cursor' ? '/cursor.png' : selectedAssistant === 'qwen' ? '/qwen.png' : selectedAssistant === 'gemini' ? '/gemini.png' : '/oai.png'} 
-                        alt={selectedAssistant === 'claude' ? 'Claude' : selectedAssistant === 'cursor' ? 'Cursor' : selectedAssistant === 'qwen' ? 'Qwen' : selectedAssistant === 'gemini' ? 'Gemini' : 'Codex'}
+                        src={selectedAssistant === 'claude' ? '/claude.png' : selectedAssistant === 'cursor' ? '/cursor.png' : selectedAssistant === 'qwen' ? '/qwen.png' : selectedAssistant === 'gemini' ? '/gemini.png' : selectedAssistant === 'iflow' ? '/iflow.png' : '/oai.png'} 
+                        alt={selectedAssistant === 'claude' ? 'Claude' : selectedAssistant === 'cursor' ? 'Cursor' : selectedAssistant === 'qwen' ? 'Qwen' : selectedAssistant === 'gemini' ? 'Gemini' : selectedAssistant === 'iflow' ? 'iFlow' : 'Codex'}
                         className="w-full h-full object-contain"
                       />
                     </div>
                     <span className="hidden md:flex text-sm font-medium">
-                      {selectedAssistant === 'claude' ? 'Claude Code' : selectedAssistant === 'cursor' ? 'Cursor Agent' : selectedAssistant === 'qwen' ? 'Qwen Coder' : selectedAssistant === 'gemini' ? 'Gemini CLI' : 'Codex CLI'}
+                      {selectedAssistant === 'claude' ? 'Claude Code' : selectedAssistant === 'cursor' ? 'Cursor Agent' : selectedAssistant === 'qwen' ? 'Qwen Coder' : selectedAssistant === 'gemini' ? 'Gemini CLI' : selectedAssistant === 'iflow' ? 'iFlow CLI' : 'Codex CLI'}
                     </span>
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 -960 960 960" className="shrink-0 h-3 w-3 rotate-90" fill="currentColor">
                       <path d="M530-481 353-658q-9-9-8.5-21t9.5-21 21.5-9 21.5 9l198 198q5 5 7 10t2 11-2 11-7 10L396-261q-9 9-21 8.5t-21-9.5-9-21.5 9-21.5z"/>
@@ -1171,6 +1172,8 @@ export default function HomePage() {
                           return 'Gemini 2.5 Pro';
                         } else if (selectedAssistant === 'gemini' && selectedModel === 'gemini-2.5-flash') {
                           return 'Gemini 2.5 Flash';
+                        } else if (selectedAssistant === 'iflow' && selectedModel === 'qwen3-coder-plus') {
+                          return 'Qwen3 Coder Plus';
                         }
                       }
                       

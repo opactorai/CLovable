@@ -574,6 +574,9 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                             {cli.id === 'gemini' && (
                               <img src="/gemini.png" alt="Gemini" className="w-8 h-8" />
                             )}
+                            {cli.id === 'iflow' && (
+                              <img src="/iflow.png" alt="iFlow" className="w-8 h-8" />
+                            )}
                           </div>
                           <div className={`flex-1 min-w-0 ${!isInstalled ? 'opacity-40' : ''}`}>
                             <div className="flex items-center gap-2">
