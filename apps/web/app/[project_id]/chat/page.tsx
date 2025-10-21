@@ -23,7 +23,8 @@ const assistantBrandColors: { [key: string]: string } = {
   cursor: '#6B7280',
   qwen: '#A855F7',
   gemini: '#4285F4',
-  codex: '#000000'
+  codex: '#000000',
+  iflow: '#00A86B'
 };
 
 const CLI_LABELS: Record<string, string> = {
@@ -31,10 +32,11 @@ const CLI_LABELS: Record<string, string> = {
   cursor: 'Cursor Agent',
   codex: 'Codex CLI',
   qwen: 'Qwen Coder',
-  gemini: 'Gemini CLI'
+  gemini: 'Gemini CLI',
+  iflow: 'iFlow CLI'
 };
 
-const CLI_ORDER = ['claude', 'cursor', 'codex', 'qwen', 'gemini'] as const;
+const CLI_ORDER = ['claude', 'cursor', 'codex', 'qwen', 'gemini', 'iflow'] as const;
 
 const MODEL_FALLBACKS: Record<string, { id: string; name: string; aliases?: string[] }[]> = {
   claude: [
@@ -61,6 +63,15 @@ const MODEL_FALLBACKS: Record<string, { id: string; name: string; aliases?: stri
   gemini: [
     { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
     { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' }
+  ],
+  iflow: [
+    { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus', aliases: ['qwen3-coder'] },
+    { id: 'kimi-k2-0905', name: 'Kimi K2 0905' },
+    { id: 'glm-4.6', name: 'GLM-4.6' },
+    { id: 'deepseek-v3.2', name: 'DeepSeek-V3.2' },
+    { id: 'kimi-k2', name: 'Kimi K2' },
+    { id: 'glm-4.5', name: 'GLM-4.5' },
+    { id: 'deepseek-v3.1', name: 'DeepSeek-V3.1' }
   ]
 };
 
@@ -351,6 +362,10 @@ export default function ChatPage({ params }: Params) {
     })),
     [cliStatuses]
   );
+  
+  // 响应式状态 - 用于在窄屏幕设备上切换显示预览和对话
+  const [isMobileView, setIsMobileView] = useState(false);
+  const [mobileActiveView, setMobileActiveView] = useState<'chat' | 'preview'>('chat');
 
   const updatePreferredCli = useCallback((cli: string) => {
     setPreferredCli(cli);
@@ -1136,8 +1151,10 @@ export default function ChatPage({ params }: Params) {
               } else if (currentCli === 'qwen') {
                 updateSelectedModel('qwen3-coder-plus');
               } else if (currentCli === 'gemini') {
-                updateSelectedModel('gemini-2.5-pro');
-              }
+              updateSelectedModel('gemini-2.5-pro');
+            } else if (currentCli === 'iflow') {
+              updateSelectedModel('qwen3-coder-plus');
+            }
             }
           }
         } else {
@@ -1639,10 +1656,31 @@ export default function ChatPage({ params }: Params) {
       if (cli === 'claude') updateSelectedModel('claude-sonnet-4');
       else if (cli === 'cursor') updateSelectedModel('gpt-5');
       else if (cli === 'codex') updateSelectedModel('gpt-5');
+      else if (cli === 'qwen') updateSelectedModel('qwen3-coder-plus');
+      else if (cli === 'gemini') updateSelectedModel('gemini-2.5-pro');
+      else if (cli === 'iflow') updateSelectedModel('qwen3-coder-plus');
       else updateSelectedModel('');
     }
   }, [globalSettings, usingGlobalDefaults]);
 
+  // 响应式设计 - 监听窗口大小变化
+  useEffect(() => {
+    const handleResize = () => {
+      // 当窗口宽度小于 768px 时启用移动视图
+      setIsMobileView(window.innerWidth < 768);
+    };
+
+    // 初始化时检查窗口大小
+    handleResize();
+    
+    // 添加事件监听器
+    window.addEventListener('resize', handleResize);
+    
+    // 清理事件监听器
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
 
   // Show loading UI if project is initializing
 
@@ -1755,11 +1793,11 @@ export default function ChatPage({ params }: Params) {
         <div className="h-full w-full flex">
           {/* 왼쪽: 채팅창 */}
           <div
-            style={{ width: '30%' }}
-            className="h-full border-r border-gray-200 dark:border-gray-800 flex flex-col"
+            style={{ width: isMobileView ? '100%' : '30%' }}
+            className={`h-full border-r border-gray-200 dark:border-gray-800 flex flex-col ${isMobileView && mobileActiveView !== 'chat' ? 'hidden' : ''}`}
           >
             {/* 채팅 헤더 */}
-            <div className="bg-white dark:bg-black border-b border-gray-200 dark:border-gray-800 p-4 h-[73px] flex items-center">
+            <div className="bg-white dark:bg-black border-b border-gray-200 dark:border-gray-800 p-4 h-[73px] flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <button 
                   onClick={() => router.push('/')}
@@ -1771,14 +1809,47 @@ export default function ChatPage({ params }: Params) {
                   </svg>
                 </button>
                 <div>
-                  <h1 className="text-lg font-semibold text-gray-900 dark:text-white">{projectName || 'Loading...'}</h1>
+                  <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    {projectName ? (projectName.length > 15 ? `${projectName.substring(0, 15)}...` : projectName) : 'Loading...'}
+                  </h1>
                   {projectDescription && (
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                      {projectDescription}
+                      {projectDescription.length > 50 ? `${projectDescription.substring(0, 50)}...` : projectDescription}
                     </p>
                   )}
                 </div>
               </div>
+              {/* Mobile view toggle buttons - only show in mobile view */}
+              {isMobileView && (
+                <div className="flex items-center gap-1">
+                  <button
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      mobileActiveView === 'chat'
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                    }`}
+                    onClick={() => setMobileActiveView('chat')}
+                  >
+                    <div className="flex items-center gap-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M18 5v8a2 2 0 01-2 2h-5l-5 4v-4H4a2 2 0 01-2-2V5a2 2 0 012-2h12a2 2 0 012 2zM7 8H5v2h2V8zm2 0h2v2H9V8zm6 0h-2v2h2V8z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                  </button>
+                  <button
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      mobileActiveView === 'preview'
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                    }`}
+                    onClick={() => setMobileActiveView('preview')}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span className="w-4 h-4 flex items-center justify-center"><FaFolder size={16} /></span>
+                    </div>
+                  </button>
+                </div>
+              )}
             </div>
             
             {/* 채팅 로그 영역 */}
@@ -1830,113 +1901,70 @@ export default function ChatPage({ params }: Params) {
           </div>
 
           {/* 오른쪽: Preview/Code 영역 */}
-          <div className="h-full flex flex-col bg-black" style={{ width: '70%' }}>
+          <div className={`h-full flex flex-col bg-black ${isMobileView && mobileActiveView !== 'preview' ? 'hidden' : ''}`} style={{ width: isMobileView ? '100%' : '70%' }}>
             {/* 컨텐츠 영역 */}
             <div className="flex-1 min-h-0 flex flex-col">
               {/* Controls Bar */}
               <div className="bg-white dark:bg-black border-b border-gray-200 dark:border-gray-800 px-4 h-[73px] flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  {/* 토글 스위치 */}
-                  <div className="flex items-center bg-gray-100 dark:bg-gray-900 rounded-lg p-1">
-                    <button
-                      className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                        showPreview 
-                          ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white' 
-                          : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                      }`}
-                      onClick={() => setShowPreview(true)}
-                    >
-                      <span className="w-4 h-4 flex items-center justify-center"><FaDesktop size={16} /></span>
-                    </button>
-                    <button
-                      className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                        !showPreview 
-                          ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white' 
-                          : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                      }`}
-                      onClick={() => setShowPreview(false)}
-                    >
-                      <span className="w-4 h-4 flex items-center justify-center"><FaCode size={16} /></span>
-                    </button>
-                  </div>
-                  
-                  {/* Center Controls */}
-                  {showPreview && previewUrl && (
-                    <div className="flex items-center gap-3">
-                      {/* Route Navigation */}
-                      <div className="h-9 flex items-center bg-gray-100 dark:bg-gray-900 rounded-lg px-3 border border-gray-200 dark:border-gray-700">
-                        <span className="text-gray-400 dark:text-gray-500 mr-2">
-                          <FaHome size={12} />
-                        </span>
-                        <span className="text-sm text-gray-500 dark:text-gray-400 mr-1">/</span>
-                        <input
-                          type="text"
-                          value={currentRoute.startsWith('/') ? currentRoute.slice(1) : currentRoute}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setCurrentRoute(value ? `/${value}` : '/');
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              navigateToRoute(currentRoute);
-                            }
-                          }}
-                          className="bg-transparent text-sm text-gray-700 dark:text-gray-300 outline-none w-40"
-                          placeholder="route"
-                        />
-                        <button
-                          onClick={() => navigateToRoute(currentRoute)}
-                          className="ml-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                        >
-                          <FaArrowRight size={12} />
-                        </button>
-                      </div>
-                      
-                      {/* Action Buttons Group */}
-                      <div className="flex items-center gap-1.5">
-                        <button 
-                          className="h-9 w-9 flex items-center justify-center bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg transition-colors"
-                          onClick={() => {
-                            const iframe = document.querySelector('iframe');
-                            if (iframe) {
-                              iframe.src = iframe.src;
-                            }
-                          }}
-                          title="Refresh preview"
-                        >
-                          <FaRedo size={14} />
-                        </button>
-                        
-                        {/* Device Mode Toggle */}
-                        <div className="h-9 flex items-center gap-1 bg-gray-100 dark:bg-gray-900 rounded-lg px-1 border border-gray-200 dark:border-gray-700">
-                          <button
-                            aria-label="Desktop preview"
-                            className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
-                              deviceMode === 'desktop' 
-                                ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30' 
-                                : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
-                            }`}
-                            onClick={() => setDeviceMode('desktop')}
-                          >
-                            <FaDesktop size={14} />
-                          </button>
-                          <button
-                            aria-label="Mobile preview"
-                            className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
-                              deviceMode === 'mobile' 
-                                ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30' 
-                                : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
-                            }`}
-                            onClick={() => setDeviceMode('mobile')}
-                          >
-                            <FaMobileAlt size={14} />
-                          </button>
+                  {/* Mobile view toggle buttons - only show in mobile view */}
+                  {isMobileView && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                          mobileActiveView === 'chat'
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                        }`}
+                        onClick={() => setMobileActiveView('chat')}
+                      >
+                        <div className="flex items-center gap-1">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M18 5v8a2 2 0 01-2 2h-5l-5 4v-4H4a2 2 0 01-2-2V5a2 2 0 012-2h12a2 2 0 012 2zM7 8H5v2h2V8zm2 0h2v2H9V8zm6 0h-2v2h2V8z" clipRule="evenodd" />
+                          </svg>
                         </div>
-                      </div>
+                      </button>
+                      <button
+                        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                          mobileActiveView === 'preview'
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                        }`}
+                        onClick={() => setMobileActiveView('preview')}
+                      >
+                        <div className="flex items-center gap-1">
+                          <span className="w-4 h-4 flex items-center justify-center"><FaFolder size={16} /></span>
+                        </div>
+                      </button>
                     </div>
                   )}
-                </div>
-                
+                  {/* 토글 스위치 - only show in desktop view */}
+                  {!isMobileView && (
+                    <div className="flex items-center bg-gray-100 dark:bg-gray-900 rounded-lg p-1">
+                      <button
+                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                          showPreview 
+                            ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white' 
+                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                        }`}
+                        onClick={() => setShowPreview(true)}
+                      >
+                        <span className="w-4 h-4 flex items-center justify-center"><FaDesktop size={16} /></span>
+                      </button>
+                      <button
+                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                          !showPreview 
+                            ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white' 
+                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                        }`}
+                        onClick={() => setShowPreview(false)}
+                      >
+                        <span className="w-4 h-4 flex items-center justify-center"><FaCode size={16} /></span>
+                      </button>
+                    </div>
+                  )}
+                  
+                  {/* Center Controls */}
                 <div className="flex items-center gap-2">
                   {/* Settings Button */}
                   <button 
@@ -1993,7 +2021,7 @@ export default function ChatPage({ params }: Params) {
                           <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
                             <p className="text-sm font-medium text-green-700 dark:text-green-400 mb-2">Currently published at:</p>
                             <a 
-                              href={publishedUrl} 
+                              href={publishedUrl ?? undefined} 
                               target="_blank" 
                               rel="noopener noreferrer" 
                               className="text-sm text-green-600 dark:text-green-300 font-mono hover:underline break-all"
@@ -2136,6 +2164,82 @@ export default function ChatPage({ params }: Params) {
                   </div>
                   )}
                 </div>
+                  {showPreview && previewUrl && (
+                    <div className="flex items-center gap-3">
+                      {/* Route Navigation */}
+                      <div className="h-9 flex items-center bg-gray-100 dark:bg-gray-900 rounded-lg px-3 border border-gray-200 dark:border-gray-700">
+                        <span className="text-gray-400 dark:text-gray-500 mr-2">
+                          <FaHome size={12} />
+                        </span>
+                        <span className="text-sm text-gray-500 dark:text-gray-400 mr-1">/</span>
+                        <input
+                          type="text"
+                          value={currentRoute.startsWith('/') ? currentRoute.slice(1) : currentRoute}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setCurrentRoute(value ? `/${value}` : '/');
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              navigateToRoute(currentRoute);
+                            }
+                          }}
+                          className="bg-transparent text-sm text-gray-700 dark:text-gray-300 outline-none w-40"
+                          placeholder="route"
+                        />
+                        <button
+                          onClick={() => navigateToRoute(currentRoute)}
+                          className="ml-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                        >
+                          <FaArrowRight size={12} />
+                        </button>
+                      </div>
+                      
+                      {/* Action Buttons Group */}
+                      <div className="flex items-center gap-1.5">
+                        <button 
+                          className="h-9 w-9 flex items-center justify-center bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                          onClick={() => {
+                            const iframe = document.querySelector('iframe');
+                            if (iframe) {
+                              iframe.src = iframe.src;
+                            }
+                          }}
+                          title="Refresh preview"
+                        >
+                          <FaRedo size={14} />
+                        </button>
+                        
+                        {/* Device Mode Toggle */}
+                        <div className="h-9 flex items-center gap-1 bg-gray-100 dark:bg-gray-900 rounded-lg px-1 border border-gray-200 dark:border-gray-700">
+                          <button
+                            aria-label="Desktop preview"
+                            className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
+                              deviceMode === 'desktop' 
+                                ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30' 
+                                : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
+                            }`}
+                            onClick={() => setDeviceMode('desktop')}
+                          >
+                            <FaDesktop size={14} />
+                          </button>
+                          <button
+                            aria-label="Mobile preview"
+                            className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
+                              deviceMode === 'mobile' 
+                                ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30' 
+                                : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
+                            }`}
+                            onClick={() => setDeviceMode('mobile')}
+                          >
+                            <FaMobileAlt size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
               </div>
               
               {/* Content Area */}

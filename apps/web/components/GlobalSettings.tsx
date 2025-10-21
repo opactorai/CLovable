@@ -101,6 +101,23 @@ const CLI_OPTIONS: CLIOption[] = [
     models: [
       { id: 'gpt-5', name: 'GPT-5' }
     ]
+  },
+  {
+    id: 'iflow',
+    name: 'iFlow CLI',
+    icon: '/iflow.png',
+    description: 'Interactive CLI for software engineering tasks',
+    color: 'from-blue-500 to-cyan-500',
+    brandColor: '#0EA5E9',
+    downloadUrl: 'https://github.com/iflow-dev/iflow-cli',
+    installCommand: 'npm install -g @iflow/cli',
+    enabled: true,
+    models: [
+      { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus' },
+      { id: 'kimi-k2-0905', name: 'Kimi K2 0905' },
+      { id: 'glm-4.6', name: 'GLM 4.6' },
+      { id: 'deepseek-v3.2', name: 'DeepSeek V3.2' }
+    ]
   }
 ];
 
@@ -574,6 +591,9 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                             {cli.id === 'gemini' && (
                               <img src="/gemini.png" alt="Gemini" className="w-8 h-8" />
                             )}
+                            {cli.id === 'iflow' && (
+                              <img src="/iflow.png" alt="iFlow" className="w-8 h-8" />
+                            )}
                           </div>
                           <div className={`flex-1 min-w-0 ${!isInstalled ? 'opacity-40' : ''}`}>
                             <div className="flex items-center gap-2">
@@ -817,6 +837,9 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                   {selectedCLI.id === 'codex' && (
                     <img src="/oai.png" alt="Codex" className="w-8 h-8" />
                   )}
+                  {selectedCLI.id === 'iflow' && (
+                    <img src="/iflow.png" alt="iFlow" className="w-8 h-8" />
+                  )}
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                       Install {selectedCLI.name}
@@ -883,6 +906,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                   {selectedCLI.id === 'codex' && 'Start Codex and sign in'}
                   {selectedCLI.id === 'claude' && 'Start Claude and sign in'}
                   {selectedCLI.id === 'cursor' && 'Start Cursor CLI and sign in'}
+                  {selectedCLI.id === 'iflow' && 'Start iFlow CLI and sign in'}
                 </div>
                 <div className="ml-8 flex items-center gap-2 bg-gray-100 dark:bg-gray-900 rounded-lg px-3 py-2">
                   <code className="text-sm text-gray-800 dark:text-gray-200 flex-1">
@@ -890,7 +914,8 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                      selectedCLI.id === 'cursor' ? 'cursor-agent' :
                      selectedCLI.id === 'codex' ? 'codex' :
                      selectedCLI.id === 'qwen' ? 'qwen' :
-                     selectedCLI.id === 'gemini' ? 'gemini' : ''}
+                     selectedCLI.id === 'gemini' ? 'gemini' :
+                     selectedCLI.id === 'iflow' ? 'iflow' : ''}
                   </code>
                   <button
                     type="button"
@@ -901,7 +926,8 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                                       selectedCLI.id === 'cursor' ? 'cursor-agent' :
                                       selectedCLI.id === 'codex' ? 'codex' :
                                       selectedCLI.id === 'qwen' ? 'qwen' :
-                                      selectedCLI.id === 'gemini' ? 'gemini' : '';
+                                      selectedCLI.id === 'gemini' ? 'gemini' :
+                                      selectedCLI.id === 'iflow' ? 'iflow' : '';
                       if (authCmd) navigator.clipboard.writeText(authCmd);
                       showToast('Command copied to clipboard', 'success');
                     }}
@@ -929,7 +955,8 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                      selectedCLI.id === 'cursor' ? 'cursor-agent --version' :
                      selectedCLI.id === 'codex' ? 'codex --version' :
                      selectedCLI.id === 'qwen' ? 'qwen --version' :
-                     selectedCLI.id === 'gemini' ? 'gemini --version' : ''}
+                     selectedCLI.id === 'gemini' ? 'gemini --version' :
+                     selectedCLI.id === 'iflow' ? 'iflow --version' : ''}
                   </code>
                   <button
                     type="button"
@@ -940,7 +967,8 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                                         selectedCLI.id === 'cursor' ? 'cursor-agent --version' :
                                         selectedCLI.id === 'codex' ? 'codex --version' :
                                         selectedCLI.id === 'qwen' ? 'qwen --version' :
-                                        selectedCLI.id === 'gemini' ? 'gemini --version' : '';
+                                        selectedCLI.id === 'gemini' ? 'gemini --version' :
+                                        selectedCLI.id === 'iflow' ? 'iflow --version' : '';
                       if (versionCmd) navigator.clipboard.writeText(versionCmd);
                       showToast('Command copied to clipboard', 'success');
                     }}

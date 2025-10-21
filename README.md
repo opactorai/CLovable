@@ -120,6 +120,17 @@ Claudable supports multiple AI coding agents, giving you the flexibility to choo
   qwen --version
   ```
 
+### iFlow CLI
+**[iFlow CLI](https://github.com/iflow-ai/iflow-cli)** - iFlow AI's open-source CLI for iFlow-Coder models
+- **Features**: 256K-1M token context, multiple model sizes (0.5B to 480B), Apache 2.0 license
+- **Context**: 256K native, 1M with extrapolation
+- **Pricing**: Completely free and open-source
+- **Installation**:
+  ```bash
+  npm install -g @iflow-ai/iflow-cli@latest
+  iflow --version
+  ```
+
 ## Technology Stack
 
 **Database & Deployment:**
