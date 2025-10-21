@@ -11,7 +11,7 @@ import {
   updateProject,
   deleteProject,
 } from '@/lib/services/project';
-import type { UpdateProjectInput } from '@/backend-types';
+import type { UpdateProjectInput } from '@/types/backend';
 import { serializeProject } from '@/lib/serializers/project';
 
 interface RouteContext {
@@ -24,10 +24,10 @@ interface RouteContext {
  */
 export async function GET(
   request: NextRequest,
-  context: RouteContext
+  { params }: RouteContext
 ) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     const project = await getProjectById(project_id);
 
     if (!project) {
@@ -57,21 +57,20 @@ export async function GET(
  */
 export async function PUT(
   request: NextRequest,
-  context: RouteContext
+  { params }: RouteContext
 ) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     const body = await request.json();
 
     const input: UpdateProjectInput = {
       name: body.name,
       description: body.description,
       status: body.status,
-      // Legacy preview metadata fields (kept for compatibility)
-      previewUrl: body.previewUrl || body.preview_url,
-      previewPort: body.previewPort || body.preview_port,
-      preferredCli: body.preferredCli || body.preferred_cli,
-      selectedModel: body.selectedModel || body.selected_model,
+      previewUrl: body.previewUrl,
+      previewPort: body.previewPort,
+      preferredCli: body.preferredCli,
+      selectedModel: body.selectedModel,
       settings: body.settings,
     };
 
@@ -79,6 +78,23 @@ export async function PUT(
     return NextResponse.json({ success: true, data: serializeProject(project) });
   } catch (error) {
     console.error('[API] Failed to update project:', error);
+
+    // Distinguish between different error types
+    if (error instanceof Error) {
+      if (error.message.includes('not found')) {
+        return NextResponse.json(
+          { success: false, error: 'Project not found' },
+          { status: 404 }
+        );
+      }
+      if (error.message.includes('validation') || error.message.includes('invalid')) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid input', message: error.message },
+          { status: 400 }
+        );
+      }
+    }
+
     return NextResponse.json(
       {
         success: false,
@@ -96,10 +112,10 @@ export async function PUT(
  */
 export async function DELETE(
   request: NextRequest,
-  context: RouteContext
+  { params }: RouteContext
 ) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     await deleteProject(project_id);
 
     return NextResponse.json({

@@ -5,9 +5,9 @@ interface RouteContext {
   params: Promise<{ project_id: string }>;
 }
 
-export async function POST(request: Request, context: RouteContext) {
+export async function POST(_request: Request, { params }: RouteContext) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     const synced = await syncEnvFileToDb(project_id);
     return NextResponse.json({
       success: true,

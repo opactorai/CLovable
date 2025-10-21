@@ -5,9 +5,9 @@ interface RouteContext {
   params: Promise<{ project_id: string }>;
 }
 
-export async function GET(request: Request, context: RouteContext) {
+export async function GET(_request: Request, { params }: RouteContext) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     const result = await detectEnvConflicts(project_id);
     return NextResponse.json(result);
   } catch (error) {

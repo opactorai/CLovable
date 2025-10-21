@@ -1,4 +1,4 @@
-import type { MessageMetadata } from '@/backend-types';
+import type { MessageMetadata } from '@/types/backend';
 import type { RealtimeMessage } from './realtime';
 
 export type ChatMessage = RealtimeMessage;

@@ -5,9 +5,9 @@ interface RouteContext {
   params: Promise<{ project_id: string; service_id: string }>;
 }
 
-export async function DELETE(request: Request, context: RouteContext) {
+export async function DELETE(_request: Request, { params }: RouteContext) {
   try {
-    const { service_id } = await context.params;
+    const { service_id } = await params;
     const deleted = await deleteProjectService(service_id);
     if (!deleted) {
       return NextResponse.json({ success: false, error: 'Service not found' }, { status: 404 });

@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { encrypt, decrypt } from '@/lib/crypto';
 import type { EnvVar } from '@prisma/client';
-import type { Project } from '@/backend-types';
+import type { Project } from '@/types/backend';
 import { getProjectById } from '@/lib/services/project';
 
 const PROJECTS_DIR = process.env.PROJECTS_DIR || './data/projects';

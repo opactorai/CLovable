@@ -3,7 +3,7 @@
  */
 
 import { prisma } from '@/lib/db/client';
-import type { Project, CreateProjectInput, UpdateProjectInput } from '@/backend-types';
+import type { Project, CreateProjectInput, UpdateProjectInput } from '@/types/backend';
 import fs from 'fs/promises';
 import path from 'path';
 import { normalizeClaudeModelId } from '@/lib/constants/claudeModels';

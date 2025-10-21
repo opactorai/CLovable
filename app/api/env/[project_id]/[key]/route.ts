@@ -5,9 +5,9 @@ interface RouteContext {
   params: Promise<{ project_id: string; key: string }>;
 }
 
-export async function PUT(request: NextRequest, context: RouteContext) {
+export async function PUT(request: NextRequest, { params }: RouteContext) {
   try {
-    const { project_id, key } = await context.params;
+    const { project_id, key } = await params;
     const body = await request.json();
     if (typeof body?.value !== 'string') {
       return NextResponse.json(
@@ -41,9 +41,9 @@ export async function PUT(request: NextRequest, context: RouteContext) {
   }
 }
 
-export async function DELETE(request: NextRequest, context: RouteContext) {
+export async function DELETE(_request: NextRequest, { params }: RouteContext) {
   try {
-    const { project_id, key } = await context.params;
+    const { project_id, key } = await params;
     const deleted = await deleteEnvVar(project_id, key);
     if (!deleted) {
       return NextResponse.json(

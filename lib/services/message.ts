@@ -3,10 +3,16 @@
  */
 
 import { prisma } from '@/lib/db/client';
-import type { Message, CreateMessageInput } from '@/backend-types';
+import type { Message, CreateMessageInput } from '@/types/backend';
 import type { Message as PrismaMessage } from '@prisma/client';
 
 function mapPrismaMessage(message: PrismaMessage): Message {
+  const updatedAt =
+    (message as unknown as { updatedAt?: Date }).updatedAt ?? message.createdAt;
+
+  // Access requestId directly from message (Prisma Client should include it after regeneration)
+  const requestId = (message as any).requestId ?? null;
+
   return {
     id: message.id,
     projectId: message.projectId,
@@ -19,8 +25,8 @@ function mapPrismaMessage(message: PrismaMessage): Message {
     parentMessageId: message.parentMessageId ?? null,
     cliSource: message.cliSource ?? null,
     createdAt: message.createdAt,
-    updatedAt: message.createdAt,
-    requestId: (message as unknown as { requestId?: string | null })?.requestId ?? null,
+    updatedAt,
+    requestId,
   };
 }
 
@@ -59,10 +65,11 @@ export async function createMessage(input: CreateMessageInput): Promise<Message>
       sessionId: input.sessionId,
       conversationId: input.conversationId,
       cliSource: input.cliSource,
+      requestId: input.requestId,
     },
   });
 
-  console.log(`[MessageService] Created message: ${message.id} (${input.role})`);
+  console.log(`[MessageService] Created message: ${message.id} (${input.role})${input.requestId ? ` [requestId: ${input.requestId}]` : ''}`);
   return mapPrismaMessage(message);
 }
 

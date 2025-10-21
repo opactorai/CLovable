@@ -5,16 +5,26 @@ interface RouteContext {
   params: Promise<{ project_id: string }>;
 }
 
-export async function POST(request: NextRequest, context: RouteContext) {
+export async function POST(request: NextRequest, { params }: RouteContext) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     const body = await request.json();
     const projectName = typeof body?.project_name === 'string' ? body.project_name : undefined;
     if (!projectName) {
       return NextResponse.json({ success: false, error: 'project_name is required' }, { status: 400 });
     }
 
-    const result = await connectVercelProject(project_id, projectName, { githubRepo: body?.github_repo });
+    const teamId =
+      typeof body?.team_id === 'string'
+        ? body.team_id
+        : typeof body?.teamId === 'string'
+        ? body.teamId
+        : undefined;
+
+    const result = await connectVercelProject(project_id, projectName, {
+      githubRepo: typeof body?.github_repo === 'string' ? body.github_repo : undefined,
+      teamId,
+    });
     return NextResponse.json({
       success: true,
       data: result,

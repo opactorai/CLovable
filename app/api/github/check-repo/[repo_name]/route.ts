@@ -5,9 +5,9 @@ interface RouteContext {
   params: Promise<{ repo_name: string }>;
 }
 
-export async function GET(request: Request, context: RouteContext) {
+export async function GET(_request: Request, { params }: RouteContext) {
   try {
-    const { repo_name } = await context.params;
+    const { repo_name } = await params;
     const result = await checkRepositoryAvailability(repo_name);
     if (result.exists) {
       return NextResponse.json({ available: false, username: result.username }, { status: 409 });

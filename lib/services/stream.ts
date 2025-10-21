@@ -36,7 +36,6 @@ export class StreamManager {
       this.streams.set(projectId, new Set());
     }
     this.streams.get(projectId)!.add(controller);
-    console.log(`[StreamManager] Added stream for project: ${projectId}`);
   }
 
   /**
@@ -46,11 +45,9 @@ export class StreamManager {
     const projectStreams = this.streams.get(projectId);
     if (projectStreams) {
       projectStreams.delete(controller);
-      console.log(`[StreamManager] Removed stream for project: ${projectId}`);
 
       if (projectStreams.size === 0) {
         this.streams.delete(projectId);
-        console.log(`[StreamManager] No more streams for project: ${projectId}`);
       }
     }
   }
@@ -65,19 +62,25 @@ export class StreamManager {
     if (!projectStreams || projectStreams.size === 0) {
       return;
     }
-
     const message = `data: ${JSON.stringify(event)}\n\n`;
     const encoder = new TextEncoder();
     const encodedMessage = encoder.encode(message);
+
+    const deadControllers: ReadableStreamDefaultController[] = [];
 
     projectStreams.forEach((controller) => {
       try {
         controller.enqueue(encodedMessage);
       } catch (error) {
         console.error(`[StreamManager] Failed to send message:`, error);
-        // Remove dead connections
-        this.removeStream(projectId, controller);
+        // Mark for removal after iteration
+        deadControllers.push(controller);
       }
+    });
+
+    // Remove dead connections after iteration
+    deadControllers.forEach((controller) => {
+      this.removeStream(projectId, controller);
     });
   }
 

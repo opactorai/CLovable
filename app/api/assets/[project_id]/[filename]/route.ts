@@ -28,9 +28,9 @@ function inferContentType(filename: string): string {
   }
 }
 
-export async function GET(request: Request, context: RouteContext) {
+export async function GET(_request: Request, { params }: RouteContext) {
   try {
-    const { project_id, filename } = await context.params;
+    const { project_id, filename } = await params;
 
     const project = await getProjectById(project_id);
     if (!project) {

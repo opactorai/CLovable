@@ -24,6 +24,7 @@ export interface Project {
   description?: string | null;
   status?: ProjectStatus;
   previewUrl?: string | null;
+  previewPort?: number | null;
   createdAt: string;
   updatedAt?: string;
   lastActiveAt?: string | null;

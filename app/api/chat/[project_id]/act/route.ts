@@ -20,6 +20,10 @@ import path from 'path';
 import fs from 'fs/promises';
 import { randomUUID } from 'crypto';
 import { serializeMessage } from '@/lib/serializers/chat';
+import {
+  upsertUserRequest,
+  markUserRequestAsProcessing,
+} from '@/lib/services/user-requests';
 
 interface RouteContext {
   params: Promise<{ project_id: string }>;
@@ -188,9 +192,9 @@ async function normalizeImageAttachment(
  * POST /api/chat/[project_id]/act
  * Execute AI command
  */
-export async function POST(request: NextRequest, context: RouteContext) {
+export async function POST(request: NextRequest, { params }: RouteContext) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     const rawBody = await request.json().catch(() => ({}));
     const body = (rawBody && typeof rawBody === 'object' ? rawBody : {}) as ChatActRequest &
       Record<string, unknown>;
@@ -282,7 +286,27 @@ export async function POST(request: NextRequest, context: RouteContext) {
       conversationId: conversationId ?? undefined,
       cliSource: cliPreference,
       metadata,
+      requestId: requestId,
     });
+
+    if (requestId) {
+      try {
+        const storedInstruction =
+          rawInstruction && rawInstruction.trim().length > 0
+            ? rawInstruction.trim()
+            : instructionWithoutLegacyPaths || finalInstruction;
+
+        await upsertUserRequest({
+          id: requestId,
+          projectId: project_id,
+          instruction: storedInstruction || finalInstruction,
+          cliPreference,
+        });
+        await markUserRequestAsProcessing(requestId);
+      } catch (error) {
+        console.error('[API] Failed to record user request metadata:', error);
+      }
+    }
 
     streamManager.publish(project_id, {
       type: 'message',

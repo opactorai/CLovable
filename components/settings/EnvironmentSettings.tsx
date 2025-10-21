@@ -114,7 +114,7 @@ export function EnvironmentSettings({ projectId }: EnvironmentSettingsProps) {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">
           Environment Variables
         </h3>
 
@@ -128,7 +128,7 @@ export function EnvironmentSettings({ projectId }: EnvironmentSettingsProps) {
             variables.map((variable, index) => (
               <div
                 key={index}
-                className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg"
+                className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg"
               >
                 {editingIndex === index ? (
                   <>
@@ -140,7 +140,7 @@ export function EnvironmentSettings({ projectId }: EnvironmentSettingsProps) {
                         updated[index] = { ...variable, key: e.target.value };
                         setVariables(updated);
                       }}
-                      className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-800 dark:text-white"
+                      className="flex-1 px-2 py-1 border border-gray-300 rounded "
                     />
                     <input
                       type={variable.isSecret ? 'password' : 'text'}
@@ -150,7 +150,7 @@ export function EnvironmentSettings({ projectId }: EnvironmentSettingsProps) {
                         updated[index] = { ...variable, value: e.target.value };
                         setVariables(updated);
                       }}
-                      className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-800 dark:text-white"
+                      className="flex-1 px-2 py-1 border border-gray-300 rounded "
                     />
                     <button
                       onClick={() => handleUpdate(index, variable)}
@@ -167,21 +167,21 @@ export function EnvironmentSettings({ projectId }: EnvironmentSettingsProps) {
                   </>
                 ) : (
                   <>
-                    <span className="font-mono text-sm text-gray-700 dark:text-gray-300">
+                    <span className="font-mono text-sm text-gray-700 ">
                       {variable.key}
                     </span>
                     <span className="text-gray-400">=</span>
-                    <span className="flex-1 font-mono text-sm text-gray-600 dark:text-gray-400">
+                    <span className="flex-1 font-mono text-sm text-gray-600 ">
                       {variable.isSecret ? '••••••••' : variable.value}
                     </span>
                     {variable.isSecret && (
-                      <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400 rounded">
+                      <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-700 rounded">
                         Secret
                       </span>
                     )}
                     <button
                       onClick={() => setEditingIndex(index)}
-                      className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                      className="p-1 text-gray-400 hover:text-gray-600 "
                     >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
@@ -205,8 +205,8 @@ export function EnvironmentSettings({ projectId }: EnvironmentSettingsProps) {
         </div>
 
         {/* Add New Variable */}
-        <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+        <div className="border-t border-gray-200 pt-6">
+          <h4 className="text-sm font-medium text-gray-700 mb-3">
             Add New Variable
           </h4>
           <div className="space-y-3">
@@ -223,14 +223,14 @@ export function EnvironmentSettings({ projectId }: EnvironmentSettingsProps) {
                     .toUpperCase();
                   setNewKey(cleaned);
                 }}
-                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 "
               />
               <input
                 type={isSecret ? 'password' : 'text'}
                 placeholder="Value"
                 value={newValue}
                 onChange={(e) => setNewValue(e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 "
               />
             </div>
             
@@ -242,7 +242,7 @@ export function EnvironmentSettings({ projectId }: EnvironmentSettingsProps) {
                   onChange={(e) => setIsSecret(e.target.checked)}
                   className="w-4 h-4 text-blue-500 border-gray-300 rounded focus:ring-blue-500"
                 />
-                <span className="text-sm text-gray-700 dark:text-gray-300">
+                <span className="text-sm text-gray-700 ">
                   Mark as secret
                 </span>
               </label>

@@ -1,4 +1,4 @@
-/* Custom scrollbar styles for light/dark theme */
+/* Custom scrollbar styles */
 
 /* Light mode global scrollbar styles */
 ::-webkit-scrollbar {
@@ -21,28 +21,10 @@
   background: rgba(130, 130, 130, 0.7);
 }
 
-/* Dark mode global scrollbar */
-.dark ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.3);
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background: rgba(100, 100, 100, 0.5);
-  border: 1px solid rgba(100, 100, 100, 0.2);
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: rgba(120, 120, 120, 0.7);
-}
-
 /* Firefox global */
 * {
   scrollbar-width: thin;
   scrollbar-color: rgba(150, 150, 150, 0.5) rgba(200, 200, 200, 0.2);
-}
-
-.dark * {
-  scrollbar-color: rgba(100, 100, 100, 0.5) rgba(0, 0, 0, 0.3);
 }
 
 /* Chrome, Safari, Edge */
@@ -66,30 +48,11 @@
   background: rgba(120, 120, 120, 0.7);
 }
 
-/* Dark mode specific */
-.dark .custom-scrollbar::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.2);
-}
-
-.dark .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(100, 100, 100, 0.5);
-  border: 1px solid rgba(100, 100, 100, 0.2);
-}
-
-.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(120, 120, 120, 0.7);
-}
-
 /* Firefox */
 .custom-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: rgba(140, 140, 140, 0.5) rgba(200, 200, 200, 0.15);
 }
-
-.dark .custom-scrollbar {
-  scrollbar-color: rgba(100, 100, 100, 0.5) rgba(0, 0, 0, 0.2);
-}
-
 /* Chat-specific scrollbar */
 .chat-scrollbar::-webkit-scrollbar {
   width: 6px;
@@ -108,18 +71,6 @@
 
 .chat-scrollbar::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, rgba(120, 120, 120, 0.7) 0%, rgba(140, 140, 140, 0.7) 100%);
-  opacity: 1;
-}
-
-/* Dark mode chat scrollbar */
-.dark .chat-scrollbar::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, rgba(100, 100, 100, 0.5) 0%, rgba(80, 80, 80, 0.5) 100%);
-  border-radius: 3px;
-  opacity: 0.6;
-}
-
-.dark .chat-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, rgba(120, 120, 120, 0.7) 0%, rgba(100, 100, 100, 0.7) 100%);
   opacity: 1;
 }
 

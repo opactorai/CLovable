@@ -12,10 +12,10 @@ interface RouteContext {
 
 export async function GET(
   _request: Request,
-  context: RouteContext
+  { params }: RouteContext
 ) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     const preview = previewManager.getStatus(project_id);
 
     return NextResponse.json({

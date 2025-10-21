@@ -14,8 +14,8 @@ function isProvider(value: string): boolean {
   return value === 'github' || value === 'supabase' || value === 'vercel';
 }
 
-export async function GET(request: NextRequest, context: RouteContext) {
-  const { segments = [] } = await context.params;
+export async function GET(request: NextRequest, { params }: RouteContext) {
+  const { segments = [] } = await params;
 
   if (segments.length === 1) {
     const provider = segments[0];
@@ -55,8 +55,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
   return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 });
 }
 
-export async function DELETE(request: NextRequest, context: RouteContext) {
-  const { segments = [] } = await context.params;
+export async function DELETE(_request: NextRequest, { params }: RouteContext) {
+  const { segments = [] } = await params;
 
   if (segments.length !== 1) {
     return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 });

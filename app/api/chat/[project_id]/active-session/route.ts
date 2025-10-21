@@ -5,12 +5,15 @@ interface RouteContext {
   params: Promise<{ project_id: string }>;
 }
 
-export async function GET(request: Request, context: RouteContext) {
+export async function GET(_request: Request, { params }: RouteContext) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     const session = await getActiveSession(project_id);
+
+    // Return 200 with null data when no session exists (successful query, no results)
+    // This prevents console 404 errors while still indicating no active session
     if (!session) {
-      return NextResponse.json({ success: false, error: 'No active session found' }, { status: 404 });
+      return NextResponse.json({ success: true, data: null });
     }
 
     return NextResponse.json({ success: true, data: session });

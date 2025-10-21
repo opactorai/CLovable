@@ -14,14 +14,6 @@ export function AIAssistantSettings({ projectId }: AIAssistantSettingsProps) {
 
   const selectedCLIOption = cliOptions.find(opt => opt.id === preference?.preferredCli);
   
-  // Debug logging
-  console.log('🔍 AIAssistantSettings Debug:', {
-    projectId,
-    preference,
-    selectedCLIOption,
-    cliOptions
-  });
-  
   // Get the actual model name from preference data
   const getModelDisplayName = () => {
     if (!preference?.selectedModel) return 'Default Model';
@@ -30,11 +22,6 @@ export function AIAssistantSettings({ projectId }: AIAssistantSettingsProps) {
     const currentCLI = selectedCLIOption;
     if (currentCLI?.models) {
       const model = currentCLI.models.find(m => m.id === preference.selectedModel);
-      console.log('🔍 Model search:', {
-        selected_model: preference.selectedModel,
-        available_models: currentCLI.models,
-        found_model: model
-      });
       return model?.name || preference.selectedModel;
     }
     
@@ -46,28 +33,28 @@ export function AIAssistantSettings({ projectId }: AIAssistantSettingsProps) {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">
           Current AI Assistant
         </h3>
         
         <div className="space-y-4">
           {/* Current CLI */}
-          <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+          <div className="p-4 bg-gray-50 rounded-lg">
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <h4 className="text-sm font-medium text-gray-700 mb-1">
                   CLI Agent
                 </h4>
                 <div className="flex items-center gap-2">
-                  <span className="text-lg font-semibold text-gray-900 dark:text-white">
+                  <span className="text-lg font-semibold text-gray-900 ">
                     {selectedCLIOption?.name || preference?.preferredCli || 'Not configured'}
                   </span>
                   {selectedCLIOption?.configured ? (
-                    <span className="text-xs px-2 py-1 bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400 rounded">
+                    <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">
                       Configured
                     </span>
                   ) : (
-                    <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400 rounded">
+                    <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-700 rounded">
                       Not Configured
                     </span>
                   )}
@@ -77,11 +64,11 @@ export function AIAssistantSettings({ projectId }: AIAssistantSettingsProps) {
           </div>
 
           {/* Current Model */}
-          <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <h4 className="text-sm font-medium text-gray-700 mb-1">
               Model
             </h4>
-            <span className="text-lg font-semibold text-gray-900 dark:text-white">
+            <span className="text-lg font-semibold text-gray-900 ">
               {modelDisplayName}
             </span>
           </div>
@@ -89,7 +76,7 @@ export function AIAssistantSettings({ projectId }: AIAssistantSettingsProps) {
 
           {/* Note */}
           <div className="text-center">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <p className="text-sm text-gray-500 ">
               To modify these settings, use Global Settings
             </p>
           </div>

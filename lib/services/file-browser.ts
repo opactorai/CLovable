@@ -5,8 +5,8 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { getProjectById } from '@/lib/services/project';
-import type { ProjectFileEntry } from '@/backend-types';
-import type { Project } from '@/backend-types';
+import type { ProjectFileEntry } from '@/types/backend';
+import type { Project } from '@/types/backend';
 
 const EXCLUDED_DIRECTORIES = new Set([
   'node_modules',
@@ -40,15 +40,25 @@ function resolveRepoRoot(project: Project): string {
   return absolutePath;
 }
 
-function resolveSafePath(base: string, target: string): string {
+async function resolveSafePath(base: string, target: string): Promise<string> {
   const normalizedBase = path.resolve(base);
   const resolvedTarget = path.resolve(normalizedBase, target);
+
+  // Validate base path exists
+  try {
+    await fs.access(normalizedBase);
+  } catch {
+    throw new FileBrowserError('Base path does not exist', 400);
+  }
+
+  // Validate path is within base directory
   if (
     resolvedTarget !== normalizedBase &&
     !resolvedTarget.startsWith(normalizedBase + path.sep)
   ) {
-    throw new FileBrowserError('Invalid path', 400);
+    throw new FileBrowserError('Path traversal not allowed', 400);
   }
+
   return resolvedTarget;
 }
 
@@ -98,7 +108,7 @@ export async function listProjectDirectory(
 
   const repoRoot = resolveRepoRoot(project);
   const targetDir = normalizeRelativePath(dir);
-  const absoluteDir = resolveSafePath(repoRoot, targetDir === '.' ? '.' : targetDir);
+  const absoluteDir = await resolveSafePath(repoRoot, targetDir === '.' ? '.' : targetDir);
 
   let stats;
   try {
@@ -132,7 +142,7 @@ export async function listProjectDirectory(
     }
 
     const relativePath = joinRelativePath(targetDir, entry.name);
-    const absolutePath = resolveSafePath(repoRoot, relativePath);
+    const absolutePath = await resolveSafePath(repoRoot, relativePath);
 
     if (entry.isDirectory()) {
       const hasChildren = await directoryHasVisibleChildren(absolutePath);
@@ -177,7 +187,7 @@ export async function readProjectFileContent(
 
   const repoRoot = resolveRepoRoot(project);
   const normalizedPath = normalizeRelativePath(filePath);
-  const absolutePath = resolveSafePath(
+  const absolutePath = await resolveSafePath(
     repoRoot,
     normalizedPath === '.' ? '.' : normalizedPath
   );
@@ -226,7 +236,7 @@ export async function writeProjectFileContent(
 
   const repoRoot = resolveRepoRoot(project);
   const normalizedPath = normalizeRelativePath(filePath);
-  const absolutePath = resolveSafePath(
+  const absolutePath = await resolveSafePath(
     repoRoot,
     normalizedPath === '.' ? '.' : normalizedPath
   );

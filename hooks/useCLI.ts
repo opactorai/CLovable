@@ -10,10 +10,57 @@ interface UseCLIOptions {
   projectId: string;
 }
 
+const buildOptimisticStatus = (): CLIStatus =>
+  CLI_OPTIONS.reduce((acc, option) => {
+    acc[option.id] = {
+      installed: true,
+      checking: false,
+      available: true,
+      configured: true,
+      models: option.models?.map((model) => model.id),
+    };
+    return acc;
+  }, {} as CLIStatus);
+
+export const createCliStatusFallback = (): CLIStatus => buildOptimisticStatus();
+
+export async function fetchCliStatusSnapshot(): Promise<CLIStatus> {
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
+  try {
+    const response = await fetch(`${API_BASE}/api/settings/cli-status`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch CLI status: ${response.status}`);
+    }
+
+    const payload = (await response.json()) as CLIStatus;
+    const optimistic = buildOptimisticStatus();
+
+    for (const option of CLI_OPTIONS) {
+      const entry = payload[option.id];
+      if (!entry) {
+        continue;
+      }
+      optimistic[option.id] = {
+        ...optimistic[option.id],
+        ...entry,
+        checking: false,
+        available: entry.available ?? entry.installed ?? optimistic[option.id]?.available ?? false,
+        configured: entry.configured ?? entry.installed ?? optimistic[option.id]?.configured ?? false,
+        models: entry.models ?? option.models?.map((model) => model.id),
+      };
+    }
+
+    return optimistic;
+  } catch (error) {
+    console.warn('Failed to fetch CLI status from API:', error);
+    return buildOptimisticStatus();
+  }
+}
+
 export function useCLI({ projectId }: UseCLIOptions) {
-  const [cliOptions, setCLIOptions] = useState<CLIOption[]>(CLI_OPTIONS);
+  const [cliOptions, setCLIOptions] = useState<CLIOption[]>(() => CLI_OPTIONS.map((option) => ({ ...option })));
   const [preference, setPreference] = useState<CLIPreference | null>(null);
-  const [statuses, setStatuses] = useState<CLIStatus>({});
+  const [statuses, setStatuses] = useState<CLIStatus>(() => createCliStatusFallback());
   const [isLoading, setIsLoading] = useState(false);
 
   const parsePreference = useCallback((payload: unknown): CLIPreference => {
@@ -70,53 +117,37 @@ export function useCLI({ projectId }: UseCLIOptions) {
     }
   }, [projectId, parsePreference]);
 
+  const applyStatusToState = useCallback((status: CLIStatus) => {
+    setStatuses(status);
+    setCLIOptions(
+      CLI_OPTIONS.map((option) => {
+        const entry = status[option.id];
+        return {
+          ...option,
+          available: Boolean(entry?.available ?? entry?.installed ?? option.available),
+          configured: Boolean(entry?.configured ?? entry?.installed ?? option.configured),
+        };
+      })
+    );
+  }, []);
+
   // Load all CLI statuses
   const loadStatuses = useCallback(async () => {
     try {
       setIsLoading(true);
-      const fallbackStatus: CLIStatus = CLI_OPTIONS.reduce((acc, option) => {
-        acc[option.id] = {
-          installed: true,
-          checking: false,
-          available: true,
-          configured: true,
-          models: option.models?.map(model => model.id),
-        };
-        return acc;
-      }, {} as CLIStatus);
-
-      setStatuses(fallbackStatus);
-      setCLIOptions(prevOptions =>
-        prevOptions.map(option => ({
-          ...option,
-          available: true,
-          configured: true,
-        }))
-      );
+      const status = await fetchCliStatusSnapshot();
+      applyStatusToState(status);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [applyStatusToState]);
 
   // Check single CLI status
   const checkCLIStatus = useCallback(async (cliType: string) => {
-    const fallback = {
-      installed: true,
-      checking: false,
-      available: true,
-      configured: true,
-      models: CLI_OPTIONS.find(option => option.id === cliType)?.models?.map(model => model.id),
-    };
-    setStatuses(prev => ({ ...prev, [cliType]: fallback }));
-    setCLIOptions(prevOptions =>
-      prevOptions.map(option =>
-        option.id === cliType
-          ? { ...option, available: true, configured: true }
-          : option
-      )
-    );
-    return fallback;
-  }, []);
+    const status = await fetchCliStatusSnapshot();
+    applyStatusToState(status);
+    return status[cliType];
+  }, [applyStatusToState]);
 
   // Update CLI preference
   const updatePreference = useCallback(async (preferredCli: string) => {

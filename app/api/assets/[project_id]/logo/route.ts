@@ -9,9 +9,9 @@ interface RouteContext {
 
 const PROJECTS_DIR = process.env.PROJECTS_DIR || './data/projects';
 
-export async function POST(request: Request, context: RouteContext) {
+export async function POST(request: Request, { params }: RouteContext) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     const project = await getProjectById(project_id);
     if (!project) {
       return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });

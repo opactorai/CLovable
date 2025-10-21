@@ -31,6 +31,12 @@
     --bolt-text-secondary: #6b7280;
     --bolt-text-tertiary: #9ca3af;
   }
+
+  html.theme-preload,
+  html.theme-preload * {
+    transition: none !important;
+    animation: none !important;
+  }
 }
 
 @layer components {

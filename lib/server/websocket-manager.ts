@@ -1,4 +1,4 @@
-import type { WebSocket } from 'ws';
+import { WebSocket as NodeWebSocket, type WebSocket } from 'ws';
 import type { RealtimeEvent } from '@/types';
 
 type ProjectId = string;
@@ -9,6 +9,8 @@ interface ManagedSocket extends WebSocket {
    */
   isAlive?: boolean;
 }
+
+const OPEN_STATE = NodeWebSocket.OPEN;
 
 class WebSocketManager {
   private connections = new Map<ProjectId, Set<ManagedSocket>>();
@@ -39,6 +41,7 @@ class WebSocketManager {
         projectId,
         timestamp: new Date().toISOString(),
         transport: 'websocket',
+        connectionStage: 'handshake',
       },
     });
   }
@@ -65,14 +68,15 @@ class WebSocketManager {
     const payload = typeof data === 'string' ? data : JSON.stringify(data);
 
     for (const socket of [...projectConnections]) {
-      if (socket.readyState !== socket.OPEN) {
+      if (socket.readyState !== OPEN_STATE) {
         projectConnections.delete(socket);
         continue;
       }
 
       try {
         socket.send(payload);
-      } catch {
+      } catch (error) {
+        console.error('[WebSocketManager] Failed to send:', error);
         projectConnections.delete(socket);
       }
     }
@@ -105,7 +109,7 @@ class WebSocketManager {
   }
 
   private safeSend(socket: ManagedSocket, data: RealtimeEvent): void {
-    if (socket.readyState !== socket.OPEN) {
+    if (socket.readyState !== OPEN_STATE) {
       return;
     }
     try {

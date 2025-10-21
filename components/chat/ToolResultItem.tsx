@@ -74,11 +74,11 @@ const ToolResultItem: React.FC<ToolResultItemProps> = ({ action, filePath, conte
         <div className="mb-px mr-1 flex shrink-0 items-center">
           {getIcon()}
         </div>
-        <span className="flex-shrink-0 font-normal text-gray-600 dark:text-gray-400">
+        <span className="flex-shrink-0 font-normal text-gray-600 ">
           {action}
         </span>
         <span 
-          className="relative w-fit max-w-xs truncate rounded-md bg-gray-100 dark:bg-gray-800 px-2 py-0 text-start text-xs font-normal text-gray-600 dark:text-gray-400 transition-colors hover:bg-gray-200 dark:hover:bg-gray-700"
+          className="relative w-fit max-w-xs truncate rounded-md bg-gray-100 px-2 py-0 text-start text-xs font-normal text-gray-600 transition-colors hover:bg-gray-200 "
           title={filePath}
         >
           <span className="truncate">
@@ -112,8 +112,8 @@ const ToolResultItem: React.FC<ToolResultItemProps> = ({ action, filePath, conte
             transition={{ duration: 0.2 }}
             style={{ overflow: 'hidden' }}
           >
-            <div className="mt-2 ml-6 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
-              <pre className="text-xs text-gray-700 dark:text-gray-300 font-mono whitespace-pre-wrap break-words">
+            <div className="mt-2 ml-6 p-3 bg-gray-50 rounded-lg">
+              <pre className="text-xs text-gray-700 font-mono whitespace-pre-wrap break-words">
                 {content}
               </pre>
             </div>

@@ -10,6 +10,7 @@ const path = require('path');
 const os = require('os');
 const dotenv = require('dotenv');
 const { ensureEnvironment } = require('./setup-env');
+const { PrismaClient } = require('@prisma/client');
 
 const rootDir = path.join(__dirname, '..');
 const isWindows = os.platform() === 'win32';
@@ -56,6 +57,70 @@ function parseCliArgs(argv) {
   return { preferredPort, passthrough };
 }
 
+function runPrismaDbPush() {
+  return new Promise((resolve, reject) => {
+    console.log('🗃️  Synchronizing Prisma schema (prisma db push)...');
+    const child = spawn('npx', ['prisma', 'db', 'push'], {
+      cwd: rootDir,
+      stdio: 'inherit',
+      shell: isWindows,
+      env: {
+        ...process.env,
+        PRISMA_HIDE_UPDATE_MESSAGE: '1',
+      },
+    });
+
+    child.on('exit', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(
+          new Error(`prisma db push exited with code ${code ?? 'unknown'}`)
+        );
+      }
+    });
+
+    child.on('error', (error) => {
+      reject(error);
+    });
+  });
+}
+
+async function ensureDatabaseSynced() {
+  if (process.env.SKIP_DB_SYNC === '1') {
+    return;
+  }
+
+  let prisma;
+  try {
+    prisma = new PrismaClient();
+  } catch (error) {
+    console.warn(
+      '⚠️  Failed to initialize Prisma Client, attempting to sync automatically:',
+      error instanceof Error ? error.message : error
+    );
+    await runPrismaDbPush();
+    return;
+  }
+
+  try {
+    const tables = await prisma.$queryRaw`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'projects'`;
+    if (!Array.isArray(tables) || tables.length === 0) {
+      await runPrismaDbPush();
+    }
+  } catch (error) {
+    console.warn(
+      '⚠️  Prisma schema check failed, attempting to sync automatically:',
+      error instanceof Error ? error.message : error
+    );
+    await runPrismaDbPush();
+  } finally {
+    if (prisma) {
+      await prisma.$disconnect().catch(() => {});
+    }
+  }
+}
+
 async function start() {
   const argv = process.argv.slice(2);
   const { preferredPort, passthrough } = parseCliArgs(argv);
@@ -63,6 +128,8 @@ async function start() {
   const { port, url } = await ensureEnvironment({
     preferredPort,
   });
+
+  await ensureDatabaseSynced();
 
   const resolvedPort = port;
   const resolvedUrl = url;

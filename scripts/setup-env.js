@@ -10,10 +10,15 @@
 const fs = require('fs');
 const path = require('path');
 const net = require('net');
+const crypto = require('crypto');
 
 const rootDir = path.join(__dirname, '..');
 const envFile = path.join(rootDir, '.env');
 const envLocalFile = path.join(rootDir, '.env.local');
+const rootDataDir = path.join(rootDir, 'data');
+const projectsDir = path.join(rootDataDir, 'projects');
+const prismaDataDir = path.join(rootDir, 'prisma', 'data');
+const sqlitePath = path.join(rootDataDir, 'cc.db');
 
 const MAX_PORT = 65_535;
 // Preview servers (per-project) dynamic pool
@@ -55,6 +60,24 @@ function upsertEnvValue(contents, key, value) {
   }
 
   return contents + `${key}=${value}\n`;
+}
+
+function hasEnvKey(contents, key) {
+  if (!contents) return false;
+  const pattern = new RegExp(`^${escapeRegExp(key)}=`, 'm');
+  return pattern.test(contents);
+}
+
+function ensureDirectory(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+}
+
+function ensureFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    fs.writeFileSync(filePath, '');
+  }
 }
 
 function extractPort(contents, keys) {
@@ -158,8 +181,25 @@ async function ensureEnvironment(options = {}) {
 
   const { preferredPort: preferredOverride } = options ?? {};
 
-  const envContents = readFileSafe(envFile);
+  let envContents = readFileSafe(envFile);
   const envLocalContentsRaw = readFileSafe(envLocalFile);
+
+  // Ensure required directories/files exist
+  ensureDirectory(rootDataDir);
+  ensureDirectory(projectsDir);
+  ensureDirectory(prismaDataDir);
+  ensureFile(sqlitePath);
+
+  const envDefaults = {};
+  if (!hasEnvKey(envContents, 'DATABASE_URL')) {
+    envDefaults.DATABASE_URL = '"file:../data/cc.db"';
+  }
+  if (!hasEnvKey(envContents, 'PROJECTS_DIR')) {
+    envDefaults.PROJECTS_DIR = '"./data/projects"';
+  }
+  if (!hasEnvKey(envContents, 'ENCRYPTION_KEY')) {
+    envDefaults.ENCRYPTION_KEY = `"${crypto.randomBytes(32).toString('hex')}"`;
+  }
 
   const portStartCandidates = [
     parsePortValue(process.env.PREVIEW_PORT_START),
@@ -240,6 +280,9 @@ async function ensureEnvironment(options = {}) {
   };
 
   let updatedEnv = envContents || '# Auto-generated defaults - customize as needed\n';
+  for (const [key, value] of Object.entries(envDefaults)) {
+    updatedEnv = upsertEnvValue(updatedEnv, key, value);
+  }
   for (const [key, value] of Object.entries(envUpdates)) {
     updatedEnv = upsertEnvValue(updatedEnv, key, value);
   }

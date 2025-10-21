@@ -8,11 +8,12 @@ import fs from 'fs/promises';
 import { findAvailablePort } from '@/lib/utils/ports';
 import { getProjectById, updateProject, updateProjectStatus } from './project';
 import { scaffoldBasicNextApp } from '@/lib/utils/scaffold';
+import { PREVIEW_CONFIG } from '@/lib/config/constants';
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const LOG_LIMIT = 400;
-const PREVIEW_FALLBACK_PORT_START = 3_100;
-const PREVIEW_FALLBACK_PORT_END = 3_999;
+const LOG_LIMIT = PREVIEW_CONFIG.LOG_LIMIT;
+const PREVIEW_FALLBACK_PORT_START = PREVIEW_CONFIG.FALLBACK_PORT_START;
+const PREVIEW_FALLBACK_PORT_END = PREVIEW_CONFIG.FALLBACK_PORT_END;
 const PREVIEW_MAX_PORT = 65_535;
 const ROOT_ALLOWED_FILES = new Set([
   '.DS_Store',

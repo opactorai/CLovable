@@ -307,35 +307,35 @@ export default function ServiceConnectionModal({
         className="fixed inset-0 z-50 flex items-center justify-center p-4"
       >
         <div 
-          className="absolute inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm"
+          className="absolute inset-0 bg-black/50 backdrop-blur-sm"
           onClick={onClose}
         />
         
-        <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-auto">
+        <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-auto">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
           >
           {/* Header */}
-          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+          <div className="p-6 border-b border-gray-200 ">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="text-gray-700 dark:text-gray-300">
+                <div className="text-gray-700 ">
                   {providerInfo.icon}
                 </div>
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                  <h2 className="text-xl font-semibold text-gray-900 ">
                     {providerInfo.title} {providerInfo.tokenName}
                   </h2>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <p className="text-sm text-gray-600 ">
                     {providerInfo.description}
                   </p>
                 </div>
               </div>
               <button
                 onClick={onClose}
-                className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
+                className="text-gray-400 hover:text-gray-600 "
               >
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
@@ -349,14 +349,14 @@ export default function ServiceConnectionModal({
             {savedToken ? (
               // Token is saved - show connection status and actions
               <div className="space-y-4">
-                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span className="text-sm font-medium text-green-700 dark:text-green-300">
+                    <span className="text-sm font-medium text-green-700 ">
                       Token Connected
                     </span>
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                  <div className="text-sm text-gray-600 ">
                     <p>Name: {savedToken.name}</p>
                     <p>Provider: {savedToken.provider}</p>
                     <p className="text-xs mt-1">Added: {new Date(savedToken.created_at).toLocaleString()}</p>
@@ -369,12 +369,12 @@ export default function ServiceConnectionModal({
                 {/* Service Actions */}
                 {projectId && (
                   <div className="space-y-2">
-                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Available Actions</h3>
+                    <h3 className="text-sm font-medium text-gray-700 ">Available Actions</h3>
                     {provider === 'github' && (
                       <button
                         onClick={() => handleGitHubAction('create-repo')}
                         disabled={actionLoading}
-                        className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                        className="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
                       >
                         {actionLoading ? 'Creating Repository...' : 'Create GitHub Repository'}
                       </button>
@@ -383,7 +383,7 @@ export default function ServiceConnectionModal({
                       <button
                         onClick={() => handleSupabaseAction('create-project')}
                         disabled={actionLoading}
-                        className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                        className="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
                       >
                         {actionLoading ? 'Creating Project...' : 'Create Supabase Project'}
                       </button>
@@ -392,7 +392,7 @@ export default function ServiceConnectionModal({
                       <button
                         onClick={() => handleVercelAction('deploy')}
                         disabled={actionLoading}
-                        className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                        className="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
                       >
                         {actionLoading ? 'Deploying...' : 'Deploy to Vercel'}
                       </button>
@@ -404,14 +404,14 @@ export default function ServiceConnectionModal({
                   <div key="actions" className="flex gap-2">
                     <button
                       onClick={() => setShowTokenInput(true)}
-                      className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors"
+                      className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
                     >
                       Update Token
                     </button>
                     <button
                       onClick={handleDeleteToken}
                       disabled={isLoading}
-                      className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                      className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
                     >
                       {isLoading ? 'Deleting...' : 'Delete Token'}
                     </button>
@@ -419,7 +419,7 @@ export default function ServiceConnectionModal({
                 ) : (
                   <div key="edit-token" className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Enter new {providerInfo.title} {providerInfo.tokenName}:
                       </label>
                       <input
@@ -427,11 +427,11 @@ export default function ServiceConnectionModal({
                         value={token}
                         onChange={(e) => setToken(e.target.value)}
                         placeholder={`Paste your new ${providerInfo.tokenName} here...`}
-                        className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 dark:focus:border-blue-400 text-sm transition-colors"
+                        className="w-full px-4 py-3 border border-gray-300 bg-white text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-colors"
                         disabled={isLoading}
                         autoFocus
                       />
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                      <p className="text-xs text-gray-500 mt-2">
                         This will replace your current token. The old token will be permanently removed.
                       </p>
                     </div>
@@ -442,7 +442,7 @@ export default function ServiceConnectionModal({
                           setShowTokenInput(false);
                           setToken('');
                         }}
-                        className="flex-1 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors"
+                        className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
                         disabled={isLoading}
                       >
                         Cancel
@@ -450,7 +450,7 @@ export default function ServiceConnectionModal({
                       <button
                         onClick={handleSaveToken}
                         disabled={isLoading || !token.trim()}
-                        className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isLoading ? 'Updating...' : 'Update Token'}
                       </button>
@@ -461,18 +461,18 @@ export default function ServiceConnectionModal({
             ) : (
               // No token saved - show setup instructions and token input
               <div className="space-y-6">
-                <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
-                  <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-2">
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <h3 className="text-sm font-medium text-gray-900 mb-2">
                     Setup Instructions
                   </h3>
-                  <p className="text-xs text-gray-700 dark:text-gray-300 mb-3">
+                  <p className="text-xs text-gray-700 mb-3">
                     To use {providerInfo.title} integration, you need to create a {providerInfo.tokenName} first.
                   </p>
                   <a
                     href={providerInfo.tokenUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 font-medium"
+                    className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-500 font-medium"
                   >
                     Open {providerInfo.title} Token Settings
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -481,14 +481,14 @@ export default function ServiceConnectionModal({
                   </a>
                 </div>
 
-                <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
-                  <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-3">
                     Step-by-step Guide:
                   </h4>
-                  <ol className="text-xs text-gray-600 dark:text-gray-400 space-y-2">
+                  <ol className="text-xs text-gray-600 space-y-2">
                     {providerInfo.instructions.map((step, index) => (
                       <li key={index} className="flex gap-2">
-                        <span className="flex-shrink-0 w-5 h-5 bg-gray-100 dark:bg-gray-600 text-gray-900 dark:text-white rounded-full flex items-center justify-center text-xs font-medium">
+                        <span className="flex-shrink-0 w-5 h-5 bg-gray-100 text-gray-900 rounded-full flex items-center justify-center text-xs font-medium">
                           {index + 1}
                         </span>
                         <span>{step}</span>
@@ -500,7 +500,7 @@ export default function ServiceConnectionModal({
                 {/* Token Input Section - Always Visible */}
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Enter your {providerInfo.title} {providerInfo.tokenName}:
                     </label>
                     <input
@@ -508,10 +508,10 @@ export default function ServiceConnectionModal({
                       value={token}
                       onChange={(e) => setToken(e.target.value)}
                       placeholder={`Paste your ${providerInfo.tokenName} here...`}
-                      className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 dark:focus:border-blue-400 text-sm transition-colors"
+                      className="w-full px-4 py-3 border border-gray-300 bg-white text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-colors"
                       disabled={isLoading}
                     />
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                    <p className="text-xs text-gray-500 mt-2">
                       Your token will be encrypted and stored securely. You can delete it anytime.
                     </p>
                   </div>
@@ -519,7 +519,7 @@ export default function ServiceConnectionModal({
                   <button
                     onClick={handleSaveToken}
                     disabled={isLoading || !token.trim()}
-                    className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white rounded-lg font-medium transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isLoading ? 'Saving Token...' : 'Save Token'}
                   </button>
