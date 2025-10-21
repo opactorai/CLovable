@@ -833,11 +833,14 @@ class PreviewManager {
   public async stop(projectId: string): Promise<PreviewInfo> {
     const processInfo = this.processes.get(projectId);
     if (!processInfo) {
-      await updateProject(projectId, {
-        previewUrl: null,
-        previewPort: null,
-      });
-      await updateProjectStatus(projectId, 'idle');
+      const project = await getProjectById(projectId);
+      if (project) {
+        await updateProject(projectId, {
+          previewUrl: null,
+          previewPort: null,
+        });
+        await updateProjectStatus(projectId, 'idle');
+      }
       return {
         port: null,
         url: null,
