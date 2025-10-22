@@ -8,6 +8,7 @@ import ToolResultItem from './ToolResultItem';
 import ThinkingSection from './ThinkingSection';
 import type { ChatMessage, RealtimeEvent, RealtimeStatus } from '@/types';
 import { toChatMessage } from '@/lib/serializers/client/chat';
+import { toRelativePath } from '@/lib/utils/path';
 
 type ToolAction = 'Edited' | 'Created' | 'Read' | 'Deleted' | 'Generated' | 'Searched' | 'Executed';
 
@@ -1225,16 +1226,10 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
     });
   };
 
-  // Function to shorten file paths
+  // Function to convert file paths to relative paths
   const shortenPath = (text: string) => {
     if (!text) return text;
-    
-    // Pattern to match file paths (starts with / and contains multiple directories)
-    const pathPattern = /\/[^\/\s]+(?:\/[^\/\s]+){3,}\/([^\/\s]+\.[^\/\s]+)/g;
-    
-    return text.replace(pathPattern, (match, filename) => {
-      return `.../${filename}`;
-    });
+    return toRelativePath(text);
   };
 
 const ToolResultMessage = ({
@@ -1883,7 +1878,7 @@ const ToolResultMessage = ({
                                           </div>
                                           {/* Tooltip with filename */}
                                           <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                                            {attachment.name}
+                                            {toRelativePath(attachment.name)}
                                           </div>
                                         </div>
                                         );

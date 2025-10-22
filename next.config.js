@@ -6,6 +6,10 @@ const nextConfig = {
   experimental: {
     optimizeCss: false,
     scrollRestoration: true,
+  },
+  // Inject project root path as environment variable
+  env: {
+    NEXT_PUBLIC_PROJECT_ROOT: process.cwd(),
   }
 };
 

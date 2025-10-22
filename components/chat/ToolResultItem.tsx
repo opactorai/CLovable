@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toRelativePath } from '@/lib/utils/path';
 
 interface ToolResultItemProps {
   action: 'Edited' | 'Created' | 'Read' | 'Deleted' | 'Generated' | 'Searched' | 'Executed';
@@ -10,6 +11,9 @@ interface ToolResultItemProps {
 
 const ToolResultItem: React.FC<ToolResultItemProps> = ({ action, filePath, content }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // Convert to relative path for display
+  const displayPath = toRelativePath(filePath);
   
   const getIcon = () => {
     switch (action) {
@@ -77,12 +81,12 @@ const ToolResultItem: React.FC<ToolResultItemProps> = ({ action, filePath, conte
         <span className="flex-shrink-0 font-normal text-gray-600 ">
           {action}
         </span>
-        <span 
+        <span
           className="relative w-fit max-w-xs truncate rounded-md bg-gray-100 px-2 py-0 text-start text-xs font-normal text-gray-600 transition-colors hover:bg-gray-200 "
-          title={filePath}
+          title={displayPath}
         >
           <span className="truncate">
-            {filePath}
+            {displayPath}
           </span>
         </span>
         {content && (
