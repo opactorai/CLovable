@@ -612,8 +612,23 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
     const chatMessage = toChatMessage(message);
     const expandedMessages = expandMessageWithToolPlaceholder(chatMessage);
 
-    if (expandedMessages.some((msg) => msg.role === 'assistant')) {
-      setIsWaitingForResponse(false);
+    const assistantUpdates = expandedMessages.filter((msg) => msg.role === 'assistant');
+    if (assistantUpdates.length > 0) {
+      const shouldStopWaiting = assistantUpdates.some((msg) => {
+        const normalizedContent =
+          typeof msg.content === 'string'
+            ? msg.content
+            : Array.isArray(msg.content)
+              ? msg.content.join('')
+              : '';
+        if (normalizedContent.trim().length > 0) {
+          return true;
+        }
+        return Boolean(msg.isFinal);
+      });
+      if (shouldStopWaiting) {
+        setIsWaitingForResponse(false);
+      }
     }
 
     setMessages((prev) => {
@@ -651,9 +666,17 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
             messageWithId.metadata !== undefined
               ? messageWithId.metadata ?? null
               : existing.metadata ?? null;
+          const incomingContent =
+            typeof messageWithId.content === 'string' ? messageWithId.content : undefined;
+          const shouldReplaceContent =
+            incomingContent !== undefined &&
+            (incomingContent.trim().length > 0 ||
+              existing.content == null ||
+              (typeof existing.content === 'string' && existing.content.trim().length === 0));
+
           const mergedContent =
-            typeof messageWithId.content === 'string' && messageWithId.content.length > 0
-              ? messageWithId.content
+            shouldReplaceContent && incomingContent !== undefined
+              ? incomingContent
               : existing.content;
 
           const merged: ChatMessage = {
@@ -1113,18 +1136,77 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
 
           // Merge DB messages with optimistic messages instead of replacing
           setMessages((prev) => {
-            const optimisticMessages = prev.filter((m) => m.isOptimistic);
-            const merged = [...normalized];
-
-            // Keep optimistic messages that don't exist in DB yet
-            optimisticMessages.forEach((optMsg) => {
-              const matchingDbMessage = normalized.find(
-                (dbMsg) => dbMsg.id === optMsg.id || (optMsg.requestId && dbMsg.requestId === optMsg.requestId)
-              );
-
-              if (!matchingDbMessage) {
-                merged.push(optMsg);
+            const keyForMessage = (message: ChatMessage): string | null => {
+              if (message.id) {
+                return `id:${message.id}`;
               }
+              if (message.requestId) {
+                return `request:${message.requestId}`;
+              }
+              return null;
+            };
+
+            const prevByKey = new Map<string, ChatMessage>();
+            prev.forEach((message) => {
+              const key = keyForMessage(message);
+              if (key) {
+                prevByKey.set(key, message);
+              }
+            });
+
+            const merged = normalized.map((message) => {
+              const key = keyForMessage(message);
+              if (!key) {
+                return message;
+              }
+
+              const previous = prevByKey.get(key);
+              if (!previous) {
+                return message;
+              }
+
+              const incomingContent = typeof message.content === 'string' ? message.content : '';
+              const previousContent = typeof previous.content === 'string' ? previous.content : '';
+
+              const shouldKeepPreviousContent =
+                previousContent.trim().length > 0 && incomingContent.trim().length === 0;
+
+              if (shouldKeepPreviousContent) {
+                return {
+                  ...message,
+                  content: previous.content,
+                  isStreaming: previous.isStreaming,
+                  metadata: message.metadata ?? previous.metadata ?? null,
+                };
+              }
+
+              return message;
+            });
+
+            const mergedKeys = new Set<string>();
+            merged.forEach((message) => {
+              const key = keyForMessage(message);
+              if (key) {
+                mergedKeys.add(key);
+              }
+            });
+
+            // Keep transient messages during polling if the DB hasn't persisted them yet.
+            // - optimistic messages (local/UI placeholders)
+            // - in-progress streaming messages (isStreaming && !isFinal)
+            const transientMessages = prev.filter(
+              (m) => m.isOptimistic || (m.isStreaming && !m.isFinal)
+            );
+
+            transientMessages.forEach((msg) => {
+              const key = keyForMessage(msg);
+              if (key && mergedKeys.has(key)) {
+                return;
+              }
+              if (key) {
+                mergedKeys.add(key);
+              }
+              merged.push(msg);
             });
 
             // Sort by creation time
@@ -1155,6 +1237,14 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
     if (!projectId) return;
     if (isConnected && !enableSseFallback) return;
 
+    const isStreamingMessagePending = messages.some(
+      (message) => message.role === 'assistant' && message.isStreaming && !message.isFinal
+    );
+
+    if (isStreamingMessagePending) {
+      return;
+    }
+
     const interval = setInterval(() => {
       loadChatHistory({ showLoading: false }).catch(() => {
         // Suppress polling errors; realtime channels may still recover.
@@ -1164,7 +1254,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
     return () => {
       clearInterval(interval);
     };
-  }, [projectId, isConnected, enableSseFallback, isSseConnected, loadChatHistory]);
+  }, [projectId, isConnected, enableSseFallback, isSseConnected, loadChatHistory, messages]);
 
   // Initial load
   useEffect(() => {

@@ -109,5 +109,6 @@ export const toChatMessage = (raw: any): ChatMessage => {
     updatedAt,
     isStreaming: raw?.isStreaming ?? raw?.is_streaming ?? false,
     isFinal: raw?.isFinal ?? raw?.is_final ?? false,
+    isOptimistic: raw?.isOptimistic ?? raw?.is_optimistic ?? false,
   } satisfies ChatMessage;
 };

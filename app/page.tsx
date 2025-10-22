@@ -20,7 +20,9 @@ const fetchAPI = globalThis.fetch || fetch;
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 
 // Define assistant brand colors
-const SUPPORTED_ASSISTANTS: CLIOption[] = CLI_OPTIONS.filter(option => option.id === 'claude' || option.id === 'codex');
+const SUPPORTED_ASSISTANTS: CLIOption[] = CLI_OPTIONS.filter(option =>
+  option.id === 'claude' || option.id === 'codex' || option.id === 'qwen'
+);
 
 const ASSISTANT_OPTIONS = SUPPORTED_ASSISTANTS.map(({ id, name, icon }) => ({
   id,

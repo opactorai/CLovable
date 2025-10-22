@@ -50,6 +50,22 @@ const CLI_OPTIONS: CLIOption[] = [
     })),
     features: ['Autonomous apply_patch', 'OpenAI GPT-5 access', 'Web search integration'],
   },
+  {
+    id: 'qwen',
+    name: 'Qwen Coder',
+    icon: '🛠️',
+    description: 'Alibaba Qwen Code CLI with sandboxed tooling',
+    color: 'from-emerald-500 to-teal-600',
+    downloadUrl: 'https://github.com/QwenLM/qwen-code',
+    installCommand: 'npm install -g @qwen-code/qwen-code',
+    models: getModelDefinitionsForCli('qwen').map(({ id, name, description, supportsImages }) => ({
+      id,
+      name,
+      description,
+      supportsImages,
+    })),
+    features: ['Edit/write tools', 'Sandbox approval modes', 'Great for open-source workflows'],
+  },
 ];
 
 function generateUUID() {

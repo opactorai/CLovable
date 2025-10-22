@@ -21,6 +21,9 @@ const DEFAULT_SETTINGS: GlobalSettings = {
     codex: {
       model: getDefaultModelForCli('codex'),
     },
+    qwen: {
+      model: getDefaultModelForCli('qwen'),
+    },
   },
 };
 

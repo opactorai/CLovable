@@ -56,6 +56,18 @@ const CLI_OPTIONS: CLIOption[] = [
     enabled: true,
     models: getModelDefinitionsForCli('codex').map(({ id, name }) => ({ id, name })),
   },
+  {
+    id: 'qwen',
+    name: 'Qwen Coder',
+    icon: '',
+    description: 'Alibaba Qwen Code CLI with sandbox capabilities',
+    color: 'from-emerald-500 to-teal-600',
+    brandColor: '#11A97D',
+    downloadUrl: 'https://github.com/QwenLM/qwen-code',
+    installCommand: 'npm install -g @qwen-code/qwen-code',
+    enabled: true,
+    models: getModelDefinitionsForCli('qwen').map(({ id, name }) => ({ id, name })),
+  },
 ];
 
 // Global settings are provided by context

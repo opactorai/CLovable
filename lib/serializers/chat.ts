@@ -66,5 +66,6 @@ export function createRealtimeMessage(
     updatedAt,
     isStreaming: payload.isStreaming,
     isFinal: payload.isFinal,
+    isOptimistic: payload.isOptimistic,
   };
 }

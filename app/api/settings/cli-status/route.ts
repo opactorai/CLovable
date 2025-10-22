@@ -8,6 +8,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import type { CLIStatus } from '@/types/backend';
 import { CODEX_MODEL_DEFINITIONS } from '@/lib/constants/codexModels';
+import { QWEN_MODEL_DEFINITIONS } from '@/lib/constants/qwenModels';
 
 const execAsync = promisify(exec);
 
@@ -51,6 +52,27 @@ async function checkCodexCLI(): Promise<{
     return {
       installed: false,
       error: error instanceof Error ? error.message : 'Failed to check Codex CLI',
+    };
+  }
+}
+
+async function checkQwenCLI(): Promise<{
+  installed: boolean;
+  version?: string;
+  error?: string;
+}> {
+  const executable = process.platform === 'win32' ? 'qwen.cmd' : 'qwen';
+  try {
+    const { stdout } = await execAsync(`${executable} --version`);
+    const version = stdout.trim();
+    return {
+      installed: true,
+      version: version || 'installed',
+    };
+  } catch (error) {
+    return {
+      installed: false,
+      error: error instanceof Error ? error.message : 'Failed to check Qwen CLI',
     };
   }
 }
@@ -100,6 +122,15 @@ export async function GET() {
       checking: false,
       error: codexStatus.error,
       models: CODEX_MODEL_DEFINITIONS.map(model => model.id),
+    };
+
+    const qwenStatus = await checkQwenCLI();
+    status.qwen = {
+      installed: qwenStatus.installed,
+      version: qwenStatus.version,
+      checking: false,
+      error: qwenStatus.error,
+      models: QWEN_MODEL_DEFINITIONS.map((model) => model.id),
     };
 
     return NextResponse.json(status);

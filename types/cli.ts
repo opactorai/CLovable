@@ -1,5 +1,6 @@
 import { CLAUDE_MODEL_DEFINITIONS } from '@/lib/constants/claudeModels';
 import { CODEX_MODEL_DEFINITIONS } from '@/lib/constants/codexModels';
+import { QWEN_MODEL_DEFINITIONS } from '@/lib/constants/qwenModels';
 
 /**
  * Frontend CLI Type Definitions (claude-only variant)
@@ -83,6 +84,26 @@ export const CLI_OPTIONS: CLIOption[] = [
     installCommand: 'npm install -g @openai/codex',
     features: ['Autonomous agent', 'OpenAI model router', 'apply_patch support'],
     models: CODEX_MODEL_DEFINITIONS.map(({ id, name, description, supportsImages }) => ({
+      id,
+      name,
+      description,
+      supportsImages,
+    })),
+  },
+  {
+    id: 'qwen',
+    name: 'Qwen Coder',
+    description: 'Alibaba Qwen Code agent with sandboxed tooling',
+    icon: '/qwen.png',
+    available: true,
+    configured: true,
+    enabled: true,
+    color: 'from-emerald-500 to-teal-600',
+    brandColor: '#11A97D',
+    downloadUrl: 'https://github.com/QwenLM/qwen-code',
+    installCommand: 'npm install -g @qwen-code/qwen-code',
+    features: ['Autonomous coding agent', 'Workspace sandboxing', 'Tool approval modes'],
+    models: QWEN_MODEL_DEFINITIONS.map(({ id, name, description, supportsImages }) => ({
       id,
       name,
       description,

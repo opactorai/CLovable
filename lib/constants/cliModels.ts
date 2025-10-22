@@ -1,5 +1,6 @@
 import { CLAUDE_DEFAULT_MODEL, CLAUDE_MODEL_DEFINITIONS, getClaudeModelDisplayName, normalizeClaudeModelId } from './claudeModels';
 import { CODEX_DEFAULT_MODEL, CODEX_MODEL_DEFINITIONS, getCodexModelDisplayName, normalizeCodexModelId } from './codexModels';
+import { QWEN_DEFAULT_MODEL, QWEN_MODEL_DEFINITIONS, getQwenModelDisplayName, normalizeQwenModelId } from './qwenModels';
 import type { CLAUDE_MODEL_DEFINITIONS as _Guard } from './claudeModels'; // Ensure module side effects preserved
 
 type CLIKey = 'claude' | 'codex' | 'cursor' | 'gemini' | 'qwen';
@@ -16,7 +17,7 @@ const DEFAULT_MODELS: Record<CLIKey, string> = {
   codex: CODEX_DEFAULT_MODEL,
   cursor: 'gpt-5',
   gemini: 'gemini-2.5-pro',
-  qwen: 'qwen3-coder-plus',
+  qwen: QWEN_DEFAULT_MODEL,
 };
 
 const MODEL_DEFINITIONS: Record<CLIKey, ModelDefinition[]> = {
@@ -33,9 +34,7 @@ const MODEL_DEFINITIONS: Record<CLIKey, ModelDefinition[]> = {
     { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
     { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
   ],
-  qwen: [
-    { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus' },
-  ],
+  qwen: QWEN_MODEL_DEFINITIONS,
 };
 
 export function getDefaultModelForCli(cli: string | null | undefined): string {
@@ -53,6 +52,8 @@ export function normalizeModelId(cli: string | null | undefined, model?: string 
   switch (cli.toLowerCase()) {
     case 'codex':
       return normalizeCodexModelId(model);
+    case 'qwen':
+      return normalizeQwenModelId(model);
     case 'claude':
     default:
       return normalizeClaudeModelId(model);
@@ -67,6 +68,8 @@ export function getModelDisplayName(cli: string | null | undefined, modelId?: st
   switch (cli.toLowerCase()) {
     case 'codex':
       return getCodexModelDisplayName(modelId);
+    case 'qwen':
+      return getQwenModelDisplayName(modelId);
     case 'claude':
     default:
       return getClaudeModelDisplayName(normalizeClaudeModelId(modelId));

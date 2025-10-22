@@ -23,6 +23,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 const SUPPORTED_CLIS = [
   { id: 'claude', name: 'Claude Code', icon: '/claude.png', brandColor: '#DE7356' },
   { id: 'codex', name: 'Codex CLI', icon: '/oai.png', brandColor: '#000000' },
+  { id: 'qwen', name: 'Qwen Coder', icon: '/qwen.png', brandColor: '#11A97D' },
 ] as const;
 
 const assistantBrandColors: Record<string, string> = SUPPORTED_CLIS.reduce((acc, cli) => {
@@ -51,6 +52,7 @@ const hexToFilter = (hex: string): string => {
   const filters: { [key: string]: string } = {
     '#DE7356': 'brightness(0) saturate(100%) invert(52%) sepia(73%) saturate(562%) hue-rotate(336deg) brightness(95%) contrast(91%)',
     '#000000': 'brightness(0) saturate(100%)',
+    '#11A97D': 'brightness(0) saturate(100%) invert(57%) sepia(30%) saturate(747%) hue-rotate(109deg) brightness(90%) contrast(92%)',
   };
   return filters[hex] || filters['#DE7356'];
 };
