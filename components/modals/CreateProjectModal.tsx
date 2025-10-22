@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence } from 'framer-motion';
 import { MotionDiv, MotionP } from '@/lib/motion';
-import { CLAUDE_MODEL_DEFINITIONS, CLAUDE_DEFAULT_MODEL, normalizeClaudeModelId } from '@/lib/constants/claudeModels';
+import { getModelDefinitionsForCli, getDefaultModelForCli, normalizeModelId } from '@/lib/constants/cliModels';
 import { fetchCliStatusSnapshot, createCliStatusFallback } from '@/hooks/useCLI';
 import type { CLIStatus } from '@/types/cli';
 
@@ -13,9 +13,9 @@ type CLIOption = CreateProjectCLIOption;
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 
-const DEFAULT_MODEL_ID = CLAUDE_DEFAULT_MODEL;
+const DEFAULT_MODEL_ID = getDefaultModelForCli('claude');
 
-const sanitizeModel = (model?: string | null) => normalizeClaudeModelId(model);
+const sanitizeModel = (cli: string, model?: string | null) => normalizeModelId(cli, model);
 
 const CLI_OPTIONS: CLIOption[] = [
   {
@@ -26,14 +26,30 @@ const CLI_OPTIONS: CLIOption[] = [
     color: 'from-orange-500 to-red-600',
     downloadUrl: 'https://github.com/anthropics/claude-code',
     installCommand: 'npm install -g @anthropic-ai/claude-code',
-    models: CLAUDE_MODEL_DEFINITIONS.map(({ id, name, description, supportsImages }) => ({
+    models: getModelDefinitionsForCli('claude').map(({ id, name, description, supportsImages }) => ({
       id,
       name,
       description,
       supportsImages,
     })),
-    features: ['Advanced reasoning', 'Code generation', '1M context window']
-  }
+    features: ['Advanced reasoning', 'Code generation', '1M context window'],
+  },
+  {
+    id: 'codex',
+    name: 'Codex CLI',
+    icon: '🧠',
+    description: 'OpenAI Codex agent with GPT-5 support',
+    color: 'from-slate-900 to-gray-700',
+    downloadUrl: 'https://github.com/openai/codex',
+    installCommand: 'npm install -g @openai/codex',
+    models: getModelDefinitionsForCli('codex').map(({ id, name, description, supportsImages }) => ({
+      id,
+      name,
+      description,
+      supportsImages,
+    })),
+    features: ['Autonomous apply_patch', 'OpenAI GPT-5 access', 'Web search integration'],
+  },
 ];
 
 function generateUUID() {
@@ -90,7 +106,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
         if (settings?.cli_settings) {
           for (const [cli, config] of Object.entries(settings.cli_settings)) {
             if (config && typeof config === 'object' && 'model' in config && config.model) {
-              config.model = sanitizeModel(config.model as string);
+              config.model = sanitizeModel(cli, config.model as string);
             }
           }
         }
@@ -116,11 +132,11 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
 
         const preferredModelSetting = settings.cli_settings?.[preferredCLI]?.model;
         if (preferredModelSetting) {
-          setSelectedModel(sanitizeModel(preferredModelSetting as string));
+          setSelectedModel(sanitizeModel(preferredCLI, preferredModelSetting as string));
         } else {
           const fallbackModel =
             effectiveCLIs.find((cli) => cli.id === preferredCLI)?.models[0]?.id ?? DEFAULT_MODEL_ID;
-          setSelectedModel(fallbackModel);
+          setSelectedModel(sanitizeModel(preferredCLI, fallbackModel));
         }
       } else {
         const available = CLI_OPTIONS.filter(
@@ -132,7 +148,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
         const fallbackCLI = effectiveCLIs[0]?.id ?? 'claude';
         setSelectedCLI(fallbackCLI);
         const fallbackModel = effectiveCLIs[0]?.models[0]?.id ?? DEFAULT_MODEL_ID;
-        setSelectedModel(fallbackModel);
+        setSelectedModel(sanitizeModel(fallbackCLI, fallbackModel));
         setFallbackEnabled(true);
       }
     } catch (error) {
@@ -143,7 +159,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
       const fallbackCLI = available[0]?.id ?? 'claude';
       setSelectedCLI(fallbackCLI);
       const fallbackModel = available[0]?.models[0]?.id ?? DEFAULT_MODEL_ID;
-      setSelectedModel(fallbackModel);
+      setSelectedModel(sanitizeModel(fallbackCLI, fallbackModel));
       setFallbackEnabled(true);
     }
   }, []);
@@ -273,7 +289,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
       setSelectedCLI(globalSettings.default_cli || 'claude');
       setFallbackEnabled(globalSettings.fallback_enabled ?? true);
       const cliSettings = globalSettings.cli_settings?.[globalSettings.default_cli || 'claude'];
-      setSelectedModel(sanitizeModel(cliSettings?.model));
+      setSelectedModel(sanitizeModel(globalSettings.default_cli || 'claude', cliSettings?.model));
     } else {
       setSelectedCLI('claude');
       setSelectedModel(DEFAULT_MODEL_ID);
@@ -302,17 +318,19 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
   }, [imageUrl, selectedModelOption]);
 
   const handleCLIChange = (cliId: string) => {
+    setUseDefaultSettings(false);
     setSelectedCLI(cliId);
     // Auto-select first model for the selected CLI
     const cli = enabledCLIs.find(c => c.id === cliId);
     if (cli?.models.length) {
-      setSelectedModel(cli.models[0].id);
+      setSelectedModel(sanitizeModel(cliId, cli.models[0].id));
     }
     setShowCLIDropdown(false);
   };
 
   const handleModelChange = (modelId: string) => {
-    setSelectedModel(modelId);
+    setUseDefaultSettings(false);
+    setSelectedModel(sanitizeModel(selectedCLI, modelId));
     setShowModelDropdown(false);
   };
 
@@ -326,7 +344,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
     if (useDefaultSettings && globalSettings) {
       finalCLI = globalSettings.default_cli || 'claude';
       const cliSettings = globalSettings.cli_settings?.[finalCLI];
-      finalModel = sanitizeModel(cliSettings?.model || selectedModel || DEFAULT_MODEL_ID);
+      finalModel = sanitizeModel(finalCLI, cliSettings?.model || selectedModel || DEFAULT_MODEL_ID);
     }
     
     if (!finalCLI || !finalModel) {

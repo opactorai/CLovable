@@ -4,7 +4,7 @@
  */
 import { useState, useCallback, useEffect } from 'react';
 import { CLIOption, CLIStatus, CLIPreference, CLI_OPTIONS, CLIType } from '@/types/cli';
-import { CLAUDE_DEFAULT_MODEL, normalizeClaudeModelId } from '@/lib/constants/claudeModels';
+import { getDefaultModelForCli, normalizeModelId } from '@/lib/constants/cliModels';
 
 interface UseCLIOptions {
   projectId: string;
@@ -86,12 +86,12 @@ export function useCLI({ projectId }: UseCLIOptions) {
         : typeof data?.selected_model === 'string'
         ? data.selected_model
         : undefined;
-    const normalizedModel = normalizeClaudeModelId(rawModel);
+    const normalizedModel = normalizeModelId(preferredCli, rawModel);
 
     return {
       preferredCli: (preferredCli || 'claude') as CLIType,
       fallbackEnabled,
-      selectedModel: normalizedModel ?? CLAUDE_DEFAULT_MODEL,
+      selectedModel: normalizedModel ?? getDefaultModelForCli(preferredCli),
     };
   }, []);
 
@@ -112,7 +112,7 @@ export function useCLI({ projectId }: UseCLIOptions) {
       setPreference({
         preferredCli: 'claude',
         fallbackEnabled: false,
-        selectedModel: CLAUDE_DEFAULT_MODEL,
+        selectedModel: getDefaultModelForCli('claude'),
       });
     }
   }, [projectId, parsePreference]);
@@ -169,8 +169,8 @@ export function useCLI({ projectId }: UseCLIOptions) {
         fallbackEnabled: prev?.fallbackEnabled ?? false,
         selectedModel:
           project.selectedModel || project.selected_model
-            ? normalizeClaudeModelId(project.selectedModel ?? project.selected_model)
-            : prev?.selectedModel ?? CLAUDE_DEFAULT_MODEL,
+            ? normalizeModelId(project.preferredCli ?? project.preferred_cli ?? preferredCli, project.selectedModel ?? project.selected_model)
+            : prev?.selectedModel ?? getDefaultModelForCli(project.preferredCli ?? project.preferred_cli ?? preferredCli),
       }));
       return project;
     } catch (error) {
@@ -194,18 +194,22 @@ export function useCLI({ projectId }: UseCLIOptions) {
       const payload = await response.json();
       const project = payload?.data ?? payload ?? {};
 
-      const normalized = normalizeClaudeModelId(project.selectedModel ?? project.selected_model ?? modelId);
+      const cliForNormalization = project.preferredCli ?? project.preferred_cli ?? preference?.preferredCli ?? 'claude';
+      const normalized = normalizeModelId(
+        cliForNormalization,
+        project.selectedModel ?? project.selected_model ?? modelId
+      );
 
       setPreference(prev =>
         prev
           ? {
               ...prev,
-              selectedModel: normalized,
+              selectedModel: normalizeModelId(cliForNormalization, normalized),
             }
           : {
               preferredCli: 'claude',
               fallbackEnabled: false,
-              selectedModel: normalized,
+              selectedModel: normalizeModelId(cliForNormalization, normalized),
             }
       );
 

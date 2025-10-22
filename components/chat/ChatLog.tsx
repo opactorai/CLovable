@@ -1049,7 +1049,9 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
         onSessionStatusChange?.(false);
       }
     } catch (error) {
-      console.error('Failed to check active session:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Failed to check active session:', error);
+      }
       setActiveSession(null);
       onSessionStatusChange?.(false);
     }
@@ -1081,7 +1083,9 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
           }
         }
       } catch (error) {
-        console.error('Error polling session status:', error);
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('Error polling session status:', error);
+        }
       }
     }, 3000); // Poll every 3 seconds
   };
@@ -1133,7 +1137,9 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
           });
         }
       } catch (error) {
-        console.error('Failed to load chat history:', error);
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('Failed to load chat history (network issue):', error);
+        }
       } finally {
         if (shouldShowLoading) {
           setIsLoading(false);
@@ -1239,96 +1245,7 @@ const ToolResultMessage = ({
   message: ChatMessage;
   metadata?: Record<string, unknown> | null;
 }) => {
-  const info = deriveToolInfoFromMetadata(metadata);
-  const [expanded, setExpanded] = useState(false);
-  const metaRecord = (metadata as Record<string, unknown>) ?? {};
-
-  const summaryCandidates = [
-    info.cleanContent,
-    pickFirstString(metaRecord.summary),
-    pickFirstString(metaRecord.result),
-    pickFirstString(metaRecord.resultSummary),
-    pickFirstString(metaRecord.result_summary),
-    typeof message.content === 'string'
-      ? message.content.split('\n').find((line) => line.trim().length > 0)
-      : undefined,
-  ];
-
-  const summary =
-    summaryCandidates.find((candidate) => typeof candidate === 'string' && candidate.trim().length > 0)?.trim() ??
-    'Tool execution completed.';
-
-  const detailCandidates = [
-    typeof message.content === 'string' ? message.content.trim() : undefined,
-    info.cleanContent && info.cleanContent.trim() !== summary ? info.cleanContent : undefined,
-    pickFirstString(metaRecord.diff_info),
-    pickFirstString(metaRecord.diff),
-    pickFirstString(metaRecord.toolOutput),
-    pickFirstString(metaRecord.tool_output),
-  ];
-
-  const detailBlocks = Array.from(
-    new Set(
-      detailCandidates.filter(
-        (entry): entry is string => typeof entry === 'string' && entry.trim().length > 0
-      )
-    )
-  );
-
-  const hasDetails = detailBlocks.length > 0;
-  const toolLabel = info.toolName;
-  const fileLabel =
-    info.filePath ??
-    pickFirstString(metaRecord.targetPath) ??
-    pickFirstString(metaRecord.target_path) ??
-    pickFirstString(metaRecord.path);
-
-  const summarizeText = (value: string) => {
-    if (value.length <= 400) return value;
-    return `${value.slice(0, 400)}…`;
-  };
-
-  return (
-    <div className="rounded-lg border border-blue-200/70 bg-blue-50/70 text-blue-900 shadow-sm ">
-      <div className="flex items-start justify-between gap-4 p-4">
-        <div className="space-y-1">
-          <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
-            <span>Tool Result</span>
-            {toolLabel && <span className="text-blue-700/80 ">· {toolLabel}</span>}
-            {fileLabel && (
-              <code className="rounded bg-blue-100/80 px-2 py-0.5 text-xs font-mono text-blue-700 ">
-                {shortenPath(fileLabel)}
-              </code>
-            )}
-          </div>
-          <div className="text-sm leading-relaxed text-blue-800 ">
-            {summarizeText(shortenPath(summary))}
-          </div>
-        </div>
-        {hasDetails && (
-          <button
-            type="button"
-            onClick={() => setExpanded((prev) => !prev)}
-            className="text-xs font-medium text-blue-700 transition-colors hover:text-blue-900 "
-          >
-            {expanded ? 'Collapse' : 'Details'}
-          </button>
-        )}
-      </div>
-      {hasDetails && expanded && (
-        <div className="space-y-3 border-t border-blue-200/60 px-4 py-3 ">
-          {detailBlocks.map((block, idx) => (
-            <pre
-              key={idx}
-              className="max-h-64 overflow-x-auto overflow-y-auto rounded bg-white/80 p-3 text-xs text-blue-900 "
-            >
-              {block}
-            </pre>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  return <ToolMessage content={message.content} metadata={metadata ?? undefined} />;
 };
 
   // Function to clean user messages by removing think hard instruction and chat mode instructions

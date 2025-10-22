@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { CLAUDE_DEFAULT_MODEL, normalizeClaudeModelId } from '@/lib/constants/claudeModels';
+import { getDefaultModelForCli, normalizeModelId } from '@/lib/constants/cliModels';
 
 const DATA_DIR = process.env.SETTINGS_DIR || path.join(process.cwd(), 'data');
 const SETTINGS_FILE = path.join(DATA_DIR, 'global-settings.json');
@@ -16,7 +16,10 @@ const DEFAULT_SETTINGS: GlobalSettings = {
   default_cli: 'claude',
   cli_settings: {
     claude: {
-      model: CLAUDE_DEFAULT_MODEL,
+      model: getDefaultModelForCli('claude'),
+    },
+    codex: {
+      model: getDefaultModelForCli('codex'),
     },
   },
 };
@@ -72,7 +75,7 @@ export function normalizeCliSettings(settings: unknown): CLISettings | undefined
       };
       const model = normalized[cli].model as string | undefined;
       if (model) {
-        normalized[cli].model = normalizeClaudeModelId(model);
+        normalized[cli].model = normalizeModelId(cli, model);
       }
     }
   }

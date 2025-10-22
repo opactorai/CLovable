@@ -13,32 +13,44 @@ import ChatInput from '@/components/chat/ChatInput';
 import { ChatErrorBoundary } from '@/components/ErrorBoundary';
 import { useUserRequests } from '@/hooks/useUserRequests';
 import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
-import { CLAUDE_MODEL_DEFINITIONS, CLAUDE_DEFAULT_MODEL, normalizeClaudeModelId, getClaudeModelDisplayName } from '@/lib/constants/claudeModels';
+import { getModelDefinitionsForCli, getDefaultModelForCli, normalizeModelId, getModelDisplayName } from '@/lib/constants/cliModels';
 
 // No longer loading ProjectSettings (managed by global settings on main page)
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 
 // Define assistant brand colors
-const assistantBrandColors: { [key: string]: string } = {
-  claude: '#DE7356'
+const SUPPORTED_CLIS = [
+  { id: 'claude', name: 'Claude Code', icon: '/claude.png', brandColor: '#DE7356' },
+  { id: 'codex', name: 'Codex CLI', icon: '/oai.png', brandColor: '#000000' },
+] as const;
+
+const assistantBrandColors: Record<string, string> = SUPPORTED_CLIS.reduce((acc, cli) => {
+  acc[cli.id] = cli.brandColor;
+  return acc;
+}, {} as Record<string, string>);
+
+const CLI_LABELS: Record<string, string> = SUPPORTED_CLIS.reduce((acc, cli) => {
+  acc[cli.id] = cli.name;
+  return acc;
+}, {} as Record<string, string>);
+
+const CLI_ORDER = SUPPORTED_CLIS.map(cli => cli.id);
+
+const sanitizeCli = (cli?: string | null) => {
+  const normalized = typeof cli === 'string' ? cli.toLowerCase() : '';
+  return SUPPORTED_CLIS.some(option => option.id === normalized) ? normalized : 'claude';
 };
 
-const CLI_LABELS: Record<string, string> = {
-  claude: 'Claude Code'
-};
-
-const CLI_ORDER = ['claude'] as const;
-
-const sanitizeCli = (cli?: string | null) => (cli && cli.toLowerCase() === 'claude' ? 'claude' : 'claude');
-const sanitizeModel = (model?: string | null) => normalizeClaudeModelId(model);
+const sanitizeModel = (cli: string, model?: string | null) => normalizeModelId(cli, model);
 
 // Function to convert hex to CSS filter for tinting white images
 // Since the original image is white (#FFFFFF), we can apply filters more accurately
 const hexToFilter = (hex: string): string => {
   // For white source images, we need to invert and adjust
   const filters: { [key: string]: string } = {
-    '#DE7356': 'brightness(0) saturate(100%) invert(52%) sepia(73%) saturate(562%) hue-rotate(336deg) brightness(95%) contrast(91%)'
+    '#DE7356': 'brightness(0) saturate(100%) invert(52%) sepia(73%) saturate(562%) hue-rotate(336deg) brightness(95%) contrast(91%)',
+    '#000000': 'brightness(0) saturate(100%)',
   };
   return filters[hex] || filters['#DE7356'];
 };
@@ -63,20 +75,20 @@ type ModelOption = {
 const buildModelOptions = (statuses: Record<string, CliStatusSnapshot>): ModelOption[] => {
   const options: ModelOption[] = [];
 
-  CLI_ORDER.forEach(cli => {
-    const status = statuses?.[cli];
-    const availableModels = new Set((status?.models ?? []).map(normalizeClaudeModelId));
+  SUPPORTED_CLIS.forEach(({ id, name }) => {
+    const status = statuses?.[id];
+    const availableModels = new Set((status?.models ?? []).map(modelId => normalizeModelId(id, modelId)));
     const baseAvailability = Boolean(status?.available ?? true) && Boolean(status?.configured ?? true);
 
-    CLAUDE_MODEL_DEFINITIONS.forEach(definition => {
-      const normalizedId = definition.id;
+    getModelDefinitionsForCli(id).forEach(definition => {
+      const normalizedId = normalizeModelId(id, definition.id);
       const isAvailable = baseAvailability && (availableModels.size === 0 || availableModels.has(normalizedId));
 
       options.push({
         id: normalizedId,
         name: definition.name,
-        cli,
-        cliName: CLI_LABELS[cli] || cli,
+        cli: id,
+        cliName: name,
         available: isAvailable,
       });
     });
@@ -271,7 +283,7 @@ export default function ChatPage() {
     return '';
   });
   const [preferredCli, setPreferredCli] = useState<string>('claude');
-  const [selectedModel, setSelectedModel] = useState<string>(CLAUDE_DEFAULT_MODEL);
+  const [selectedModel, setSelectedModel] = useState<string>(getDefaultModelForCli('claude'));
   const [usingGlobalDefaults, setUsingGlobalDefaults] = useState<boolean>(true);
   const [thinkingMode, setThinkingMode] = useState<boolean>(false);
   const [isUpdatingModel, setIsUpdatingModel] = useState<boolean>(false);
@@ -282,6 +294,7 @@ export default function ChatPage() {
   const lineNumberRef = useRef<HTMLDivElement>(null);
   const editedContentRef = useRef<string>('');
   const [isFileUpdating, setIsFileUpdating] = useState(false);
+  const activeBrandColor = assistantBrandColors[preferredCli] || assistantBrandColors.claude;
   const modelOptions = useMemo(() => buildModelOptions(cliStatuses), [cliStatuses]);
   const cliOptions = useMemo(
     () => CLI_ORDER.map(cli => ({
@@ -300,13 +313,14 @@ export default function ChatPage() {
     }
   }, []);
 
-  const updateSelectedModel = useCallback((model: string) => {
-    const sanitized = sanitizeModel(model);
+  const updateSelectedModel = useCallback((model: string, cliOverride?: string) => {
+    const effectiveCli = cliOverride ? sanitizeCli(cliOverride) : preferredCli;
+    const sanitized = sanitizeModel(effectiveCli, model);
     setSelectedModel(sanitized);
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('selectedModel', sanitized);
     }
-  }, []);
+  }, [preferredCli]);
 
   useEffect(() => {
     previewUrlRef.current = previewUrl;
@@ -400,10 +414,13 @@ export default function ChatPage() {
     const cliFromUrl = searchParams?.get('cli');
     const modelFromUrl = searchParams?.get('model');
     if (cliFromUrl) {
-      sessionStorage.setItem('selectedAssistant', sanitizeCli(cliFromUrl));
-    }
-    if (modelFromUrl) {
-      sessionStorage.setItem('selectedModel', sanitizeModel(modelFromUrl));
+      const sanitizedCli = sanitizeCli(cliFromUrl);
+      sessionStorage.setItem('selectedAssistant', sanitizedCli);
+      if (modelFromUrl) {
+        sessionStorage.setItem('selectedModel', sanitizeModel(sanitizedCli, modelFromUrl));
+      }
+    } else if (modelFromUrl) {
+      sessionStorage.setItem('selectedModel', sanitizeModel(preferredCli, modelFromUrl));
     }
     
     // Don't show the initial prompt in the input field
@@ -411,15 +428,15 @@ export default function ChatPage() {
     setTimeout(() => {
       sendInitialPrompt(initialPromptFromUrl);
     }, 300);
-  }, [searchParams, sendInitialPrompt]);
+  }, [searchParams, sendInitialPrompt, preferredCli]);
 
 const loadCliStatuses = useCallback(() => {
   const snapshot: Record<string, CliStatusSnapshot> = {};
-  CLI_ORDER.forEach(cli => {
-    snapshot[cli] = {
+  SUPPORTED_CLIS.forEach(({ id }) => {
+    snapshot[id] = {
       available: true,
       configured: true,
-      models: CLAUDE_MODEL_DEFINITIONS.map(model => model.id),
+      models: getModelDefinitionsForCli(id).map(model => normalizeModelId(id, model.id)),
     };
   });
   setCliStatuses(snapshot);
@@ -434,7 +451,8 @@ const persistProjectPreferences = useCallback(
       payload.preferred_cli = changes.preferredCli;
     }
     if (changes.selectedModel) {
-      const normalized = normalizeClaudeModelId(changes.selectedModel);
+      const targetCli = changes.preferredCli ?? preferredCli;
+      const normalized = normalizeModelId(targetCli, changes.selectedModel);
       payload.selectedModel = normalized;
       payload.selected_model = normalized;
     }
@@ -454,7 +472,7 @@ const persistProjectPreferences = useCallback(
     const result = await response.json().catch(() => null);
     return result?.data ?? result;
   },
-  [projectId]
+  [projectId, preferredCli]
 );
 
   const handleModelChange = useCallback(
@@ -463,24 +481,24 @@ const persistProjectPreferences = useCallback(
 
       const { skipCliUpdate = false, overrideCli } = opts || {};
       const targetCli = sanitizeCli(overrideCli ?? option.cli);
-      const newModelId = sanitizeModel(option.id);
+      const sanitizedModelId = sanitizeModel(targetCli, option.id);
 
       const previousCli = preferredCli;
       const previousModel = selectedModel;
 
-      if (targetCli === previousCli && newModelId === previousModel) {
+      if (targetCli === previousCli && sanitizedModelId === previousModel) {
         return;
       }
 
       setUsingGlobalDefaults(false);
       updatePreferredCli(targetCli);
-      updateSelectedModel(newModelId);
+      updateSelectedModel(option.id, targetCli);
 
       setIsUpdatingModel(true);
 
       try {
         const preferenceChanges: { preferredCli?: string; selectedModel?: string } = {
-          selectedModel: newModelId,
+          selectedModel: sanitizedModelId,
         };
         if (!skipCliUpdate && targetCli !== previousCli) {
           preferenceChanges.preferredCli = targetCli;
@@ -489,7 +507,7 @@ const persistProjectPreferences = useCallback(
         await persistProjectPreferences(preferenceChanges);
 
         const cliLabel = CLI_LABELS[targetCli] || targetCli;
-        const modelLabel = getClaudeModelDisplayName(newModelId);
+        const modelLabel = getModelDisplayName(targetCli, sanitizedModelId);
         try {
           await fetch(`${API_BASE}/api/chat/${projectId}/messages`, {
             method: 'POST',
@@ -510,7 +528,7 @@ const persistProjectPreferences = useCallback(
       } catch (error) {
         console.error('Failed to update model preference:', error);
         updatePreferredCli(previousCli);
-        updateSelectedModel(previousModel);
+        updateSelectedModel(previousModel, previousCli);
         alert('Failed to update model. Please try again.');
       } finally {
         setIsUpdatingModel(false);
@@ -547,13 +565,14 @@ const persistProjectPreferences = useCallback(
 
       try {
         updatePreferredCli(cliId);
-        updateSelectedModel(CLAUDE_DEFAULT_MODEL);
-        await persistProjectPreferences({ preferredCli: cliId, selectedModel: CLAUDE_DEFAULT_MODEL });
+        const defaultModel = getDefaultModelForCli(cliId);
+        updateSelectedModel(defaultModel, cliId);
+        await persistProjectPreferences({ preferredCli: cliId, selectedModel: defaultModel });
         loadCliStatuses();
       } catch (error) {
         console.error('Failed to update CLI preference:', error);
         updatePreferredCli(previousCli);
-        updateSelectedModel(previousModel);
+        updateSelectedModel(previousModel, previousCli);
         alert('Failed to update CLI. Please try again.');
       } finally {
         setIsUpdatingModel(false);
@@ -1411,9 +1430,9 @@ const persistProjectPreferences = useCallback(
           if (!hasModelSet) {
             const cliSettings = globalSettings.cli_settings?.[cliToUse] || globalSettings.cliSettings?.[cliToUse];
             if (cliSettings?.model) {
-              updateSelectedModel(cliSettings.model);
+              updateSelectedModel(cliSettings.model, cliToUse);
             } else {
-              updateSelectedModel(CLAUDE_DEFAULT_MODEL);
+              updateSelectedModel(getDefaultModelForCli(cliToUse), cliToUse);
             }
           }
         } else {
@@ -1421,7 +1440,10 @@ const persistProjectPreferences = useCallback(
           if (response.ok) {
             const settings = await response.json();
             if (!hasCliSet) updatePreferredCli(settings.preferred_cli || settings.default_cli || 'claude');
-            if (!hasModelSet) updateSelectedModel(CLAUDE_DEFAULT_MODEL);
+            if (!hasModelSet) {
+              const cli = sanitizeCli(settings.preferred_cli || settings.default_cli || preferredCli || 'claude');
+              updateSelectedModel(getDefaultModelForCli(cli), cli);
+            }
           }
         }
       }
@@ -1430,7 +1452,7 @@ const persistProjectPreferences = useCallback(
       const hasCliSet = projectSettings?.cli || preferredCli;
       const hasModelSet = projectSettings?.model || selectedModel;
       if (!hasCliSet) updatePreferredCli('claude');
-      if (!hasModelSet) updateSelectedModel(CLAUDE_DEFAULT_MODEL);
+      if (!hasModelSet) updateSelectedModel(getDefaultModelForCli('claude'), 'claude');
     }
   }, [preferredCli, selectedModel, updatePreferredCli, updateSelectedModel]);
 
@@ -1450,23 +1472,37 @@ const persistProjectPreferences = useCallback(
 
       const payload = await r.json();
       const project = payload?.data ?? payload;
+      const rawPreferredCli =
+        typeof project?.preferredCli === 'string'
+          ? project.preferredCli
+          : typeof project?.preferred_cli === 'string'
+          ? project.preferred_cli
+          : undefined;
+      const rawSelectedModel =
+        typeof project?.selectedModel === 'string'
+          ? project.selectedModel
+          : typeof project?.selected_model === 'string'
+          ? project.selected_model
+          : undefined;
+
       console.log('📋 Loading project info:', {
-        preferred_cli: project.preferred_cli,
-        selected_model: project.selected_model,
+        preferredCli: rawPreferredCli,
+        selectedModel: rawSelectedModel,
       });
 
       setProjectName(project.name || `Project ${projectId.slice(0, 8)}`);
 
-      if (project.preferred_cli) {
-        updatePreferredCli(project.preferred_cli);
+      const projectCli = sanitizeCli(rawPreferredCli || preferredCli);
+      if (rawPreferredCli) {
+        updatePreferredCli(projectCli);
       }
-      if (project.selected_model) {
-        updateSelectedModel(normalizeClaudeModelId(project.selected_model));
+      if (rawSelectedModel) {
+        updateSelectedModel(rawSelectedModel, projectCli);
       } else {
-        updateSelectedModel(CLAUDE_DEFAULT_MODEL);
+        updateSelectedModel(getDefaultModelForCli(projectCli), projectCli);
       }
 
-      const followGlobal = !project.preferred_cli && !project.selected_model;
+      const followGlobal = !rawPreferredCli && !rawSelectedModel;
       setUsingGlobalDefaults(followGlobal);
       setProjectDescription(project.description || '');
 
@@ -1488,9 +1524,13 @@ const persistProjectPreferences = useCallback(
         triggerInitialPromptIfNeeded();
       }
 
+      const normalizedModel = rawSelectedModel
+        ? normalizeModelId(projectCli, rawSelectedModel)
+        : getDefaultModelForCli(projectCli);
+
       return {
-        cli: project.preferred_cli,
-        model: project.selected_model ? normalizeClaudeModelId(project.selected_model) : CLAUDE_DEFAULT_MODEL,
+        cli: rawPreferredCli ? projectCli : undefined,
+        model: normalizedModel,
         status: project.status as ProjectStatus | undefined,
       };
     } catch (error) {
@@ -1510,12 +1550,31 @@ const persistProjectPreferences = useCallback(
     triggerInitialPromptIfNeeded,
     updatePreferredCli,
     updateSelectedModel,
+    preferredCli,
   ]);
 
   const loadProjectInfoRef = useRef(loadProjectInfo);
   useEffect(() => {
     loadProjectInfoRef.current = loadProjectInfo;
   }, [loadProjectInfo]);
+
+  useEffect(() => {
+    if (!searchParams) return;
+    const cliParam = searchParams.get('cli');
+    const modelParam = searchParams.get('model');
+    if (!cliParam && !modelParam) {
+      return;
+    }
+    const sanitizedCli = cliParam ? sanitizeCli(cliParam) : preferredCli;
+    if (cliParam) {
+      setUsingGlobalDefaults(false);
+      updatePreferredCli(sanitizedCli);
+    }
+    if (modelParam) {
+      setUsingGlobalDefaults(false);
+      updateSelectedModel(modelParam, sanitizedCli);
+    }
+  }, [searchParams, preferredCli, updatePreferredCli, updateSelectedModel, setUsingGlobalDefaults]);
 
   const loadSettingsRef = useRef(loadSettings);
   useEffect(() => {
@@ -1587,7 +1646,8 @@ const persistProjectPreferences = useCallback(
 
     setIsRunning(true);
     const requestId = crypto.randomUUID();
-    
+    let tempUserMessageId: string | null = null;
+
     try {
       const uploadImageFromBase64 = async (img: { base64: string; name?: string }) => {
         const base64String = img.base64;
@@ -1680,7 +1740,7 @@ const persistProjectPreferences = useCallback(
       };
 
       // Optimistically add user message to UI BEFORE API call for instant feedback
-      const tempUserMessageId = requestId + '-user-temp';
+      tempUserMessageId = requestId + '-user-temp';
       if (messageHandlersRef.current) {
         const optimisticUserMessage = {
           id: tempUserMessageId,
@@ -1718,7 +1778,7 @@ const persistProjectPreferences = useCallback(
           const errorText = await r.text();
           console.error('API Error:', errorText);
 
-          if (messageHandlersRef.current) {
+          if (tempUserMessageId && messageHandlersRef.current) {
             messageHandlersRef.current.remove(tempUserMessageId);
           }
 
@@ -1728,7 +1788,7 @@ const persistProjectPreferences = useCallback(
       } catch (fetchError: any) {
         clearTimeout(timeoutId);
         if (fetchError.name === 'AbortError') {
-          if (messageHandlersRef.current) {
+          if (tempUserMessageId && messageHandlersRef.current) {
             messageHandlersRef.current.remove(tempUserMessageId);
           }
 
@@ -1781,7 +1841,7 @@ const persistProjectPreferences = useCallback(
     } catch (error: any) {
       console.error('Act execution error:', error);
 
-      if (messageHandlersRef.current) {
+      if (tempUserMessageId && messageHandlersRef.current) {
         messageHandlersRef.current.remove(tempUserMessageId);
       }
 
@@ -1953,9 +2013,9 @@ const persistProjectPreferences = useCallback(
 
     const modelFromGlobal = globalSettings.cli_settings?.[cli]?.model;
     if (modelFromGlobal) {
-      updateSelectedModel(modelFromGlobal);
+      updateSelectedModel(modelFromGlobal, cli);
     } else {
-      updateSelectedModel(CLAUDE_DEFAULT_MODEL);
+      updateSelectedModel(getDefaultModelForCli(cli), cli);
     }
   }, [globalSettings, usingGlobalDefaults, updatePreferredCli, updateSelectedModel]);
 
@@ -2498,9 +2558,9 @@ const persistProjectPreferences = useCallback(
                         className="absolute inset-0 hidden transition-all duration-1000 ease-in-out"
                         style={{
                           background: `radial-gradient(circle at 50% 100%, 
-                            ${assistantBrandColors[preferredCli] || assistantBrandColors.claude}66 0%, 
-                            ${assistantBrandColors[preferredCli] || assistantBrandColors.claude}4D 25%, 
-                            ${assistantBrandColors[preferredCli] || assistantBrandColors.claude}33 50%, 
+                            ${activeBrandColor}66 0%, 
+                            ${activeBrandColor}4D 25%, 
+                            ${activeBrandColor}33 50%, 
                             transparent 70%)`
                         }}
                       />
@@ -2509,8 +2569,8 @@ const persistProjectPreferences = useCallback(
                         className="absolute inset-0 block transition-all duration-1000 ease-in-out"
                         style={{
                           background: `radial-gradient(circle at 50% 100%, 
-                            ${assistantBrandColors[preferredCli] || assistantBrandColors.claude}40 0%, 
-                            ${assistantBrandColors[preferredCli] || assistantBrandColors.claude}26 25%, 
+                            ${activeBrandColor}40 0%, 
+                            ${activeBrandColor}26 25%, 
                             transparent 50%)`
                         }}
                       />
@@ -2529,7 +2589,7 @@ const persistProjectPreferences = useCallback(
                           <div 
                             className="w-full h-full"
                             style={{
-                              backgroundColor: assistantBrandColors[preferredCli] || assistantBrandColors.claude,
+                              backgroundColor: activeBrandColor,
                               mask: 'url(/Symbol_white.png) no-repeat center/contain',
                               WebkitMask: 'url(/Symbol_white.png) no-repeat center/contain',
                               opacity: 0.9
@@ -2539,10 +2599,12 @@ const persistProjectPreferences = useCallback(
                           {/* Loading spinner in center */}
                           <div className="absolute inset-0 flex items-center justify-center">
                             <div 
-                              className="w-14 h-14 border-4 border-t-transparent rounded-full animate-spin"
+                              className="w-14 h-14 border-4 rounded-full animate-spin"
                               style={{
-                                borderColor: assistantBrandColors[preferredCli] || assistantBrandColors.claude,
-                                borderTopColor: 'transparent'
+                                borderTopColor: 'transparent',
+                                borderRightColor: activeBrandColor,
+                                borderBottomColor: activeBrandColor,
+                                borderLeftColor: activeBrandColor,
                               }}
                             />
                           </div>
@@ -2595,15 +2657,15 @@ const persistProjectPreferences = useCallback(
                                 style={{ transformOrigin: "center center" }}
                                 className="w-full h-full"
                               >
-                                <div 
-                                  className="w-full h-full"
-                                  style={{
-                                    backgroundColor: assistantBrandColors[preferredCli] || assistantBrandColors.claude,
-                                    mask: 'url(/Symbol_white.png) no-repeat center/contain',
-                                    WebkitMask: 'url(/Symbol_white.png) no-repeat center/contain',
-                                    opacity: 0.9
-                                  }}
-                                />
+                          <div 
+                            className="w-full h-full"
+                            style={{
+                              backgroundColor: activeBrandColor,
+                              mask: 'url(/Symbol_white.png) no-repeat center/contain',
+                              WebkitMask: 'url(/Symbol_white.png) no-repeat center/contain',
+                              opacity: 0.9
+                            }}
+                          />
                               </MotionDiv>
                             </div>
                             
@@ -2653,7 +2715,7 @@ const persistProjectPreferences = useCallback(
                                 <div 
                                   className="w-full h-full"
                                   style={{
-                                    backgroundColor: assistantBrandColors[preferredCli] || assistantBrandColors.claude,
+                                    backgroundColor: activeBrandColor,
                                     mask: 'url(/Symbol_white.png) no-repeat center/contain',
                                     WebkitMask: 'url(/Symbol_white.png) no-repeat center/contain',
                                     opacity: 0.9
@@ -2665,10 +2727,12 @@ const persistProjectPreferences = useCallback(
                               <div className="absolute inset-0 flex items-center justify-center">
                                 {isStartingPreview ? (
                                   <div 
-                                    className="w-14 h-14 border-4 border-t-transparent rounded-full animate-spin"
+                                    className="w-14 h-14 border-4 rounded-full animate-spin"
                                     style={{
-                                      borderColor: assistantBrandColors[preferredCli] || assistantBrandColors.claude,
-                                      borderTopColor: 'transparent'
+                                      borderTopColor: 'transparent',
+                                      borderRightColor: activeBrandColor,
+                                      borderBottomColor: activeBrandColor,
+                                      borderLeftColor: activeBrandColor,
                                     }}
                                   />
                                 ) : (

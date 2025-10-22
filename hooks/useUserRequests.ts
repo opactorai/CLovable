@@ -99,8 +99,16 @@ export function useUserRequests({ projectId }: UseUserRequestsOptions) {
         return;
       }
     } catch (error) {
+      if (activeRequestIdsRef.current.size > 0) {
+        activeRequestIdsRef.current.clear();
+        setFromActiveSet();
+      } else {
+        setHasActiveRequests(false);
+        setActiveCount(0);
+      }
+      previousActiveState.current = false;
       if (process.env.NODE_ENV === 'development') {
-        console.error('[UserRequests] Failed to check active requests:', error);
+        console.warn('[UserRequests] Failed to check active requests (network issue):', error);
       }
     }
   }, [projectId, isTabVisible]);

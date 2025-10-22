@@ -6,7 +6,7 @@ import { MotionDiv } from '@/lib/motion';
 import ServiceConnectionModal from '@/components/modals/ServiceConnectionModal';
 import { FaCog } from 'react-icons/fa';
 import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
-import { CLAUDE_MODEL_DEFINITIONS, CLAUDE_DEFAULT_MODEL, normalizeClaudeModelId } from '@/lib/constants/claudeModels';
+import { getModelDefinitionsForCli, normalizeModelId } from '@/lib/constants/cliModels';
 import { fetchCliStatusSnapshot, createCliStatusFallback } from '@/hooks/useCLI';
 import type { CLIStatus } from '@/types/cli';
 
@@ -42,8 +42,20 @@ const CLI_OPTIONS: CLIOption[] = [
     downloadUrl: 'https://docs.anthropic.com/en/docs/claude-code/overview',
     installCommand: 'npm install -g @anthropic-ai/claude-code',
     enabled: true,
-    models: CLAUDE_MODEL_DEFINITIONS.map(({ id, name }) => ({ id, name }))
-  }
+    models: getModelDefinitionsForCli('claude').map(({ id, name }) => ({ id, name })),
+  },
+  {
+    id: 'codex',
+    name: 'Codex CLI',
+    icon: '',
+    description: 'OpenAI Codex agent with GPT-5 support',
+    color: 'from-slate-900 to-gray-700',
+    brandColor: '#000000',
+    downloadUrl: 'https://github.com/openai/codex',
+    installCommand: 'npm install -g @openai/codex',
+    enabled: true,
+    models: getModelDefinitionsForCli('codex').map(({ id, name }) => ({ id, name })),
+  },
 ];
 
 // Global settings are provided by context
@@ -119,7 +131,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
         if (settings?.cli_settings) {
           for (const [cli, config] of Object.entries(settings.cli_settings)) {
             if (config && typeof config === 'object' && 'model' in config) {
-              (config as any).model = normalizeClaudeModelId((config as any).model as string);
+              (config as any).model = normalizeModelId(cli, (config as any).model as string);
             }
           }
         }
@@ -164,7 +176,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
       if (payload?.cli_settings) {
         for (const [cli, config] of Object.entries(payload.cli_settings)) {
           if (config && typeof config === 'object' && 'model' in config) {
-            (config as any).model = normalizeClaudeModelId((config as any).model as string);
+            (config as any).model = normalizeModelId(cli, (config as any).model as string);
           }
         }
       }
@@ -220,10 +232,10 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
     setGlobalSettings(prev => ({
       ...prev,
       cli_settings: {
-        ...prev.cli_settings,
+        ...(prev?.cli_settings ?? {}),
         [cliId]: {
-          ...prev.cli_settings[cliId],
-          model: modelId
+          ...(prev?.cli_settings?.[cliId] ?? {}),
+          model: normalizeModelId(cliId, modelId)
         }
       }
     }));

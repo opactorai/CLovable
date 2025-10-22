@@ -10,8 +10,9 @@ import {
   updateProjectActivity,
 } from '@/lib/services/project';
 import { createMessage } from '@/lib/services/message';
-import { initializeNextJsProject, applyChanges } from '@/lib/services/cli/claude';
-import { CLAUDE_DEFAULT_MODEL, normalizeClaudeModelId } from '@/lib/constants/claudeModels';
+import { initializeNextJsProject as initializeClaudeProject, applyChanges as applyClaudeChanges } from '@/lib/services/cli/claude';
+import { initializeNextJsProject as initializeCodexProject, applyChanges as applyCodexChanges } from '@/lib/services/cli/codex';
+import { getDefaultModelForCli, normalizeModelId } from '@/lib/constants/cliModels';
 import { streamManager } from '@/lib/services/stream';
 import type { ChatActRequest } from '@/types/backend';
 import { generateProjectId } from '@/lib/utils';
@@ -250,8 +251,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       coerceString(body.selectedModel) ??
       coerceString(legacyBody['selected_model']) ??
       project.selectedModel ??
-      CLAUDE_DEFAULT_MODEL;
-    const selectedModel = normalizeClaudeModelId(selectedModelRaw);
+      getDefaultModelForCli(cliPreference);
+    const selectedModel = normalizeModelId(cliPreference, selectedModelRaw);
 
     const conversationId =
       coerceString(body.conversationId) ?? coerceString(legacyBody['conversation_id']);
@@ -317,9 +318,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
     const projectPath = project.repoPath || path.join(process.cwd(), 'projects', project_id);
 
-    const existingSelected = project.selectedModel
-      ? normalizeClaudeModelId(project.selectedModel)
-      : null;
+    const existingSelected = normalizeModelId(project.preferredCli ?? 'claude', project.selectedModel ?? undefined);
 
     if (
       project.preferredCli !== cliPreference ||
@@ -347,7 +346,12 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     }
 
     if (isInitialPrompt) {
-      initializeNextJsProject(
+      const executor =
+        cliPreference === 'codex'
+          ? initializeCodexProject
+          : initializeClaudeProject;
+
+      executor(
         project_id,
         projectPath,
         finalInstruction,
@@ -357,7 +361,12 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         console.error('[API] Failed to initialize project:', error);
       });
     } else {
-      applyChanges(
+      const executor =
+        cliPreference === 'codex'
+          ? applyCodexChanges
+          : applyClaudeChanges;
+
+      executor(
         project_id,
         projectPath,
         finalInstruction,
@@ -365,7 +374,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         project.activeClaudeSessionId || undefined,
         requestId,
       ).catch((error) => {
-        console.error('[API] Failed to execute Claude:', error);
+        console.error('[API] Failed to execute AI:', error);
       });
     }
 

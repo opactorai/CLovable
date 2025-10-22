@@ -1,4 +1,5 @@
 import { CLAUDE_MODEL_DEFINITIONS } from '@/lib/constants/claudeModels';
+import { CODEX_MODEL_DEFINITIONS } from '@/lib/constants/codexModels';
 
 /**
  * Frontend CLI Type Definitions (claude-only variant)
@@ -62,6 +63,26 @@ export const CLI_OPTIONS: CLIOption[] = [
     installCommand: 'npm install -g @anthropic-ai/claude-code',
     features: ['Advanced reasoning', 'Code generation', '1M context window'],
     models: CLAUDE_MODEL_DEFINITIONS.map(({ id, name, description, supportsImages }) => ({
+      id,
+      name,
+      description,
+      supportsImages,
+    })),
+  },
+  {
+    id: 'codex',
+    name: 'Codex CLI',
+    description: 'OpenAI Codex agent with GPT-5 integration',
+    icon: '/oai.png',
+    available: true,
+    configured: true,
+    enabled: true,
+    color: 'from-slate-900 to-gray-700',
+    brandColor: '#000000',
+    downloadUrl: 'https://github.com/openai/codex',
+    installCommand: 'npm install -g @openai/codex',
+    features: ['Autonomous agent', 'OpenAI model router', 'apply_patch support'],
+    models: CODEX_MODEL_DEFINITIONS.map(({ id, name, description, supportsImages }) => ({
       id,
       name,
       description,

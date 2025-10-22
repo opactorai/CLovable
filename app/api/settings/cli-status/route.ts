@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import type { CLIStatus } from '@/types/backend';
+import { CODEX_MODEL_DEFINITIONS } from '@/lib/constants/codexModels';
 
 const execAsync = promisify(exec);
 
@@ -29,6 +30,27 @@ async function checkClaudeCodeCLI(): Promise<{
     return {
       installed: false,
       error: error instanceof Error ? error.message : 'Failed to check CLI',
+    };
+  }
+}
+
+async function checkCodexCLI(): Promise<{
+  installed: boolean;
+  version?: string;
+  error?: string;
+}> {
+  const executable = process.platform === 'win32' ? 'codex.cmd' : 'codex';
+  try {
+    const { stdout } = await execAsync(`${executable} --version`);
+    const version = stdout.trim();
+    return {
+      installed: true,
+      version: version || 'installed',
+    };
+  } catch (error) {
+    return {
+      installed: false,
+      error: error instanceof Error ? error.message : 'Failed to check Codex CLI',
     };
   }
 }
@@ -71,7 +93,14 @@ export async function GET() {
       error: claudeStatus.error,
     };
 
-    // TODO: Add other CLI status checks
+    const codexStatus = await checkCodexCLI();
+    status.codex = {
+      installed: codexStatus.installed,
+      version: codexStatus.version,
+      checking: false,
+      error: codexStatus.error,
+      models: CODEX_MODEL_DEFINITIONS.map(model => model.id),
+    };
 
     return NextResponse.json(status);
   } catch (error) {

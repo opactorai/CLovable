@@ -6,9 +6,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllProjects, createProject } from '@/lib/services/project';
-import { CLAUDE_DEFAULT_MODEL, normalizeClaudeModelId } from '@/lib/constants/claudeModels';
 import type { CreateProjectInput } from '@/types/backend';
 import { serializeProjects, serializeProject } from '@/lib/serializers/project';
+import { getDefaultModelForCli, normalizeModelId } from '@/lib/constants/cliModels';
 
 /**
  * GET /api/projects
@@ -39,13 +39,14 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const preferredCli = String(body.preferredCli || body.preferred_cli || 'claude').toLowerCase();
+    const requestedModel = body.selectedModel || body.selected_model;
 
     const input: CreateProjectInput = {
       project_id: body.project_id,
       name: body.name,
       initialPrompt: body.initialPrompt || body.initial_prompt,
       preferredCli,
-      selectedModel: normalizeClaudeModelId(body.selectedModel || body.selected_model || CLAUDE_DEFAULT_MODEL),
+      selectedModel: normalizeModelId(preferredCli, requestedModel ?? getDefaultModelForCli(preferredCli)),
       description: body.description,
     };
 
