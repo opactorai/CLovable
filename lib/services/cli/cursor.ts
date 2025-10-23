@@ -260,10 +260,37 @@ function extractAssistantText(event: CursorEvent): string {
     .join('');
 }
 
-function createAssistantStreamer(projectId: string, requestId?: string) {
+type AssistantStreamerOptions = {
+  initialMessageId?: string | null;
+};
+
+function createAssistantStreamer(projectId: string, requestId: string | undefined, options: AssistantStreamerOptions = {}) {
   let buffer = '';
-  let assistantMessageId: string | null = null;
+  let assistantMessageId: string | null = options.initialMessageId ?? null;
   let lastStreamedPayload: string | null = null;
+  let lastChunk: string | null = null;
+
+  const normalizeChunk = (value: string) => value.replace(/\r/g, '');
+
+  const isNoiseChunk = (value: string) => {
+    const normalized = normalizeChunk(value);
+    const trimmed = normalized.trim();
+    if (!trimmed) {
+      return true;
+    }
+
+    // Ignore spinner characters like / - \ |
+    if (trimmed.length <= 3 && /^[\-/\\|]+$/.test(trimmed)) {
+      return true;
+    }
+
+    // Ignore progress dots or ellipsis
+    if (/^[.··…]+$/.test(trimmed)) {
+      return true;
+    }
+
+    return false;
+  };
 
   const buildPayload = () => buffer.trim();
 
@@ -290,7 +317,17 @@ function createAssistantStreamer(projectId: string, requestId?: string) {
 
   const append = (text: string) => {
     if (!text) return;
+    if (isNoiseChunk(text)) {
+      return;
+    }
+
+    const normalized = normalizeChunk(text);
+    if (lastChunk && normalized === lastChunk) {
+      return;
+    }
+
     buffer += text;
+    lastChunk = normalized;
     streamDraft();
   };
 
@@ -324,6 +361,7 @@ function createAssistantStreamer(projectId: string, requestId?: string) {
 
     buffer = '';
     assistantMessageId = null;
+    lastChunk = null;
   };
 
   return { append, flush };
@@ -402,16 +440,38 @@ async function handleToolEvent(
   }
 }
 
+type CursorErrorKind = 'resource_exhausted' | 'network' | 'auth';
+
 async function handleCursorFailure(
   projectId: string,
   requestId: string | undefined,
   stderrLines: string[],
+  detectedError?: CursorErrorKind,
   extraMessage?: string,
+  placeholderMessageId?: string,
 ) {
   const detailLines = stderrLines.filter((line) => line.trim().length > 0);
 
+  let headerMessage = 'Cursor Agent execution failed.';
+  if (detectedError === 'resource_exhausted') {
+    headerMessage = [
+      '⚠️ Cursor Agent 요청이 너무 많아 일시적으로 제한되었습니다.',
+      '잠시 후 다시 시도하거나 작업 범위를 줄여 주세요.',
+    ].join('\n');
+  } else if (detectedError === 'network') {
+    headerMessage = [
+      '⚠️ Cursor Agent가 네트워크 문제로 연결하지 못했습니다.',
+      '인터넷 연결 또는 프록시 설정을 확인한 뒤 다시 시도해 주세요.',
+    ].join('\n');
+  } else if (detectedError === 'auth') {
+    headerMessage = [
+      '⚠️ Cursor Agent가 인증에 실패했습니다.',
+      'Settings → AI Agents에서 CURSOR_API_KEY를 다시 입력하고 cursor-agent login 상태를 확인해 주세요.',
+    ].join('\n');
+  }
+
   const combined = [
-    'Cursor Agent execution failed.',
+    headerMessage,
     ...(extraMessage ? [extraMessage] : []),
     ...(detailLines.length > 0 ? ['', 'Details:', ...detailLines] : []),
   ].join('\n');
@@ -422,9 +482,23 @@ async function handleCursorFailure(
     await markUserRequestAsFailed(requestId, combined);
   }
 
+  const failureRealtimeMessage = createRealtimeMessage({
+    id: placeholderMessageId ?? undefined,
+    projectId,
+    role: 'assistant',
+    messageType: 'chat',
+    content: combined,
+    metadata: { cli_type: 'cursor', is_error: true },
+    requestId,
+    isStreaming: false,
+    isFinal: true,
+  });
+  streamManager.publish(projectId, { type: 'message', data: failureRealtimeMessage });
+
   await persistMessage(
     projectId,
     {
+      id: placeholderMessageId,
       role: 'assistant',
       messageType: 'chat',
       content: combined,
@@ -476,6 +550,41 @@ export async function applyChanges(
   );
 }
 
+type CursorRunResult =
+  | {
+      success: true;
+    }
+  | {
+      success: false;
+      exitCode: number | null;
+      stderrLines: string[];
+      detectedError?: CursorErrorKind;
+      errorMessage?: string;
+    };
+
+function detectCursorError(stderrLines: string[]): CursorErrorKind | undefined {
+  if (stderrLines.length === 0) {
+    return undefined;
+  }
+  const lower = stderrLines.join(' ').toLowerCase();
+  if (lower.includes('resource_exhausted') || lower.includes('quota') || lower.includes('limit')) {
+    return 'resource_exhausted';
+  }
+  if (
+    lower.includes('connecterror') ||
+    lower.includes('connection refused') ||
+    lower.includes('timeout') ||
+    lower.includes('network') ||
+    lower.includes('dns')
+  ) {
+    return 'network';
+  }
+  if (lower.includes('unauthorized') || lower.includes('authentication') || lower.includes('api key')) {
+    return 'auth';
+  }
+  return undefined;
+}
+
 async function executeCursor(
   projectId: string,
   projectPath: string,
@@ -512,11 +621,6 @@ User request:
 ${instruction.trim()}`;
   const finalPrompt = await appendProjectContext(basePrompt, repoPath);
 
-  const args = ['--force', '-p', finalPrompt, '--output-format', 'stream-json'];
-  if (cursorCliModel) {
-    args.push('-m', cursorCliModel);
-  }
-
   const project = await getProjectById(projectId);
   const storedSessionId =
     sessionId ||
@@ -524,8 +628,9 @@ ${instruction.trim()}`;
       ? project.activeCursorSessionId
       : undefined);
 
-  if (storedSessionId) {
-    args.push('--resume', storedSessionId);
+  const baseArgs = ['--force', '-p', finalPrompt, '--output-format', 'stream-json'] as string[];
+  if (cursorCliModel) {
+    baseArgs.push('--model', cursorCliModel);
   }
 
   const env: NodeJS.ProcessEnv = {
@@ -536,18 +641,140 @@ ${instruction.trim()}`;
     env.CURSOR_API_KEY = cursorSettings.apiKey.trim();
   }
 
-  publishStatus(projectId, 'ready', requestId, `Running Cursor Agent (${getCursorModelDisplayName(normalizedModel)})`);
+  const maxAttempts = 2;
+  const placeholderMessageId = randomUUID();
 
-  await persistMessage(
+  const placeholderMessage = createRealtimeMessage({
+    id: placeholderMessageId,
     projectId,
-    {
-      role: 'system',
-      messageType: 'system',
-      content: `Running Cursor Agent with model ${getCursorModelDisplayName(normalizedModel)}`,
-      metadata: { cli_type: 'cursor', hidden_from_ui: true },
-    },
+    role: 'assistant',
+    messageType: 'chat',
+    content: 'Cursor Agent가 작업을 준비 중입니다...',
+    metadata: { cli_type: 'cursor' },
     requestId,
-  );
+    isStreaming: true,
+    isFinal: false,
+    isOptimistic: true,
+  });
+  streamManager.publish(projectId, { type: 'message', data: placeholderMessage });
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const attemptSuffix = attempt > 1 ? ` (재시도 ${attempt}/${maxAttempts})` : '';
+    publishStatus(
+      projectId,
+      'ready',
+      requestId,
+      `Running Cursor Agent${attemptSuffix} (${getCursorModelDisplayName(normalizedModel)})`,
+    );
+
+    if (attempt > 1) {
+      await persistMessage(
+        projectId,
+        {
+          role: 'system',
+          messageType: 'system',
+          content: `Cursor Agent가 이전 시도에서 실패하여 ${attempt}번째로 재시도합니다.`,
+          metadata: { cli_type: 'cursor', hidden_from_ui: false },
+        },
+        requestId,
+      );
+      const retryPlaceholder = createRealtimeMessage({
+        id: placeholderMessageId,
+        projectId,
+        role: 'assistant',
+        messageType: 'chat',
+        content: `Cursor Agent가 작업을 준비 중입니다... (재시도 ${attempt}/${maxAttempts})`,
+        metadata: { cli_type: 'cursor' },
+        requestId,
+        isStreaming: true,
+        isFinal: false,
+        isOptimistic: true,
+      });
+      streamManager.publish(projectId, { type: 'message', data: retryPlaceholder });
+    } else {
+      await persistMessage(
+        projectId,
+        {
+          role: 'system',
+          messageType: 'system',
+          content: `Running Cursor Agent with model ${getCursorModelDisplayName(normalizedModel)}`,
+          metadata: { cli_type: 'cursor', hidden_from_ui: true },
+        },
+        requestId,
+      );
+    }
+
+    const latestProject = await getProjectById(projectId);
+    const resumeSessionId =
+      sessionId ||
+      (latestProject?.activeCursorSessionId && typeof latestProject.activeCursorSessionId === 'string'
+        ? latestProject.activeCursorSessionId
+        : storedSessionId);
+
+    const attemptArgs = [...baseArgs];
+    if (resumeSessionId) {
+      attemptArgs.push('--resume', resumeSessionId);
+    }
+
+    const result = await runCursorOnce({
+      projectId,
+      repoPath,
+      args: attemptArgs,
+      env,
+      requestId,
+      initialSessionId: resumeSessionId,
+      placeholderMessageId,
+    });
+
+    if (result.success) {
+      publishStatus(projectId, 'completed', requestId);
+      if (requestId) {
+        await markUserRequestAsCompleted(requestId);
+      }
+      return;
+    }
+
+    const detectedError = result.detectedError ?? detectCursorError(result.stderrLines);
+
+    if (detectedError === 'resource_exhausted' && attempt < maxAttempts) {
+      await persistMessage(
+        projectId,
+        {
+          role: 'assistant',
+          messageType: 'chat',
+          content:
+            'Cursor Agent가 일시적 사용량 제한에 걸렸습니다. 5초 후 자동으로 다시 시도합니다. 기다려 주세요.',
+          metadata: { cli_type: 'cursor' },
+        },
+        requestId,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      continue;
+    }
+
+    await handleCursorFailure(
+      projectId,
+      requestId,
+      result.stderrLines,
+      detectedError,
+      result.errorMessage ??
+        (result.exitCode !== null ? `cursor-agent exited with code ${result.exitCode}` : undefined),
+      placeholderMessageId,
+    );
+    return;
+  }
+}
+
+async function runCursorOnce(params: {
+  projectId: string;
+  repoPath: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+  requestId?: string;
+  initialSessionId?: string;
+  placeholderMessageId?: string;
+}): Promise<CursorRunResult> {
+  const { projectId, repoPath, args, env, requestId, initialSessionId, placeholderMessageId } = params;
 
   const child = spawn(CURSOR_EXECUTABLE, args, {
     cwd: repoPath,
@@ -556,9 +783,13 @@ ${instruction.trim()}`;
   });
 
   const stderrLines: string[] = [];
-  const assistantStreamer = createAssistantStreamer(projectId, requestId);
-  let updatedSessionId = storedSessionId;
+  const assistantStreamer = createAssistantStreamer(projectId, requestId, {
+    initialMessageId: placeholderMessageId,
+  });
+  let updatedSessionId = initialSessionId;
   let processError: Error | null = null;
+  let detectedError: CursorErrorKind | undefined;
+  let errorMessage: string | undefined;
 
   if (child.stderr) {
     child.stderr.setEncoding('utf8');
@@ -615,6 +846,38 @@ ${instruction.trim()}`;
             await handleToolEvent(projectId, event, requestId);
             break;
           }
+          case 'error': {
+            const eventText = toDisplayString(event);
+            stderrLines.push(eventText);
+
+            const errorField = event.result ?? (event as Record<string, unknown>).error;
+            if (
+              errorField &&
+              typeof errorField === 'object' &&
+              'code' in errorField &&
+              typeof (errorField as Record<string, unknown>).code === 'string'
+            ) {
+              const code = ((errorField as Record<string, unknown>).code as string).toLowerCase();
+              if (code.includes('resource_exhausted')) {
+                detectedError = 'resource_exhausted';
+              } else if (code.includes('unauthorized')) {
+                detectedError = 'auth';
+              }
+            }
+
+            if (
+              !detectedError &&
+              typeof event.text === 'string' &&
+              event.text.toLowerCase().includes('resource_exhausted')
+            ) {
+              detectedError = 'resource_exhausted';
+            }
+
+            if (!errorMessage && typeof event.text === 'string') {
+              errorMessage = event.text;
+            }
+            break;
+          }
           default:
             break;
         }
@@ -631,16 +894,21 @@ ${instruction.trim()}`;
   await assistantStreamer.flush(true);
 
   if (processError || exitCode === null || exitCode !== 0) {
-    const extra =
+    const inferredError =
+      detectedError ?? detectCursorError(stderrLines) ?? (processError ? 'network' : undefined);
+    const message =
+      errorMessage ??
       processError?.message ??
       (exitCode !== null ? `cursor-agent exited with code ${exitCode}` : 'cursor-agent terminated unexpectedly');
-    await handleCursorFailure(projectId, requestId, stderrLines, extra);
-    return;
+
+    return {
+      success: false,
+      exitCode,
+      stderrLines,
+      detectedError: inferredError,
+      errorMessage: message,
+    };
   }
 
-  publishStatus(projectId, 'completed', requestId);
-
-  if (requestId) {
-    await markUserRequestAsCompleted(requestId);
-  }
+  return { success: true };
 }

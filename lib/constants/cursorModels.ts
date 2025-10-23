@@ -20,14 +20,9 @@ export const CURSOR_MODEL_DEFINITIONS: CursorModelDefinition[] = [
     description: 'Cursor Agent default multi-model router (auto-selects best model)',
   },
   {
-    id: 'sonnet-4.5',
-    name: 'Claude Sonnet 4.5',
+    id: 'sonnet-4',
+    name: 'Claude Sonnet 4',
     description: 'Anthropic Claude Sonnet via Cursor Agent router',
-  },
-  {
-    id: 'opus-4.1',
-    name: 'Claude Opus 4.1',
-    description: 'Anthropic Claude Opus via Cursor Agent router',
   },
   {
     id: 'sonnet-4-thinking',
@@ -39,25 +34,26 @@ export const CURSOR_MODEL_DEFINITIONS: CursorModelDefinition[] = [
 const CURSOR_MODEL_ALIASES: Record<string, string> = {
   'gpt5': 'gpt-5',
   'gpt-5.0': 'gpt-5',
-  'sonnet-4': 'sonnet-4.5',
-  'sonnet4.5': 'sonnet-4.5',
-  'claude-sonnet-4.5': 'sonnet-4.5',
-  'claude-sonnet-45': 'sonnet-4.5',
-  'claude-sonnet-4_5': 'sonnet-4.5',
-  'opus-4': 'opus-4.1',
-  'claude-opus-4.1': 'opus-4.1',
-  'claude-opus-41': 'opus-4.1',
-  'claude-opus-4_1': 'opus-4.1',
+  'sonnet4': 'sonnet-4',
+  'sonnet-4.5': 'sonnet-4',
+  'sonnet-45': 'sonnet-4',
+  'claude-sonnet-4.5': 'sonnet-4',
+  'claude-sonnet-45': 'sonnet-4',
+  'claude-sonnet-4_5': 'sonnet-4',
+  'claude-sonnet-4': 'sonnet-4',
   'sonnet-4.0-thinking': 'sonnet-4-thinking',
   'claude-sonnet-4-thinking': 'sonnet-4-thinking',
+  'opus-4.1': 'sonnet-4',
+  'claude-opus-4.1': 'sonnet-4',
+  'claude-opus-41': 'sonnet-4',
+  'claude-opus-4_1': 'sonnet-4',
 };
 
 const KNOWN_CURSOR_MODEL_IDS = new Set(CURSOR_MODEL_DEFINITIONS.map((model) => model.id));
 
 const CURSOR_CLI_MODEL_IDS: Record<string, string> = {
   'gpt-5': 'gpt-5',
-  'sonnet-4.5': 'sonnet-4.5',
-  'opus-4.1': 'opus-4.1',
+  'sonnet-4': 'sonnet-4',
   'sonnet-4-thinking': 'sonnet-4-thinking',
 };
 

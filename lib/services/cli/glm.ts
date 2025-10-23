@@ -398,10 +398,12 @@ async function executeGLM(
       prompt: promptWithContext,
       options: {
         cwd: repoPath,
+        additionalDirectories: [repoPath],
         model: normalizedModel,
         resume: sessionId,
         maxOutputTokens: Number.isFinite(maxOutputTokens) ? maxOutputTokens : 3200,
         settingSources: ['user'],
+        permissionMode: 'bypassPermissions',
         stderr: (data: string) => {
           const line = String(data).trimEnd();
           if (line) {
