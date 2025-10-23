@@ -530,7 +530,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                               <Image src="/qwen.png" alt="Qwen" width={32} height={32} className="w-8 h-8" />
                             )}
                             {cli.id === 'glm' && (
-                              <Image src="/glm.png" alt="GLM" width={32} height={32} className="w-8 h-8" />
+                              <Image src="/glm.svg" alt="GLM" width={32} height={32} className="w-8 h-8" />
                             )}
                             {cli.id === 'gemini' && (
                               <Image src="/gemini.png" alt="Gemini" width={32} height={32} className="w-8 h-8" />

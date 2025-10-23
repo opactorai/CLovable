@@ -115,7 +115,7 @@ export const CLI_OPTIONS: CLIOption[] = [
     id: 'glm',
     name: 'GLM CLI',
     description: 'Zhipu GLM agent running through Claude Code runtime',
-    icon: '/glm.png',
+    icon: '/glm.svg',
     available: true,
     configured: true,
     enabled: true,
