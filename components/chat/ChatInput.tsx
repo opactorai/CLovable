@@ -71,6 +71,7 @@ export default function ChatInput({
   const [isDragOver, setIsDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const supportsImageUpload = preferredCli !== 'cursor' && preferredCli !== 'qwen' && preferredCli !== 'glm';
 
   const modelOptionsForCli = useMemo(
     () => modelOptions.filter(option => option.cli === preferredCli),
@@ -135,7 +136,7 @@ export default function ChatInput({
 
   // Handle files (for both drag drop and file input)
   const handleFiles = useCallback(async (files: FileList) => {
-    if (!projectId || preferredCli === 'cursor' || preferredCli === 'qwen') return;
+    if (!projectId || !supportsImageUpload) return;
     
     setIsUploading(true);
     
@@ -185,7 +186,7 @@ export default function ChatInput({
         fileInputRef.current.value = '';
       }
     }
-  }, [projectId, preferredCli]);
+  }, [projectId, supportsImageUpload]);
 
   useEffect(() => {
     adjustTextareaHeight();
@@ -194,7 +195,7 @@ export default function ChatInput({
   // Handle clipboard paste for images
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
-      if (!projectId || preferredCli === 'cursor' || preferredCli === 'qwen') return;
+      if (!projectId || !supportsImageUpload) return;
       
       const items = e.clipboardData?.items;
       if (!items) return;
@@ -237,12 +238,12 @@ export default function ChatInput({
     return () => {
       document.removeEventListener('paste', handlePaste);
     };
-  }, [projectId, preferredCli, handleFiles]);
+  }, [projectId, supportsImageUpload, handleFiles]);
 
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (projectId && preferredCli !== 'cursor' && preferredCli !== 'qwen') {
+    if (projectId && supportsImageUpload) {
       setIsDragOver(true);
     }
   };
@@ -258,7 +259,7 @@ export default function ChatInput({
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (projectId && preferredCli !== 'cursor' && preferredCli !== 'qwen') {
+    if (projectId && supportsImageUpload) {
       e.dataTransfer.dropEffect = 'copy';
     } else {
       e.dataTransfer.dropEffect = 'none';
@@ -270,7 +271,7 @@ export default function ChatInput({
     e.stopPropagation();
     setIsDragOver(false);
 
-    if (!projectId || preferredCli === 'cursor' || preferredCli === 'qwen') return;
+    if (!projectId || !supportsImageUpload) return;
 
     const files = e.dataTransfer.files;
     if (files.length > 0) {
@@ -291,10 +292,16 @@ export default function ChatInput({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             {projectId && (
-              (preferredCli === 'cursor' || preferredCli === 'qwen') ? (
+              (!supportsImageUpload) ? (
                 <div 
                   className="flex items-center justify-center w-8 h-8 text-gray-300 cursor-not-allowed opacity-50 rounded-full"
-                  title={preferredCli === 'qwen' ? "Qwen Coder doesn't support image input" : "Cursor CLI doesn't support image input"}
+                  title={
+                    preferredCli === 'qwen'
+                      ? "Qwen Coder doesn't support image input"
+                      : preferredCli === 'cursor'
+                      ? "Cursor CLI doesn't support image input"
+                      : "GLM CLI is text-only"
+                  }
                 >
                   <ImageIcon className="h-4 w-4" />
                 </div>
@@ -378,7 +385,7 @@ export default function ChatInput({
             disabled={disabled || isUploading}
             style={{ minHeight: '60px' }}
           />
-          {isDragOver && projectId && preferredCli !== 'cursor' && preferredCli !== 'qwen' && (
+          {isDragOver && projectId && supportsImageUpload && (
             <div className="pointer-events-none absolute inset-0 bg-blue-50/90 rounded-md flex items-center justify-center z-10 border-2 border-dashed border-blue-500">
               <div className="text-center">
                 <div className="text-2xl mb-2">📸</div>

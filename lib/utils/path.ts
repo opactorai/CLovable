@@ -16,6 +16,11 @@
 export function toRelativePath(absolutePath: string): string {
   if (!absolutePath) return absolutePath;
 
+  // If the string looks like plain text (contains whitespace), return as-is
+  if (/\s/.test(absolutePath)) {
+    return absolutePath;
+  }
+
   // Check if this is an absolute path
   const isAbsolutePath =
     absolutePath.startsWith('/') ||

@@ -7,7 +7,7 @@ import { Brain } from 'lucide-react';
 import ToolResultItem from './ToolResultItem';
 import ThinkingSection from './ThinkingSection';
 import type { ChatMessage, RealtimeEvent, RealtimeStatus } from '@/types';
-import { toChatMessage } from '@/lib/serializers/client/chat';
+import { toChatMessage, normalizeChatContent } from '@/lib/serializers/client/chat';
 import { toRelativePath } from '@/lib/utils/path';
 
 type ToolAction = 'Edited' | 'Created' | 'Read' | 'Deleted' | 'Generated' | 'Searched' | 'Executed';
@@ -296,7 +296,8 @@ const randomMessageId = () => {
 };
 
 const createToolMessageFromPlaceholder = (message: ChatMessage): { toolMessage: ChatMessage; skipOriginal: boolean } | null => {
-  const details = parseToolPlaceholder(message.content);
+  const contentText = normalizeChatContent(message.content);
+  const details = parseToolPlaceholder(contentText);
   if (!details) return null;
   const { toolName, target, summary, action } = details;
 
@@ -320,16 +321,16 @@ const createToolMessageFromPlaceholder = (message: ChatMessage): { toolMessage: 
     id: `${message.id || randomMessageId()}::tool`,
     role: 'tool',
     messageType: 'tool_use',
-    content: summary ?? target ?? (toolName ? `[Tool: ${toolName}]` : message.content ?? ''),
+    content: summary ?? target ?? (toolName ? `[Tool: ${toolName}]` : contentText),
     metadata,
   };
 
   const skipOriginal =
     !message.metadata &&
-    (!message.content ||
-      /^\s*\[Tool:/i.test(message.content) ||
-      /^Using tool:/i.test(message.content) ||
-      /^Tool result:/i.test(message.content));
+    (!contentText ||
+      /^\s*\[Tool:/i.test(contentText) ||
+      /^Using tool:/i.test(contentText) ||
+      /^Tool result:/i.test(contentText));
 
   if (!metadata.filePath) {
     metadata.filePath = fallbackPath;
@@ -406,11 +407,11 @@ const ToolMessage = ({
   const metadataInfo = deriveToolInfoFromMetadata(metadata);
 
   const processToolContent = (rawContent: unknown) => {
-    let processedContent = '' as string;
     let action: ToolAction = metadataInfo.action ?? 'Executed';
     let filePath = metadataInfo.filePath ?? '';
     let cleanContent: string | undefined = metadataInfo.cleanContent;
     let inferredToolName = metadataInfo.toolName;
+    let processedContent = '';
 
     if (!cleanContent && metadata && typeof metadata === 'object') {
       const meta = metadata as Record<string, unknown>;
@@ -424,18 +425,18 @@ const ToolMessage = ({
         cleanContent;
     }
     
-    // Normalize content to string
-    if (typeof rawContent === 'string') {
-      processedContent = rawContent;
-    } else if (rawContent && typeof rawContent === 'object') {
+    processedContent = cleanContent ?? '';
+
+    if (!processedContent) {
+      processedContent = normalizeChatContent(rawContent);
+    }
+
+    if (!processedContent && rawContent && typeof rawContent === 'object') {
       const obj = rawContent as Record<string, unknown>;
       processedContent =
-        cleanContent ??
         pickFirstString(obj.summary) ??
         pickFirstString(obj.description) ??
-        JSON.stringify(rawContent);
-    } else {
-      processedContent = String(rawContent ?? '');
+        processedContent;
     }
     
     processedContent = processedContent
@@ -615,12 +616,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
     const assistantUpdates = expandedMessages.filter((msg) => msg.role === 'assistant');
     if (assistantUpdates.length > 0) {
       const shouldStopWaiting = assistantUpdates.some((msg) => {
-        const normalizedContent =
-          typeof msg.content === 'string'
-            ? msg.content
-            : Array.isArray(msg.content)
-              ? msg.content.join('')
-              : '';
+        const normalizedContent = normalizeChatContent(msg.content);
         if (normalizedContent.trim().length > 0) {
           return true;
         }
@@ -666,18 +662,14 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
             messageWithId.metadata !== undefined
               ? messageWithId.metadata ?? null
               : existing.metadata ?? null;
-          const incomingContent =
-            typeof messageWithId.content === 'string' ? messageWithId.content : undefined;
+          const incomingContent = normalizeChatContent(messageWithId.content);
+          const existingContent = normalizeChatContent(existing.content);
           const shouldReplaceContent =
-            incomingContent !== undefined &&
-            (incomingContent.trim().length > 0 ||
-              existing.content == null ||
-              (typeof existing.content === 'string' && existing.content.trim().length === 0));
+            incomingContent.trim().length > 0 ||
+            existing.content == null ||
+            existingContent.trim().length === 0;
 
-          const mergedContent =
-            shouldReplaceContent && incomingContent !== undefined
-              ? incomingContent
-              : existing.content;
+          const mergedContent = shouldReplaceContent ? incomingContent : existing.content;
 
           const merged: ChatMessage = {
             ...existing,
@@ -977,7 +969,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
         clearTimeout(reconnectTimer);
       }
     };
-  }, [projectId, enableSseFallback, handleRealtimeEnvelope]);
+  }, [projectId, enableSseFallback, handleRealtimeEnvelope, onSseFallbackActive]);
 
   useEffect(() => {
     return () => {
@@ -995,7 +987,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
   // Function to detect tool usage messages based on patterns
   const isToolUsageMessage = (message: ChatMessage) => {
     const metadata = message.metadata as Record<string, unknown> | null | undefined;
-    const content = message.content ?? '';
+    const content = normalizeChatContent(message.content);
 
     if (message.messageType === 'tool_use') {
       return true;
@@ -1037,81 +1029,6 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
   };
 
   useEffect(scrollToBottom, [messages, logs]);
-
-  // Check for active session on component mount
-  const checkActiveSession = useCallback(async () => {
-    try {
-      const response = await fetch(`${API_BASE}/api/chat/${projectId}/active-session`);
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data) {
-          const session = result.data;
-          const sessionData: ActiveSession = {
-            status: session.status,
-            sessionId: session.sessionId,
-          };
-          setActiveSession(sessionData);
-
-          if (session.status === 'active' || session.status === 'running') {
-            console.log('Found active session:', session.sessionId);
-            onSessionStatusChange?.(true);
-
-            // Start polling session status
-            startSessionPolling(session.sessionId);
-          } else {
-            onSessionStatusChange?.(false);
-          }
-        } else {
-          // No active session found
-          setActiveSession(null);
-          onSessionStatusChange?.(false);
-        }
-      } else {
-        // 404 means no active session, which is normal
-        setActiveSession(null);
-        onSessionStatusChange?.(false);
-      }
-    } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('Failed to check active session:', error);
-      }
-      setActiveSession(null);
-      onSessionStatusChange?.(false);
-    }
-  }, [projectId, onSessionStatusChange]);
-
-  // Poll session status periodically
-  const startSessionPolling = (sessionId: string) => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-    }
-    
-    pollIntervalRef.current = setInterval(async () => {
-      try {
-        const response = await fetch(`${API_BASE}/api/chat/${projectId}/sessions/${sessionId}/status`);
-        if (response.ok) {
-          const sessionStatus = await response.json();
-          
-          if (sessionStatus.status !== 'active') {
-            setActiveSession(null);
-            onSessionStatusChange?.(false);
-            
-            if (pollIntervalRef.current) {
-              clearInterval(pollIntervalRef.current);
-              pollIntervalRef.current = null;
-            }
-            
-            // Reload messages to get final results
-            loadChatHistory({ showLoading: false });
-          }
-        }
-      } catch (error) {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('Error polling session status:', error);
-        }
-      }
-    }, 3000); // Poll every 3 seconds
-  };
 
   // Load chat history
   const loadChatHistory = useCallback(
@@ -1165,8 +1082,8 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
                 return message;
               }
 
-              const incomingContent = typeof message.content === 'string' ? message.content : '';
-              const previousContent = typeof previous.content === 'string' ? previous.content : '';
+              const incomingContent = normalizeChatContent(message.content);
+              const previousContent = normalizeChatContent(previous.content);
 
               const shouldKeepPreviousContent =
                 previousContent.trim().length > 0 && incomingContent.trim().length === 0;
@@ -1230,8 +1147,89 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
         setHasLoadedOnce(true);
       }
     },
-    [projectId],
+    [projectId]
   );
+
+  // Poll session status periodically
+  const startSessionPolling = useCallback(
+    (sessionId: string) => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+
+      pollIntervalRef.current = setInterval(async () => {
+        try {
+          const response = await fetch(
+            `${API_BASE}/api/chat/${projectId}/sessions/${sessionId}/status`
+          );
+          if (response.ok) {
+            const sessionStatus = await response.json();
+
+            if (sessionStatus.status !== 'active') {
+              setActiveSession(null);
+              onSessionStatusChange?.(false);
+
+              if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current);
+                pollIntervalRef.current = null;
+              }
+
+              loadChatHistory({ showLoading: false });
+            }
+          }
+        } catch (error) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('Error polling session status:', error);
+          }
+        }
+      }, 3000); // Poll every 3 seconds
+    },
+    [projectId, onSessionStatusChange, loadChatHistory]
+  );
+
+  // Check for active session on component mount
+  const checkActiveSession = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/chat/${projectId}/active-session`);
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data) {
+          const session = result.data;
+          const sessionData: ActiveSession = {
+            status: session.status,
+            sessionId: session.sessionId,
+          };
+          setActiveSession(sessionData);
+
+          if (session.status === 'active' || session.status === 'running') {
+            if (process.env.NODE_ENV === 'development') {
+              console.log('Found active session:', session.sessionId);
+            }
+            onSessionStatusChange?.(true);
+
+            // Start polling session status
+            startSessionPolling(session.sessionId);
+          } else {
+            onSessionStatusChange?.(false);
+          }
+        } else {
+          // No active session found
+          setActiveSession(null);
+          onSessionStatusChange?.(false);
+        }
+      } else {
+        // 404 means no active session, which is normal
+        setActiveSession(null);
+        onSessionStatusChange?.(false);
+      }
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Failed to check active session:', error);
+      }
+      setActiveSession(null);
+      onSessionStatusChange?.(false);
+    }
+  }, [projectId, onSessionStatusChange, startSessionPolling]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -1335,7 +1333,12 @@ const ToolResultMessage = ({
   message: ChatMessage;
   metadata?: Record<string, unknown> | null;
 }) => {
-  return <ToolMessage content={message.content} metadata={metadata ?? undefined} />;
+  return (
+    <ToolMessage
+      content={normalizeChatContent(message.content)}
+      metadata={metadata ?? undefined}
+    />
+  );
 };
 
   // Function to clean user messages by removing think hard instruction and chat mode instructions
@@ -1547,6 +1550,7 @@ const ToolResultMessage = ({
   // Message filtering function - hide internal tool results and system messages
   const shouldDisplayMessage = (message: ChatMessage) => {
     const metadata = message.metadata as Record<string, unknown> | null | undefined;
+    const contentText = normalizeChatContent(message.content);
 
     if (metadata && (metadata as { hidden_from_ui?: boolean }).hidden_from_ui) {
       return false;
@@ -1557,7 +1561,7 @@ const ToolResultMessage = ({
     }
 
     if (message.messageType === 'tool_result') {
-      const hasContent = typeof message.content === 'string' && message.content.trim().length > 0;
+      const hasContent = contentText.trim().length > 0;
       if (hasContent) {
         return true;
       }
@@ -1582,12 +1586,12 @@ const ToolResultMessage = ({
       return true;
     }
 
-    if (!message.content || message.content.trim() === '') {
+    if (!contentText || contentText.trim() === '') {
       return false;
     }
 
     if (message.role === 'system' && message.messageType === 'system') {
-      if (message.content.includes('initialized') || message.content.includes('Agent')) {
+      if (contentText.includes('initialized') || contentText.includes('Agent')) {
         return false;
       }
     }
@@ -1790,6 +1794,7 @@ const ToolResultMessage = ({
         {/* Render chat messages */}
         {messages.filter(shouldDisplayMessage).map((message, index) => {
           const messageMetadata = message.metadata as Record<string, unknown> | null;
+          const messageText = normalizeChatContent(message.content);
           
           return (
             <div
@@ -1802,7 +1807,7 @@ const ToolResultMessage = ({
                     <div className="max-w-[80%] bg-gray-100 rounded-lg px-4 py-3">
                       <div className="text-sm text-gray-900 break-words">
                         {(() => {
-                          const cleanedMessage = cleanUserMessage(message.content);
+                          const cleanedMessage = cleanUserMessage(messageText);
                           
                           // Check if message contains image paths
                           const imagePattern = /Image #\d+ path: ([^\n]+)/g;
@@ -1935,11 +1940,11 @@ const ToolResultMessage = ({
                       <ToolResultMessage message={message} metadata={messageMetadata} />
                     ) : isToolUsageMessage(message) ? (
                       // Tool usage - clean display with expand functionality
-                      <ToolMessage content={message.content} metadata={messageMetadata} />
+                      <ToolMessage content={messageText} metadata={messageMetadata} />
                     ) : (
                       // Regular agent message - plain text
                       <div className="text-sm text-gray-900 leading-relaxed">
-                        {renderContentWithThinking(shortenPath(message.content))}
+                        {renderContentWithThinking(shortenPath(messageText))}
                       </div>
                     )}
                   </div>

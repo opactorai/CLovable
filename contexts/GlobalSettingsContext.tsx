@@ -1,11 +1,14 @@
 "use client";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { getDefaultModelForCli } from '@/lib/constants/cliModels';
 
 export type GlobalAISettings = {
   default_cli: string;
   cli_settings: {
     [key: string]: {
       model?: string;
+      apiKey?: string;
+      [key: string]: unknown;
     };
   };
 };
@@ -18,7 +21,12 @@ type GlobalSettingsCtx = {
 
 const defaultSettings: GlobalAISettings = {
   default_cli: 'claude',
-  cli_settings: {},
+  cli_settings: {
+    claude: { model: getDefaultModelForCli('claude') },
+    codex: { model: getDefaultModelForCli('codex') },
+    qwen: { model: getDefaultModelForCli('qwen') },
+    glm: { model: getDefaultModelForCli('glm') },
+  },
 };
 
 const Ctx = createContext<GlobalSettingsCtx | null>(null);

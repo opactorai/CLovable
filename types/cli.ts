@@ -1,12 +1,13 @@
 import { CLAUDE_MODEL_DEFINITIONS } from '@/lib/constants/claudeModels';
 import { CODEX_MODEL_DEFINITIONS } from '@/lib/constants/codexModels';
 import { QWEN_MODEL_DEFINITIONS } from '@/lib/constants/qwenModels';
+import { GLM_MODEL_DEFINITIONS } from '@/lib/constants/glmModels';
 
 /**
  * Frontend CLI Type Definitions (claude-only variant)
  */
 
-export type CLIType = 'claude' | 'cursor' | 'codex' | 'gemini' | 'qwen';
+export type CLIType = 'claude' | 'cursor' | 'codex' | 'gemini' | 'qwen' | 'glm';
 
 export interface CLIModel {
   id: string;
@@ -104,6 +105,26 @@ export const CLI_OPTIONS: CLIOption[] = [
     installCommand: 'npm install -g @qwen-code/qwen-code',
     features: ['Autonomous coding agent', 'Workspace sandboxing', 'Tool approval modes'],
     models: QWEN_MODEL_DEFINITIONS.map(({ id, name, description, supportsImages }) => ({
+      id,
+      name,
+      description,
+      supportsImages,
+    })),
+  },
+  {
+    id: 'glm',
+    name: 'GLM CLI',
+    description: 'Zhipu GLM agent running through Claude Code runtime',
+    icon: '/glm.png',
+    available: true,
+    configured: true,
+    enabled: true,
+    color: 'from-blue-500 to-indigo-600',
+    brandColor: '#1677FF',
+    downloadUrl: 'https://docs.z.ai/devpack/tool/claude',
+    installCommand: 'zai devpack install claude',
+    features: ['Claude-compatible agent runtime', 'GLM 4.6 reasoning'],
+    models: GLM_MODEL_DEFINITIONS.map(({ id, name, description, supportsImages }) => ({
       id,
       name,
       description,

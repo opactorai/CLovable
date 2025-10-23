@@ -6,13 +6,22 @@ import CreateProjectModal from '@/components/modals/CreateProjectModal';
 import DeleteProjectModal from '@/components/modals/DeleteProjectModal';
 import GlobalSettings from '@/components/settings/GlobalSettings';
 import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
-import { getModelDefinitionsForCli, getDefaultModelForCli, normalizeModelId, getModelDisplayName } from '@/lib/constants/cliModels';
+import { getDefaultModelForCli, getModelDisplayName } from '@/lib/constants/cliModels';
 import Image from 'next/image';
 import { Image as ImageIcon } from 'lucide-react';
 import type { Project as ProjectSummary } from '@/types/project';
 import { fetchCliStatusSnapshot, createCliStatusFallback } from '@/hooks/useCLI';
-import type { CLIStatus, CLIOption } from '@/types/cli';
-import { CLI_OPTIONS } from '@/types/cli';
+import type { CLIStatus } from '@/types/cli';
+import {
+  ACTIVE_CLI_BRAND_COLORS,
+  ACTIVE_CLI_MODEL_OPTIONS,
+  ACTIVE_CLI_OPTIONS,
+  ACTIVE_CLI_OPTIONS_MAP,
+  DEFAULT_ACTIVE_CLI,
+  normalizeModelForCli,
+  sanitizeActiveCli,
+  type ActiveCliId,
+} from '@/lib/utils/cliOptions';
 
 // Ensure fetch is available
 const fetchAPI = globalThis.fetch || fetch;
@@ -20,25 +29,15 @@ const fetchAPI = globalThis.fetch || fetch;
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 
 // Define assistant brand colors
-const SUPPORTED_ASSISTANTS: CLIOption[] = CLI_OPTIONS.filter(option =>
-  option.id === 'claude' || option.id === 'codex' || option.id === 'qwen'
-);
-
-const ASSISTANT_OPTIONS = SUPPORTED_ASSISTANTS.map(({ id, name, icon }) => ({
+const ASSISTANT_OPTIONS = ACTIVE_CLI_OPTIONS.map(({ id, name, icon }) => ({
   id,
   name,
   icon,
 }));
 
-const assistantBrandColors = SUPPORTED_ASSISTANTS.reduce<Record<string, string>>((acc, option) => {
-  acc[option.id] = option.brandColor ?? '#DE7356';
-  return acc;
-}, {});
+const assistantBrandColors = ACTIVE_CLI_BRAND_COLORS;
 
-const MODEL_OPTIONS_BY_ASSISTANT = SUPPORTED_ASSISTANTS.reduce<Record<string, { id: string; name: string }[]>>((acc, option) => {
-  acc[option.id] = getModelDefinitionsForCli(option.id).map(({ id, name }) => ({ id, name }));
-  return acc;
-}, {});
+const MODEL_OPTIONS_BY_ASSISTANT = ACTIVE_CLI_MODEL_OPTIONS;
 
 export default function HomePage() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -50,23 +49,20 @@ export default function HomePage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [prompt, setPrompt] = useState('');
-  const DEFAULT_ASSISTANT = 'claude';
+  const DEFAULT_ASSISTANT: ActiveCliId = DEFAULT_ACTIVE_CLI;
   const DEFAULT_MODEL = getDefaultModelForCli(DEFAULT_ASSISTANT);
   const sanitizeAssistant = useCallback(
-    (cli?: string | null) => {
-      const normalized = typeof cli === 'string' ? cli.toLowerCase() : '';
-      return SUPPORTED_ASSISTANTS.some(option => option.id === normalized) ? normalized : DEFAULT_ASSISTANT;
-    },
-    []
+    (cli?: string | null) => sanitizeActiveCli(cli, DEFAULT_ASSISTANT),
+    [DEFAULT_ASSISTANT]
   );
   const normalizeModelForAssistant = useCallback(
-    (assistant: string, model?: string | null) => normalizeModelId(assistant, model),
-    []
+    (assistant: string, model?: string | null) => normalizeModelForCli(assistant, model, DEFAULT_ASSISTANT),
+    [DEFAULT_ASSISTANT]
   );
 
   const normalizeProjectPayload = useCallback((project: any): ProjectSummary => {
     const preferred = sanitizeAssistant(project?.preferredCli ?? project?.preferred_cli);
-    const selected = normalizeModelId(preferred, project?.selectedModel ?? project?.selected_model);
+    const selected = normalizeModelForAssistant(preferred, project?.selectedModel ?? project?.selected_model);
 
     return {
       id: project.id,
@@ -84,14 +80,14 @@ export default function HomePage() {
       selectedModel: selected,
       fallbackEnabled: project.fallbackEnabled ?? project.fallback_enabled ?? false,
     };
-  }, [sanitizeAssistant]);
-  const [selectedAssistant, setSelectedAssistant] = useState(sanitizeAssistant('claude'));
+  }, [sanitizeAssistant, normalizeModelForAssistant]);
+  const [selectedAssistant, setSelectedAssistant] = useState<ActiveCliId>(DEFAULT_ASSISTANT);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const [usingGlobalDefaults, setUsingGlobalDefaults] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [cliStatus, setCLIStatus] = useState<CLIStatus>({});
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const selectedAssistantOption = SUPPORTED_ASSISTANTS.find(option => option.id === selectedAssistant);
+  const selectedAssistantOption = ACTIVE_CLI_OPTIONS_MAP[selectedAssistant];
   
   // Get available models based on current assistant
   const availableModels = MODEL_OPTIONS_BY_ASSISTANT[selectedAssistant] || [];
@@ -255,7 +251,7 @@ export default function HomePage() {
   // Format CLI and model information
   const formatCliInfo = (cli?: string, model?: string) => {
     const normalizedCli = sanitizeAssistant(cli);
-    const assistantOption = SUPPORTED_ASSISTANTS.find(option => option.id === normalizedCli);
+    const assistantOption = ACTIVE_CLI_OPTIONS_MAP[normalizedCli];
     const cliName = assistantOption?.name ?? 'Claude Code';
     const modelId = normalizeModelForAssistant(normalizedCli, model);
     const modelLabel = getModelDisplayName(normalizedCli, modelId);
@@ -392,29 +388,23 @@ export default function HomePage() {
   }
 
   // Handle files (for both drag drop and file input)
-  const handleFiles = useCallback(async (files: FileList) => {
+  const handleFiles = useCallback(async (files: FileList | File[]) => {
     setIsUploading(true);
     
     try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        
-        // Check if file is an image
-        if (!file.type.startsWith('image/')) {
-          continue;
-        }
-        
-        const imageUrl = URL.createObjectURL(file);
-
-        const newImage = {
+      const filesArray = Array.from(files as ArrayLike<File>);
+      const imagesToAdd = filesArray
+        .filter(file => file.type.startsWith('image/'))
+        .map(file => ({
           id: crypto.randomUUID(),
           name: file.name,
-          url: imageUrl,
-          path: '', // Will be set after upload
-          file: file // Store the actual file for later upload
-        };
+          url: URL.createObjectURL(file),
+          path: '',
+          file,
+        }));
 
-        setUploadedImages(prev => [...prev, newImage]);
+      if (imagesToAdd.length > 0) {
+        setUploadedImages(prev => [...prev, ...imagesToAdd]);
       }
     } catch (error) {
       console.error('Image processing failed:', error);
@@ -585,6 +575,14 @@ export default function HomePage() {
       }
       
       // Navigate to chat page with model and CLI parameters
+      uploadedImages.forEach(image => {
+        if (image.url) {
+          URL.revokeObjectURL(image.url);
+        }
+      });
+      setUploadedImages([]);
+      setPrompt('');
+
       const params = new URLSearchParams();
       if (selectedAssistant) params.set('cli', selectedAssistant);
       if (selectedModel) params.set('model', selectedModel);
@@ -593,6 +591,7 @@ export default function HomePage() {
     } catch (error) {
       console.error('Failed to create project:', error);
       showToast('Failed to create project', 'error');
+    } finally {
       setIsCreatingProject(false);
     }
   };
@@ -755,13 +754,15 @@ export default function HomePage() {
                   <p className="text-gray-500 text-sm">No conversations yet</p>
                 </div>
               ) : (
-                projects.map((project) => (
-                  <div 
-                    key={project.id}
-                    className="p-2 px-3 rounded-lg transition-all group"
+                projects.map((project) => {
+                  const projectCli = sanitizeAssistant(project.preferredCli);
+                  const projectColor = assistantBrandColors[projectCli] || assistantBrandColors[DEFAULT_ASSISTANT];
+                  return (
+                    <div 
+                      key={project.id}
+                      className="p-2 px-3 rounded-lg transition-all group"
                     onMouseEnter={(e) => {
-                      const color = assistantBrandColors[project.preferredCli || 'claude'] || assistantBrandColors.claude;
-                      e.currentTarget.style.backgroundColor = `${color}15`;
+                      e.currentTarget.style.backgroundColor = `${projectColor}15`;
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.backgroundColor = 'transparent';
@@ -819,7 +820,7 @@ export default function HomePage() {
                           <h3 
                             className="text-gray-900 text-sm transition-colors truncate"
                             style={{
-                              '--hover-color': assistantBrandColors[project.preferredCli || 'claude'] || '#DE7356'
+                              '--hover-color': projectColor || '#DE7356'
                             } as React.CSSProperties}
                           >
                             <span 
@@ -844,10 +845,10 @@ export default function HomePage() {
                                 <span
                                   className="text-xs transition-colors"
                                   style={{
-                                    color: (assistantBrandColors[project.preferredCli || 'claude'] || '#6B7280') + 'CC'
+                                    color: (projectColor || '#6B7280') + 'CC'
                                   }}
                                 >
-                                  {formatCliInfo(project.preferredCli ?? 'claude', project.selectedModel ?? undefined)}
+                                  {formatCliInfo(projectCli, project.selectedModel ?? undefined)}
                                 </span>
                               </div>
                             )}
@@ -881,8 +882,9 @@ export default function HomePage() {
                         </div>
                       </div>
                     )}
-                  </div>
-                ))
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>

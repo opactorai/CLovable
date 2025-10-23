@@ -3,8 +3,9 @@
  * Manages CLI configuration and status
  */
 import { useState, useCallback, useEffect } from 'react';
-import { CLIOption, CLIStatus, CLIPreference, CLI_OPTIONS, CLIType } from '@/types/cli';
-import { getDefaultModelForCli, normalizeModelId } from '@/lib/constants/cliModels';
+import { CLIOption, CLIStatus, CLIPreference, CLI_OPTIONS } from '@/types/cli';
+import { getDefaultModelForCli } from '@/lib/constants/cliModels';
+import { DEFAULT_ACTIVE_CLI, normalizeModelForCli, sanitizeActiveCli } from '@/lib/utils/cliOptions';
 
 interface UseCLIOptions {
   projectId: string;
@@ -66,12 +67,14 @@ export function useCLI({ projectId }: UseCLIOptions) {
   const parsePreference = useCallback((payload: unknown): CLIPreference => {
     const data = payload as Record<string, unknown> | null | undefined;
 
-    const preferredCli =
+    const preferredRaw =
       typeof data?.preferredCli === 'string'
         ? data.preferredCli
         : typeof data?.preferred_cli === 'string'
         ? data.preferred_cli
-        : 'claude';
+        : DEFAULT_ACTIVE_CLI;
+
+    const preferredCli = sanitizeActiveCli(preferredRaw, DEFAULT_ACTIVE_CLI);
 
     const fallbackEnabled =
       typeof data?.fallbackEnabled === 'boolean'
@@ -86,12 +89,12 @@ export function useCLI({ projectId }: UseCLIOptions) {
         : typeof data?.selected_model === 'string'
         ? data.selected_model
         : undefined;
-    const normalizedModel = normalizeModelId(preferredCli, rawModel);
+    const normalizedModel = normalizeModelForCli(preferredCli, rawModel, preferredCli);
 
     return {
-      preferredCli: (preferredCli || 'claude') as CLIType,
+      preferredCli,
       fallbackEnabled,
-      selectedModel: normalizedModel ?? getDefaultModelForCli(preferredCli),
+      selectedModel: normalizedModel || getDefaultModelForCli(preferredCli),
     };
   }, []);
 
@@ -105,17 +108,17 @@ export function useCLI({ projectId }: UseCLIOptions) {
       }
 
       const payload = await response.json();
-      const project = payload?.data ?? payload ?? {};
-      setPreference(parsePreference(project));
-    } catch (error) {
-      console.error('Failed to load CLI preference:', error);
-      setPreference({
-        preferredCli: 'claude',
-        fallbackEnabled: false,
-        selectedModel: getDefaultModelForCli('claude'),
-      });
-    }
-  }, [projectId, parsePreference]);
+    const project = payload?.data ?? payload ?? {};
+    setPreference(parsePreference(project));
+  } catch (error) {
+    console.error('Failed to load CLI preference:', error);
+    setPreference({
+      preferredCli: DEFAULT_ACTIVE_CLI,
+      fallbackEnabled: false,
+      selectedModel: getDefaultModelForCli(DEFAULT_ACTIVE_CLI),
+    });
+  }
+}, [projectId, parsePreference]);
 
   const applyStatusToState = useCallback((status: CLIStatus) => {
     setStatuses(status);
@@ -150,13 +153,14 @@ export function useCLI({ projectId }: UseCLIOptions) {
   }, [applyStatusToState]);
 
   // Update CLI preference
-  const updatePreference = useCallback(async (preferredCli: string) => {
+  const updatePreference = useCallback(async (preferredCliInput: string) => {
+    const sanitizedInput = sanitizeActiveCli(preferredCliInput, DEFAULT_ACTIVE_CLI);
     try {
       const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
       const response = await fetch(`${API_BASE}/api/projects/${projectId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ preferredCli }),
+        body: JSON.stringify({ preferredCli: sanitizedInput }),
       });
 
       if (!response.ok) throw new Error('Failed to update CLI preference');
@@ -164,14 +168,24 @@ export function useCLI({ projectId }: UseCLIOptions) {
       const payload = await response.json();
       const project = payload?.data ?? payload ?? {};
 
-      setPreference(prev => ({
-        preferredCli: (project.preferredCli ?? project.preferred_cli ?? preferredCli) as CLIType,
-        fallbackEnabled: prev?.fallbackEnabled ?? false,
-        selectedModel:
-          project.selectedModel || project.selected_model
-            ? normalizeModelId(project.preferredCli ?? project.preferred_cli ?? preferredCli, project.selectedModel ?? project.selected_model)
-            : prev?.selectedModel ?? getDefaultModelForCli(project.preferredCli ?? project.preferred_cli ?? preferredCli),
-      }));
+      const responseCli = sanitizeActiveCli(
+        project.preferredCli ?? project.preferred_cli ?? sanitizedInput,
+        DEFAULT_ACTIVE_CLI
+      );
+      const rawSelected = project.selectedModel ?? project.selected_model;
+
+      setPreference(prev => {
+        const normalizedSelected =
+          rawSelected != null
+            ? normalizeModelForCli(responseCli, rawSelected, responseCli)
+            : prev?.selectedModel ?? getDefaultModelForCli(responseCli);
+
+        return {
+          preferredCli: responseCli,
+          fallbackEnabled: prev?.fallbackEnabled ?? false,
+          selectedModel: normalizedSelected,
+        };
+      });
       return project;
     } catch (error) {
       console.error('Failed to update CLI preference:', error);
@@ -194,31 +208,28 @@ export function useCLI({ projectId }: UseCLIOptions) {
       const payload = await response.json();
       const project = payload?.data ?? payload ?? {};
 
-      const cliForNormalization = project.preferredCli ?? project.preferred_cli ?? preference?.preferredCli ?? 'claude';
-      const normalized = normalizeModelId(
+      const cliForNormalization = sanitizeActiveCli(
+        project.preferredCli ?? project.preferred_cli ?? preference?.preferredCli ?? DEFAULT_ACTIVE_CLI,
+        DEFAULT_ACTIVE_CLI
+      );
+      const normalized = normalizeModelForCli(
         cliForNormalization,
-        project.selectedModel ?? project.selected_model ?? modelId
+        project.selectedModel ?? project.selected_model ?? modelId,
+        cliForNormalization
       );
 
-      setPreference(prev =>
-        prev
-          ? {
-              ...prev,
-              selectedModel: normalizeModelId(cliForNormalization, normalized),
-            }
-          : {
-              preferredCli: 'claude',
-              fallbackEnabled: false,
-              selectedModel: normalizeModelId(cliForNormalization, normalized),
-            }
-      );
+      setPreference(prev => ({
+        preferredCli: cliForNormalization,
+        fallbackEnabled: prev?.fallbackEnabled ?? false,
+        selectedModel: normalized,
+      }));
 
       return project;
     } catch (error) {
       console.error('Failed to update model preference:', error);
       throw error;
     }
-  }, [projectId]);
+  }, [projectId, preference?.preferredCli]);
 
 
   // Load on mount

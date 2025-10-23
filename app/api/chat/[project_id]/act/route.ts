@@ -13,6 +13,7 @@ import { createMessage } from '@/lib/services/message';
 import { initializeNextJsProject as initializeClaudeProject, applyChanges as applyClaudeChanges } from '@/lib/services/cli/claude';
 import { initializeNextJsProject as initializeCodexProject, applyChanges as applyCodexChanges } from '@/lib/services/cli/codex';
 import { initializeNextJsProject as initializeQwenProject, applyChanges as applyQwenChanges } from '@/lib/services/cli/qwen';
+import { initializeNextJsProject as initializeGLMProject, applyChanges as applyGLMChanges } from '@/lib/services/cli/glm';
 import { getDefaultModelForCli, normalizeModelId } from '@/lib/constants/cliModels';
 import { streamManager } from '@/lib/services/stream';
 import type { ChatActRequest } from '@/types/backend';
@@ -352,6 +353,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           ? initializeCodexProject
           : cliPreference === 'qwen'
           ? initializeQwenProject
+          : cliPreference === 'glm'
+          ? initializeGLMProject
           : initializeClaudeProject;
 
       executor(
@@ -369,6 +372,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           ? applyCodexChanges
           : cliPreference === 'qwen'
           ? applyQwenChanges
+          : cliPreference === 'glm'
+          ? applyGLMChanges
           : applyClaudeChanges;
 
       executor(

@@ -24,6 +24,9 @@ const DEFAULT_SETTINGS: GlobalSettings = {
     qwen: {
       model: getDefaultModelForCli('qwen'),
     },
+    glm: {
+      model: getDefaultModelForCli('glm'),
+    },
   },
 };
 
@@ -39,11 +42,21 @@ async function readSettingsFile(): Promise<GlobalSettings | null> {
       return null;
     }
 
+    const defaultCli = typeof parsed.default_cli === 'string'
+      ? parsed.default_cli
+      : DEFAULT_SETTINGS.default_cli;
+
+    const cliSettings =
+      typeof parsed.cli_settings === 'object' && parsed.cli_settings !== null
+        ? parsed.cli_settings
+        : {};
+
     return {
       default_cli: typeof parsed.default_cli === 'string' ? parsed.default_cli : DEFAULT_SETTINGS.default_cli,
-      cli_settings: typeof parsed.cli_settings === 'object' && parsed.cli_settings !== null
-        ? parsed.cli_settings
-        : DEFAULT_SETTINGS.cli_settings,
+      cli_settings: {
+        ...DEFAULT_SETTINGS.cli_settings,
+        ...cliSettings,
+      },
     };
   } catch (error) {
     return null;
@@ -58,7 +71,14 @@ async function writeSettings(settings: GlobalSettings): Promise<void> {
 export async function loadGlobalSettings(): Promise<GlobalSettings> {
   const existing = await readSettingsFile();
   if (existing) {
-    return existing;
+    const merged: GlobalSettings = {
+      default_cli: existing.default_cli ?? DEFAULT_SETTINGS.default_cli,
+      cli_settings: {
+        ...DEFAULT_SETTINGS.cli_settings,
+        ...(existing.cli_settings ?? {}),
+      },
+    };
+    return merged;
   }
 
   await writeSettings(DEFAULT_SETTINGS);

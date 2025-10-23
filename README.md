@@ -55,6 +55,16 @@ How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and 
   # Login
   cursor-agent login
   ```
+- **[GLM CLI](https://docs.z.ai/devpack/tool/claude)**: Zhipu GLM 4.6 running on top of the Claude Code runtime. Text-only model that reuses Claude’s toolset.
+  ```bash
+  # Install (requires Z.ai DevPack)
+  zai devpack install claude
+  # Login
+  zai auth login
+  # Optionally set API key via environment (or use Global Settings → GLM CLI)
+  export ZHIPU_API_KEY="sk-your-glm-key"
+  ```
+  > ℹ️ GLM support is prompt- and session-compatible with Claude Code. Advanced MCP configuration flags are skipped automatically.
 
 **Database & Deployment:**
 - **[Supabase](https://supabase.com/)**: Connect production-ready PostgreSQL database directly to your project.
@@ -67,7 +77,7 @@ How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and 
 Before you begin, ensure you have the following installed:
 - Node.js 18+
 - Python 3.10+
-- Claude Code or Cursor CLI (already logged in)
+- Claude Code, Cursor CLI, Qwen Coder, or GLM CLI (choose at least one and make sure it is logged in)
 - Git
 
 ## Quick Start
@@ -243,6 +253,14 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+### GLM CLI Notes
+
+- GLM 4.6 is text-only. Claudable automatically converts uploaded images into on-disk paths and appends them to the prompt (`Image #n path: ...`) so GLM can inspect the files without native vision support.
+- The integration reuses the Claude Code agent runtime. Make sure the Claude SDK is installed locally through Z.ai DevPack and authenticated with your Z.ai account.
+- Advanced MCP configuration is intentionally disabled for GLM runs because the runtime only supports basic prompt + session parameters today.
+- You can store the API key globally through **Settings → AI Agents → GLM CLI** (kept in `data/global-settings.json`). Claudable will inject it as `ZHIPU_API_KEY`/`ZHIPUAI_API_KEY`/`GLM_API_KEY` during each GLM run. Clearing the field falls back to whichever key is present in the server environment.
+- For best results keep instructions concise and run incremental updates so the session resume token remains valid.
 
 ### Claude Code Permission Issues (Windows/WSL)
 

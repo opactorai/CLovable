@@ -9,6 +9,7 @@ import { promisify } from 'util';
 import type { CLIStatus } from '@/types/backend';
 import { CODEX_MODEL_DEFINITIONS } from '@/lib/constants/codexModels';
 import { QWEN_MODEL_DEFINITIONS } from '@/lib/constants/qwenModels';
+import { GLM_MODEL_DEFINITIONS } from '@/lib/constants/glmModels';
 
 const execAsync = promisify(exec);
 
@@ -104,6 +105,10 @@ export async function GET() {
         installed: false,
         checking: false,
       },
+      glm: {
+        installed: false,
+        checking: false,
+      },
     };
 
     // Check Claude Code CLI installation
@@ -131,6 +136,15 @@ export async function GET() {
       checking: false,
       error: qwenStatus.error,
       models: QWEN_MODEL_DEFINITIONS.map((model) => model.id),
+    };
+
+    const glmStatus = claudeStatus;
+    status.glm = {
+      installed: glmStatus.installed,
+      version: glmStatus.version,
+      checking: false,
+      error: glmStatus.error,
+      models: GLM_MODEL_DEFINITIONS.map((model) => model.id),
     };
 
     return NextResponse.json(status);

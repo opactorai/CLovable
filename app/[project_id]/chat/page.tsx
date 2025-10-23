@@ -13,37 +13,33 @@ import ChatInput from '@/components/chat/ChatInput';
 import { ChatErrorBoundary } from '@/components/ErrorBoundary';
 import { useUserRequests } from '@/hooks/useUserRequests';
 import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
-import { getModelDefinitionsForCli, getDefaultModelForCli, normalizeModelId, getModelDisplayName } from '@/lib/constants/cliModels';
+import { getDefaultModelForCli, getModelDisplayName } from '@/lib/constants/cliModels';
+import {
+  ACTIVE_CLI_BRAND_COLORS,
+  ACTIVE_CLI_IDS,
+  ACTIVE_CLI_MODEL_OPTIONS,
+  ACTIVE_CLI_NAME_MAP,
+  DEFAULT_ACTIVE_CLI,
+  buildActiveModelOptions,
+  normalizeModelForCli,
+  sanitizeActiveCli,
+  type ActiveCliId,
+  type ActiveModelOption,
+} from '@/lib/utils/cliOptions';
 
 // No longer loading ProjectSettings (managed by global settings on main page)
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 
-// Define assistant brand colors
-const SUPPORTED_CLIS = [
-  { id: 'claude', name: 'Claude Code', icon: '/claude.png', brandColor: '#DE7356' },
-  { id: 'codex', name: 'Codex CLI', icon: '/oai.png', brandColor: '#000000' },
-  { id: 'qwen', name: 'Qwen Coder', icon: '/qwen.png', brandColor: '#11A97D' },
-] as const;
+const assistantBrandColors = ACTIVE_CLI_BRAND_COLORS;
 
-const assistantBrandColors: Record<string, string> = SUPPORTED_CLIS.reduce((acc, cli) => {
-  acc[cli.id] = cli.brandColor;
-  return acc;
-}, {} as Record<string, string>);
+const CLI_LABELS = ACTIVE_CLI_NAME_MAP;
 
-const CLI_LABELS: Record<string, string> = SUPPORTED_CLIS.reduce((acc, cli) => {
-  acc[cli.id] = cli.name;
-  return acc;
-}, {} as Record<string, string>);
+const CLI_ORDER = ACTIVE_CLI_IDS;
 
-const CLI_ORDER = SUPPORTED_CLIS.map(cli => cli.id);
+const sanitizeCli = (cli?: string | null) => sanitizeActiveCli(cli, DEFAULT_ACTIVE_CLI);
 
-const sanitizeCli = (cli?: string | null) => {
-  const normalized = typeof cli === 'string' ? cli.toLowerCase() : '';
-  return SUPPORTED_CLIS.some(option => option.id === normalized) ? normalized : 'claude';
-};
-
-const sanitizeModel = (cli: string, model?: string | null) => normalizeModelId(cli, model);
+const sanitizeModel = (cli: string, model?: string | null) => normalizeModelForCli(cli, model, DEFAULT_ACTIVE_CLI);
 
 // Function to convert hex to CSS filter for tinting white images
 // Since the original image is white (#FFFFFF), we can apply filters more accurately
@@ -53,6 +49,7 @@ const hexToFilter = (hex: string): string => {
     '#DE7356': 'brightness(0) saturate(100%) invert(52%) sepia(73%) saturate(562%) hue-rotate(336deg) brightness(95%) contrast(91%)',
     '#000000': 'brightness(0) saturate(100%)',
     '#11A97D': 'brightness(0) saturate(100%) invert(57%) sepia(30%) saturate(747%) hue-rotate(109deg) brightness(90%) contrast(92%)',
+    '#1677FF': 'brightness(0) saturate(100%) invert(40%) sepia(86%) saturate(1806%) hue-rotate(201deg) brightness(98%) contrast(98%)',
   };
   return filters[hex] || filters['#DE7356'];
 };
@@ -66,38 +63,13 @@ type CliStatusSnapshot = {
   models?: string[];
 };
 
-type ModelOption = {
-  id: string;
-  name: string;
-  cli: string;
-  cliName: string;
-  available: boolean;
-};
+type ModelOption = Omit<ActiveModelOption, 'cli'> & { cli: string };
 
-const buildModelOptions = (statuses: Record<string, CliStatusSnapshot>): ModelOption[] => {
-  const options: ModelOption[] = [];
-
-  SUPPORTED_CLIS.forEach(({ id, name }) => {
-    const status = statuses?.[id];
-    const availableModels = new Set((status?.models ?? []).map(modelId => normalizeModelId(id, modelId)));
-    const baseAvailability = Boolean(status?.available ?? true) && Boolean(status?.configured ?? true);
-
-    getModelDefinitionsForCli(id).forEach(definition => {
-      const normalizedId = normalizeModelId(id, definition.id);
-      const isAvailable = baseAvailability && (availableModels.size === 0 || availableModels.has(normalizedId));
-
-      options.push({
-        id: normalizedId,
-        name: definition.name,
-        cli: id,
-        cliName: name,
-        available: isAvailable,
-      });
-    });
-  });
-
-  return options;
-};
+const buildModelOptions = (statuses: Record<string, CliStatusSnapshot>): ModelOption[] =>
+  buildActiveModelOptions(statuses).map(option => ({
+    ...option,
+    cli: option.cli,
+  }));
 
 // TreeView component for VSCode-style file explorer
 interface TreeViewProps {
@@ -284,8 +256,8 @@ export default function ChatPage() {
     }
     return '';
   });
-  const [preferredCli, setPreferredCli] = useState<string>('claude');
-  const [selectedModel, setSelectedModel] = useState<string>(getDefaultModelForCli('claude'));
+  const [preferredCli, setPreferredCli] = useState<ActiveCliId>(DEFAULT_ACTIVE_CLI);
+  const [selectedModel, setSelectedModel] = useState<string>(getDefaultModelForCli(DEFAULT_ACTIVE_CLI));
   const [usingGlobalDefaults, setUsingGlobalDefaults] = useState<boolean>(true);
   const [thinkingMode, setThinkingMode] = useState<boolean>(false);
   const [isUpdatingModel, setIsUpdatingModel] = useState<boolean>(false);
@@ -296,7 +268,8 @@ export default function ChatPage() {
   const lineNumberRef = useRef<HTMLDivElement>(null);
   const editedContentRef = useRef<string>('');
   const [isFileUpdating, setIsFileUpdating] = useState(false);
-  const activeBrandColor = assistantBrandColors[preferredCli] || assistantBrandColors.claude;
+  const activeBrandColor =
+    assistantBrandColors[preferredCli] || assistantBrandColors[DEFAULT_ACTIVE_CLI];
   const modelOptions = useMemo(() => buildModelOptions(cliStatuses), [cliStatuses]);
   const cliOptions = useMemo(
     () => CLI_ORDER.map(cli => ({
@@ -434,11 +407,12 @@ export default function ChatPage() {
 
 const loadCliStatuses = useCallback(() => {
   const snapshot: Record<string, CliStatusSnapshot> = {};
-  SUPPORTED_CLIS.forEach(({ id }) => {
+  ACTIVE_CLI_IDS.forEach(id => {
+    const models = ACTIVE_CLI_MODEL_OPTIONS[id]?.map(model => model.id) ?? [];
     snapshot[id] = {
       available: true,
       configured: true,
-      models: getModelDefinitionsForCli(id).map(model => normalizeModelId(id, model.id)),
+      models,
     };
   });
   setCliStatuses(snapshot);
@@ -449,12 +423,13 @@ const persistProjectPreferences = useCallback(
     if (!projectId) return;
     const payload: Record<string, unknown> = {};
     if (changes.preferredCli) {
-      payload.preferredCli = changes.preferredCli;
-      payload.preferred_cli = changes.preferredCli;
+      const sanitizedPreferredCli = sanitizeCli(changes.preferredCli);
+      payload.preferredCli = sanitizedPreferredCli;
+      payload.preferred_cli = sanitizedPreferredCli;
     }
     if (changes.selectedModel) {
-      const targetCli = changes.preferredCli ?? preferredCli;
-      const normalized = normalizeModelId(targetCli, changes.selectedModel);
+      const targetCli = sanitizeCli(changes.preferredCli ?? preferredCli);
+      const normalized = sanitizeModel(targetCli, changes.selectedModel);
       payload.selectedModel = normalized;
       payload.selected_model = normalized;
     }
@@ -1441,9 +1416,9 @@ const persistProjectPreferences = useCallback(
           const response = await fetch(`${API_BASE}/api/settings`);
           if (response.ok) {
             const settings = await response.json();
-            if (!hasCliSet) updatePreferredCli(settings.preferred_cli || settings.default_cli || 'claude');
+            if (!hasCliSet) updatePreferredCli(settings.preferred_cli || settings.default_cli || DEFAULT_ACTIVE_CLI);
             if (!hasModelSet) {
-              const cli = sanitizeCli(settings.preferred_cli || settings.default_cli || preferredCli || 'claude');
+              const cli = sanitizeCli(settings.preferred_cli || settings.default_cli || preferredCli || DEFAULT_ACTIVE_CLI);
               updateSelectedModel(getDefaultModelForCli(cli), cli);
             }
           }
@@ -1453,8 +1428,8 @@ const persistProjectPreferences = useCallback(
       console.error('Failed to load settings:', error);
       const hasCliSet = projectSettings?.cli || preferredCli;
       const hasModelSet = projectSettings?.model || selectedModel;
-      if (!hasCliSet) updatePreferredCli('claude');
-      if (!hasModelSet) updateSelectedModel(getDefaultModelForCli('claude'), 'claude');
+      if (!hasCliSet) updatePreferredCli(DEFAULT_ACTIVE_CLI);
+      if (!hasModelSet) updateSelectedModel(getDefaultModelForCli(DEFAULT_ACTIVE_CLI), DEFAULT_ACTIVE_CLI);
     }
   }, [preferredCli, selectedModel, updatePreferredCli, updateSelectedModel]);
 
@@ -1527,7 +1502,7 @@ const persistProjectPreferences = useCallback(
       }
 
       const normalizedModel = rawSelectedModel
-        ? normalizeModelId(projectCli, rawSelectedModel)
+        ? sanitizeModel(projectCli, rawSelectedModel)
         : getDefaultModelForCli(projectCli);
 
       return {

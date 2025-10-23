@@ -68,6 +68,18 @@ const CLI_OPTIONS: CLIOption[] = [
     enabled: true,
     models: getModelDefinitionsForCli('qwen').map(({ id, name }) => ({ id, name })),
   },
+  {
+    id: 'glm',
+    name: 'GLM CLI',
+    icon: '',
+    description: 'Zhipu GLM agent running on Claude Code runtime',
+    color: 'from-blue-500 to-indigo-600',
+    brandColor: '#1677FF',
+    downloadUrl: 'https://docs.z.ai/devpack/tool/claude',
+    installCommand: 'zai devpack install claude',
+    enabled: true,
+    models: getModelDefinitionsForCli('glm').map(({ id, name }) => ({ id, name })),
+  },
 ];
 
 // Global settings are provided by context
@@ -97,6 +109,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [installModalOpen, setInstallModalOpen] = useState(false);
   const [selectedCLI, setSelectedCLI] = useState<CLIOption | null>(null);
+  const [apiKeyVisibility, setApiKeyVisibility] = useState<Record<string, boolean>>({});
 
   // Show toast function
   const showToast = (message: string, type: 'success' | 'error') => {
@@ -250,6 +263,38 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
           model: normalizeModelId(cliId, modelId)
         }
       }
+    }));
+  };
+
+  const setCliApiKey = (cliId: string, apiKey: string) => {
+    setGlobalSettings(prev => {
+      const nextCliSettings = { ...(prev?.cli_settings ?? {}) };
+      const existing = { ...(nextCliSettings[cliId] ?? {}) };
+      const trimmed = apiKey.trim();
+
+      if (trimmed.length > 0) {
+        existing.apiKey = trimmed;
+        nextCliSettings[cliId] = existing;
+      } else {
+        delete existing.apiKey;
+        if (Object.keys(existing).length > 0) {
+          nextCliSettings[cliId] = existing;
+        } else {
+          delete nextCliSettings[cliId];
+        }
+      }
+
+      return {
+        ...prev,
+        cli_settings: nextCliSettings,
+      };
+    });
+  };
+
+  const toggleApiKeyVisibility = (cliId: string) => {
+    setApiKeyVisibility(prev => ({
+      ...prev,
+      [cliId]: !prev[cliId],
     }));
   };
 
@@ -484,6 +529,9 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                             {cli.id === 'qwen' && (
                               <Image src="/qwen.png" alt="Qwen" width={32} height={32} className="w-8 h-8" />
                             )}
+                            {cli.id === 'glm' && (
+                              <Image src="/glm.png" alt="GLM" width={32} height={32} className="w-8 h-8" />
+                            )}
                             {cli.id === 'gemini' && (
                               <Image src="/gemini.png" alt="Gemini" width={32} height={32} className="w-8 h-8" />
                             )}
@@ -505,7 +553,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
 
                         {/* Model Selection or Not Installed */}
                         {isInstalled ? (
-                          <div onClick={(e) => e.stopPropagation()}>
+                          <div onClick={(e) => e.stopPropagation()} className="space-y-3">
                             <select
                               value={settings.model || ''}
                               onChange={(e) => setDefaultModel(cli.id, e.target.value)}
@@ -518,6 +566,38 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                                 </option>
                               ))}
                             </select>
+
+                            {cli.id === 'glm' && (
+                              <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-gray-600 ">
+                                  API Key
+                                </label>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type={apiKeyVisibility[cli.id] ? 'text' : 'password'}
+                                    value={settings.apiKey ?? ''}
+                                    onChange={(e) => setCliApiKey(cli.id, e.target.value)}
+                                    placeholder="Enter GLM API key"
+                                    className="flex-1 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-200"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      toggleApiKeyVisibility(cli.id);
+                                    }}
+                                    className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg bg-white transition-colors"
+                                  >
+                                    {apiKeyVisibility[cli.id] ? 'Hide' : 'Show'}
+                                  </button>
+                                </div>
+                                <p className="text-[11px] text-gray-500 leading-snug">
+                                  Stored locally and injected as <code className="font-mono">ZHIPU_API_KEY</code> (and aliases) when running GLM.
+                                  Leave blank to rely on server environment variables instead.
+                                </p>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div onClick={(e) => e.stopPropagation()}>
@@ -794,6 +874,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                     2
                   </span>
                   {selectedCLI.id === 'gemini' && 'Authenticate (OAuth or API Key)'}
+                  {selectedCLI.id === 'glm' && 'Authenticate (Z.ai DevPack login)'}
                   {selectedCLI.id === 'qwen' && 'Authenticate (Qwen OAuth or API Key)'}
                   {selectedCLI.id === 'codex' && 'Start Codex and sign in'}
                   {selectedCLI.id === 'claude' && 'Start Claude and sign in'}
@@ -805,6 +886,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                      selectedCLI.id === 'cursor' ? 'cursor-agent' :
                      selectedCLI.id === 'codex' ? 'codex' :
                      selectedCLI.id === 'qwen' ? 'qwen' :
+                     selectedCLI.id === 'glm' ? 'zai' :
                      selectedCLI.id === 'gemini' ? 'gemini' : ''}
                   </code>
                   <button
@@ -816,6 +898,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                                       selectedCLI.id === 'cursor' ? 'cursor-agent' :
                                       selectedCLI.id === 'codex' ? 'codex' :
                                       selectedCLI.id === 'qwen' ? 'qwen' :
+                                      selectedCLI.id === 'glm' ? 'zai' :
                                       selectedCLI.id === 'gemini' ? 'gemini' : '';
                       if (authCmd) navigator.clipboard.writeText(authCmd);
                       showToast('Command copied to clipboard', 'success');
@@ -844,6 +927,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                      selectedCLI.id === 'cursor' ? 'cursor-agent --version' :
                      selectedCLI.id === 'codex' ? 'codex --version' :
                      selectedCLI.id === 'qwen' ? 'qwen --version' :
+                     selectedCLI.id === 'glm' ? 'zai --version' :
                      selectedCLI.id === 'gemini' ? 'gemini --version' : ''}
                   </code>
                   <button
@@ -855,6 +939,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                                         selectedCLI.id === 'cursor' ? 'cursor-agent --version' :
                                         selectedCLI.id === 'codex' ? 'codex --version' :
                                         selectedCLI.id === 'qwen' ? 'qwen --version' :
+                                        selectedCLI.id === 'glm' ? 'zai --version' :
                                         selectedCLI.id === 'gemini' ? 'gemini --version' : '';
                       if (versionCmd) navigator.clipboard.writeText(versionCmd);
                       showToast('Command copied to clipboard', 'success');

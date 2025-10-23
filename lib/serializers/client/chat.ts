@@ -86,6 +86,60 @@ const normalizeMetadata = (raw: unknown): MessageMetadata | null => {
   return null;
 };
 
+export const normalizeChatContent = (value: unknown): string => {
+  if (value == null) {
+    return '';
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => {
+        if (typeof entry === 'string') {
+          return entry;
+        }
+        if (entry && typeof entry === 'object') {
+          const candidate = entry as { text?: unknown; content?: unknown; value?: unknown };
+          if (typeof candidate.text === 'string') {
+            return candidate.text;
+          }
+          if (typeof candidate.content === 'string') {
+            return candidate.content;
+          }
+          if (typeof candidate.value === 'string') {
+            return candidate.value;
+          }
+        }
+        return '';
+      })
+      .join('');
+  }
+
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const candidateKeys = ['text', 'content', 'value', 'message'];
+    for (const key of candidateKeys) {
+      const candidate = record[key];
+      if (typeof candidate === 'string') {
+        return candidate;
+      }
+    }
+
+    if (Array.isArray(record.parts)) {
+      return normalizeChatContent(record.parts);
+    }
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
 export const toChatMessage = (raw: any): ChatMessage => {
   const createdAt = raw?.createdAt ?? raw?.created_at ?? new Date().toISOString();
   const updatedAt = raw?.updatedAt ?? raw?.updated_at ?? createdAt;
@@ -98,7 +152,7 @@ export const toChatMessage = (raw: any): ChatMessage => {
     projectId: raw?.projectId ?? raw?.project_id ?? '',
     role: raw?.role ?? 'assistant',
     messageType: raw?.messageType ?? raw?.message_type ?? 'chat',
-    content: raw?.content ?? '',
+    content: normalizeChatContent(raw?.content),
     metadata,
     parentMessageId: raw?.parentMessageId ?? raw?.parent_message_id ?? null,
     conversationId: raw?.conversationId ?? raw?.conversation_id ?? null,

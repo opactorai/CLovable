@@ -66,6 +66,22 @@ const CLI_OPTIONS: CLIOption[] = [
     })),
     features: ['Edit/write tools', 'Sandbox approval modes', 'Great for open-source workflows'],
   },
+  {
+    id: 'glm',
+    name: 'GLM CLI',
+    icon: '🌐',
+    description: 'Zhipu GLM agent running via Claude Code runtime',
+    color: 'from-blue-500 to-indigo-600',
+    downloadUrl: 'https://docs.z.ai/devpack/tool/claude',
+    installCommand: 'zai devpack install claude',
+    models: getModelDefinitionsForCli('glm').map(({ id, name, description, supportsImages }) => ({
+      id,
+      name,
+      description,
+      supportsImages,
+    })),
+    features: ['Claude-compatible runtime', 'GLM 4.6 reasoning', 'Text-only mode'],
+  },
 ];
 
 function generateUUID() {

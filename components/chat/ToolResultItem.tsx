@@ -6,7 +6,6 @@ interface ToolResultItemProps {
   action: 'Edited' | 'Created' | 'Read' | 'Deleted' | 'Generated' | 'Searched' | 'Executed';
   filePath: string;
   content?: string;
-  timestamp?: string;
 }
 
 const ToolResultItem: React.FC<ToolResultItemProps> = ({ action, filePath, content }) => {
@@ -56,17 +55,6 @@ const ToolResultItem: React.FC<ToolResultItemProps> = ({ action, filePath, conte
           </svg>
         );
     }
-  };
-
-  const getFileName = (path: string) => {
-    const parts = path.split('/');
-    return parts[parts.length - 1] || path;
-  };
-
-  const getDirectoryPath = (path: string) => {
-    const parts = path.split('/');
-    parts.pop();
-    return parts.join('/') || '/';
   };
 
   return (
