@@ -10,6 +10,7 @@ import type { CLIStatus } from '@/types/backend';
 import { CODEX_MODEL_DEFINITIONS } from '@/lib/constants/codexModels';
 import { QWEN_MODEL_DEFINITIONS } from '@/lib/constants/qwenModels';
 import { GLM_MODEL_DEFINITIONS } from '@/lib/constants/glmModels';
+import { CURSOR_MODEL_DEFINITIONS } from '@/lib/constants/cursorModels';
 
 const execAsync = promisify(exec);
 
@@ -53,6 +54,28 @@ async function checkCodexCLI(): Promise<{
     return {
       installed: false,
       error: error instanceof Error ? error.message : 'Failed to check Codex CLI',
+    };
+  }
+}
+
+async function checkCursorCLI(): Promise<{
+  installed: boolean;
+  version?: string;
+  error?: string;
+}> {
+  const executable = process.platform === 'win32' ? 'cursor-agent.cmd' : 'cursor-agent';
+  try {
+    const { stdout, stderr } = await execAsync(`${executable} --version`);
+    const output = `${stdout.trim()} ${stderr.trim()}`.trim();
+    const version = output.length > 0 ? output : 'installed';
+    return {
+      installed: true,
+      version,
+    };
+  } catch (error) {
+    return {
+      installed: false,
+      error: error instanceof Error ? error.message : 'Failed to check Cursor CLI',
     };
   }
 }
@@ -127,6 +150,15 @@ export async function GET() {
       checking: false,
       error: codexStatus.error,
       models: CODEX_MODEL_DEFINITIONS.map(model => model.id),
+    };
+
+    const cursorStatus = await checkCursorCLI();
+    status.cursor = {
+      installed: cursorStatus.installed,
+      version: cursorStatus.version,
+      checking: false,
+      error: cursorStatus.error,
+      models: CURSOR_MODEL_DEFINITIONS.map((model) => model.id),
     };
 
     const qwenStatus = await checkQwenCLI();

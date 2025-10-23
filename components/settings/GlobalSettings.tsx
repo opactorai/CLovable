@@ -57,6 +57,18 @@ const CLI_OPTIONS: CLIOption[] = [
     models: getModelDefinitionsForCli('codex').map(({ id, name }) => ({ id, name })),
   },
   {
+    id: 'cursor',
+    name: 'Cursor Agent',
+    icon: '',
+    description: 'Cursor CLI with multi-model router and autonomous tooling',
+    color: 'from-slate-500 to-gray-600',
+    brandColor: '#6B7280',
+    downloadUrl: 'https://docs.cursor.com/en/cli/overview',
+    installCommand: 'curl https://cursor.com/install -fsS | bash',
+    enabled: true,
+    models: getModelDefinitionsForCli('cursor').map(({ id, name }) => ({ id, name })),
+  },
+  {
     id: 'qwen',
     name: 'Qwen Coder',
     icon: '',
@@ -595,6 +607,37 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                                 <p className="text-[11px] text-gray-500 leading-snug">
                                   Stored locally and injected as <code className="font-mono">ZHIPU_API_KEY</code> (and aliases) when running GLM.
                                   Leave blank to rely on server environment variables instead.
+                                </p>
+                              </div>
+                            )}
+                            {cli.id === 'cursor' && (
+                              <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-gray-600 ">
+                                  API Key (optional)
+                                </label>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type={apiKeyVisibility[cli.id] ? 'text' : 'password'}
+                                    value={settings.apiKey ?? ''}
+                                    onChange={(e) => setCliApiKey(cli.id, e.target.value)}
+                                    placeholder="Enter Cursor API key"
+                                    className="flex-1 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-200"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      toggleApiKeyVisibility(cli.id);
+                                    }}
+                                    className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg bg-white transition-colors"
+                                  >
+                                    {apiKeyVisibility[cli.id] ? 'Hide' : 'Show'}
+                                  </button>
+                                </div>
+                                <p className="text-[11px] text-gray-500 leading-snug">
+                                  Injected as <code className="font-mono">CURSOR_API_KEY</code> and passed to <code className="font-mono">cursor-agent</code>.
+                                  Leave blank to rely on the logged-in Cursor CLI session.
                                 </p>
                               </div>
                             )}

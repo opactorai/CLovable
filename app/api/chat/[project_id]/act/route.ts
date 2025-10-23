@@ -12,6 +12,7 @@ import {
 import { createMessage } from '@/lib/services/message';
 import { initializeNextJsProject as initializeClaudeProject, applyChanges as applyClaudeChanges } from '@/lib/services/cli/claude';
 import { initializeNextJsProject as initializeCodexProject, applyChanges as applyCodexChanges } from '@/lib/services/cli/codex';
+import { initializeNextJsProject as initializeCursorProject, applyChanges as applyCursorChanges } from '@/lib/services/cli/cursor';
 import { initializeNextJsProject as initializeQwenProject, applyChanges as applyQwenChanges } from '@/lib/services/cli/qwen';
 import { initializeNextJsProject as initializeGLMProject, applyChanges as applyGLMChanges } from '@/lib/services/cli/glm';
 import { getDefaultModelForCli, normalizeModelId } from '@/lib/constants/cliModels';
@@ -351,6 +352,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       const executor =
         cliPreference === 'codex'
           ? initializeCodexProject
+          : cliPreference === 'cursor'
+          ? initializeCursorProject
           : cliPreference === 'qwen'
           ? initializeQwenProject
           : cliPreference === 'glm'
@@ -370,18 +373,27 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       const executor =
         cliPreference === 'codex'
           ? applyCodexChanges
+          : cliPreference === 'cursor'
+          ? applyCursorChanges
           : cliPreference === 'qwen'
           ? applyQwenChanges
           : cliPreference === 'glm'
           ? applyGLMChanges
           : applyClaudeChanges;
 
+      const sessionId =
+        cliPreference === 'claude'
+          ? project.activeClaudeSessionId || undefined
+          : cliPreference === 'cursor'
+          ? project.activeCursorSessionId || undefined
+          : undefined;
+
       executor(
         project_id,
         projectPath,
         finalInstruction,
         selectedModel,
-        project.activeClaudeSessionId || undefined,
+        sessionId,
         requestId,
       ).catch((error) => {
         console.error('[API] Failed to execute AI:', error);

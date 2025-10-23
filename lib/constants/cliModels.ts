@@ -1,5 +1,6 @@
 import { CLAUDE_DEFAULT_MODEL, CLAUDE_MODEL_DEFINITIONS, getClaudeModelDisplayName, normalizeClaudeModelId } from './claudeModels';
 import { CODEX_DEFAULT_MODEL, CODEX_MODEL_DEFINITIONS, getCodexModelDisplayName, normalizeCodexModelId } from './codexModels';
+import { CURSOR_DEFAULT_MODEL, CURSOR_MODEL_DEFINITIONS, getCursorModelDisplayName, normalizeCursorModelId } from './cursorModels';
 import { QWEN_DEFAULT_MODEL, QWEN_MODEL_DEFINITIONS, getQwenModelDisplayName, normalizeQwenModelId } from './qwenModels';
 import { GLM_DEFAULT_MODEL, GLM_MODEL_DEFINITIONS, getGLMModelDisplayName, normalizeGLMModelId } from './glmModels';
 import type { CLAUDE_MODEL_DEFINITIONS as _Guard } from './claudeModels'; // Ensure module side effects preserved
@@ -16,7 +17,7 @@ type ModelDefinition = {
 const DEFAULT_MODELS: Record<CLIKey, string> = {
   claude: CLAUDE_DEFAULT_MODEL,
   codex: CODEX_DEFAULT_MODEL,
-  cursor: 'gpt-5',
+  cursor: CURSOR_DEFAULT_MODEL,
   gemini: 'gemini-2.5-pro',
   qwen: QWEN_DEFAULT_MODEL,
   glm: GLM_DEFAULT_MODEL,
@@ -25,13 +26,7 @@ const DEFAULT_MODELS: Record<CLIKey, string> = {
 const MODEL_DEFINITIONS: Record<CLIKey, ModelDefinition[]> = {
   claude: CLAUDE_MODEL_DEFINITIONS,
   codex: CODEX_MODEL_DEFINITIONS,
-  cursor: [
-    { id: 'gpt-5', name: 'GPT-5' },
-    { id: 'claude-sonnet-4.5', name: 'Claude Sonnet 4.5' },
-    { id: 'claude-opus-4.1', name: 'Claude Opus 4.1' },
-    { id: 'gpt-4', name: 'GPT-4' },
-    { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' },
-  ],
+  cursor: CURSOR_MODEL_DEFINITIONS,
   gemini: [
     { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
     { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
@@ -55,6 +50,8 @@ export function normalizeModelId(cli: string | null | undefined, model?: string 
   switch (cli.toLowerCase()) {
     case 'codex':
       return normalizeCodexModelId(model);
+    case 'cursor':
+      return normalizeCursorModelId(model);
     case 'qwen':
       return normalizeQwenModelId(model);
     case 'glm':
@@ -73,6 +70,8 @@ export function getModelDisplayName(cli: string | null | undefined, modelId?: st
   switch (cli.toLowerCase()) {
     case 'codex':
       return getCodexModelDisplayName(modelId);
+    case 'cursor':
+      return getCursorModelDisplayName(modelId);
     case 'qwen':
       return getQwenModelDisplayName(modelId);
     case 'glm':

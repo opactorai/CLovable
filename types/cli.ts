@@ -1,5 +1,6 @@
 import { CLAUDE_MODEL_DEFINITIONS } from '@/lib/constants/claudeModels';
 import { CODEX_MODEL_DEFINITIONS } from '@/lib/constants/codexModels';
+import { CURSOR_MODEL_DEFINITIONS } from '@/lib/constants/cursorModels';
 import { QWEN_MODEL_DEFINITIONS } from '@/lib/constants/qwenModels';
 import { GLM_MODEL_DEFINITIONS } from '@/lib/constants/glmModels';
 
@@ -85,6 +86,26 @@ export const CLI_OPTIONS: CLIOption[] = [
     installCommand: 'npm install -g @openai/codex',
     features: ['Autonomous agent', 'OpenAI model router', 'apply_patch support'],
     models: CODEX_MODEL_DEFINITIONS.map(({ id, name, description, supportsImages }) => ({
+      id,
+      name,
+      description,
+      supportsImages,
+    })),
+  },
+  {
+    id: 'cursor',
+    name: 'Cursor Agent',
+    description: 'Cursor CLI with multi-model router and autonomous tooling',
+    icon: '/cursor.png',
+    available: true,
+    configured: true,
+    enabled: true,
+    color: 'from-slate-500 to-gray-600',
+    brandColor: '#6B7280',
+    downloadUrl: 'https://docs.cursor.com/en/cli/overview',
+    installCommand: 'curl https://cursor.com/install -fsS | bash',
+    features: ['Autonomous agent', 'Multi-model routing', 'Session resume'],
+    models: CURSOR_MODEL_DEFINITIONS.map(({ id, name, description, supportsImages }) => ({
       id,
       name,
       description,

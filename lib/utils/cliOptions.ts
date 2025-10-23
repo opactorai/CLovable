@@ -1,7 +1,7 @@
 import { CLI_OPTIONS, type CLIOption } from '@/types/cli';
 import { getModelDefinitionsForCli, normalizeModelId } from '@/lib/constants/cliModels';
 
-export const ACTIVE_CLI_IDS = ['claude', 'codex', 'qwen', 'glm'] as const;
+export const ACTIVE_CLI_IDS = ['claude', 'codex', 'cursor', 'qwen', 'glm'] as const;
 
 export type ActiveCliId = (typeof ACTIVE_CLI_IDS)[number];
 

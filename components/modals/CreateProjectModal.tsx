@@ -51,6 +51,22 @@ const CLI_OPTIONS: CLIOption[] = [
     features: ['Autonomous apply_patch', 'OpenAI GPT-5 access', 'Web search integration'],
   },
   {
+    id: 'cursor',
+    name: 'Cursor Agent',
+    icon: '🖱️',
+    description: 'Cursor CLI with multi-model routing and session resume',
+    color: 'from-slate-500 to-gray-600',
+    downloadUrl: 'https://docs.cursor.com/en/cli/overview',
+    installCommand: 'curl https://cursor.com/install -fsS | bash',
+    models: getModelDefinitionsForCli('cursor').map(({ id, name, description, supportsImages }) => ({
+      id,
+      name,
+      description,
+      supportsImages,
+    })),
+    features: ['Autonomous workflow', 'Multi-model router', 'Session resume support'],
+  },
+  {
     id: 'qwen',
     name: 'Qwen Coder',
     icon: '🛠️',

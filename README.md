@@ -55,6 +55,7 @@ How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and 
   # Login
   cursor-agent login
   ```
+  > ℹ️ Store an optional API key through **Settings → AI Agents → Cursor CLI** to inject `CURSOR_API_KEY` automatically for each run.
 - **[GLM CLI](https://docs.z.ai/devpack/tool/claude)**: Zhipu GLM 4.6 running on top of the Claude Code runtime. Text-only model that reuses Claude’s toolset.
   ```bash
   # Install (requires Z.ai DevPack)
