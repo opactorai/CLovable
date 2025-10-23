@@ -288,6 +288,16 @@ const parseToolPlaceholder = (content?: string | null) => {
   };
 };
 
+const stripToolPlaceholderLines = (input: string): string => {
+  if (!input) return input;
+
+  return input
+    .replace(/^\s*\[Tool:[^\n]*\n?/gim, '')
+    .replace(/^\s*Using tool:[^\n]*\n?/gim, '')
+    .replace(/^\s*Tool result:[^\n]*\n?/gim, '')
+    .trim();
+};
+
 const randomMessageId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -295,7 +305,9 @@ const randomMessageId = () => {
   return `msg_${Math.random().toString(36).slice(2, 11)}`;
 };
 
-const createToolMessageFromPlaceholder = (message: ChatMessage): { toolMessage: ChatMessage; skipOriginal: boolean } | null => {
+const createToolMessageFromPlaceholder = (
+  message: ChatMessage
+): { toolMessage: ChatMessage; skipOriginal: boolean; sanitizedContent?: string } | null => {
   const contentText = normalizeChatContent(message.content);
   const details = parseToolPlaceholder(contentText);
   if (!details) return null;
@@ -325,12 +337,8 @@ const createToolMessageFromPlaceholder = (message: ChatMessage): { toolMessage: 
     metadata,
   };
 
-  const skipOriginal =
-    !message.metadata &&
-    (!contentText ||
-      /^\s*\[Tool:/i.test(contentText) ||
-      /^Using tool:/i.test(contentText) ||
-      /^Tool result:/i.test(contentText));
+  const sanitizedContent = stripToolPlaceholderLines(contentText);
+  const skipOriginal = sanitizedContent.length === 0;
 
   if (!metadata.filePath) {
     metadata.filePath = fallbackPath;
@@ -341,7 +349,11 @@ const createToolMessageFromPlaceholder = (message: ChatMessage): { toolMessage: 
     metadata.summary = summary;
   }
 
-  return { toolMessage, skipOriginal };
+  return {
+    toolMessage,
+    skipOriginal,
+    sanitizedContent: !skipOriginal && sanitizedContent !== contentText ? sanitizedContent : undefined,
+  };
 };
 
 const expandMessageWithToolPlaceholder = (message: ChatMessage): ChatMessage[] => {
@@ -350,11 +362,15 @@ const expandMessageWithToolPlaceholder = (message: ChatMessage): ChatMessage[] =
     return [message];
   }
 
-  const { toolMessage, skipOriginal } = conversion;
+  const { toolMessage, skipOriginal, sanitizedContent } = conversion;
   if (skipOriginal) {
     return [toolMessage];
   }
-  return [toolMessage, message];
+
+  const sanitizedMessage =
+    sanitizedContent !== undefined ? { ...message, content: sanitizedContent } : message;
+
+  return [toolMessage, sanitizedMessage];
 };
 
 const expandMessagesList = (messages: ChatMessage[]): ChatMessage[] => {
@@ -1557,7 +1573,11 @@ const ToolResultMessage = ({
     }
 
     if (metadata && (metadata as { isTransientToolMessage?: boolean }).isTransientToolMessage) {
-      return false;
+      if (message.messageType === 'tool_use' || message.role === 'tool') {
+        // Keep transient tool updates visible so users can follow in-flight work
+      } else {
+        return false;
+      }
     }
 
     if (message.messageType === 'tool_result') {

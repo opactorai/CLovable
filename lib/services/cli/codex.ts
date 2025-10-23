@@ -200,6 +200,7 @@ function summarizeMcpTool(payload: CodexEvent['msg']): { content: string; metada
 async function persistMessage(
   projectId: string,
   payload: {
+    id?: string;
     role: Message['role'];
     messageType: Message['messageType'];
     content: string;
@@ -210,6 +211,7 @@ async function persistMessage(
 ) {
   try {
     const saved = await createMessage({
+      ...(payload.id ? { id: payload.id } : {}),
       projectId,
       role: payload.role,
       messageType: payload.messageType,
@@ -231,6 +233,7 @@ async function persistMessage(
   } catch (error) {
     console.error('[CodexService] Failed to persist message. Falling back to realtime emit:', error);
     const fallback = createRealtimeMessage({
+      id: payload.id ?? randomUUID(),
       projectId,
       role: payload.role,
       messageType: payload.messageType,
@@ -245,20 +248,6 @@ async function persistMessage(
       data: fallback,
     });
   }
-}
-
-async function dispatchAssistantMessage(projectId: string, content: string, requestId?: string) {
-  if (!content.trim()) return;
-  await persistMessage(
-    projectId,
-    {
-      role: 'assistant',
-      messageType: 'chat',
-      content,
-      metadata: { cli_type: 'codex' },
-    },
-    requestId,
-  );
 }
 
 async function dispatchToolMessage(
@@ -451,18 +440,16 @@ async function executeCodex(
   const thinkingSegments: string[] = [];
   let agentBuffer = '';
   let hasCompleted = false;
+  let assistantMessageId: string | null = null;
+  let lastStreamedAssistantPayload: string | null = null;
 
-  const flushAssistantMessage = async (force = false) => {
+  const buildAssistantPayload = () => {
     const trimmedAssistant = agentBuffer.trim();
     const thinkingContent = thinkingSegments
       .map((segment) => segment.trim())
       .filter((segment) => segment.length > 0)
       .map((segment) => `<thinking>${segment}</thinking>`)
       .join('\n\n');
-
-    if (!force && !trimmedAssistant && !thinkingContent) {
-      return;
-    }
 
     const parts: string[] = [];
     if (thinkingContent) {
@@ -471,15 +458,68 @@ async function executeCodex(
     if (trimmedAssistant) {
       parts.push(trimmedAssistant);
     }
+    return parts.join('\n\n').trim();
+  };
 
-    const combined = parts.join('\n\n').trim();
+  const streamAssistantDraft = (force = false) => {
+    const combined = buildAssistantPayload();
     if (!combined) {
       return;
     }
+    if (!force && combined === lastStreamedAssistantPayload) {
+      return;
+    }
+    const id = assistantMessageId ?? (assistantMessageId = randomUUID());
+    const realtime = createRealtimeMessage({
+      id,
+      projectId,
+      role: 'assistant',
+      messageType: 'chat',
+      content: combined,
+      metadata: { cli_type: 'codex' },
+      requestId,
+      isStreaming: true,
+      isFinal: false,
+    });
+    streamManager.publish(projectId, { type: 'message', data: realtime });
+    lastStreamedAssistantPayload = combined;
+  };
 
-    await dispatchAssistantMessage(projectId, combined, requestId);
+  const resetAssistantBuffers = () => {
     agentBuffer = '';
     thinkingSegments.length = 0;
+  };
+
+  const flushAssistantMessage = async (force = false) => {
+    const combined = buildAssistantPayload();
+
+    if (!combined) {
+      if (force) {
+        assistantMessageId = null;
+        lastStreamedAssistantPayload = null;
+        resetAssistantBuffers();
+      }
+      return;
+    }
+
+    const id = assistantMessageId ?? (assistantMessageId = randomUUID());
+    lastStreamedAssistantPayload = null;
+
+    await persistMessage(
+      projectId,
+      {
+        id,
+        role: 'assistant',
+        messageType: 'chat',
+        content: combined,
+        metadata: { cli_type: 'codex' },
+      },
+      requestId,
+      { isStreaming: false, isFinal: true },
+    );
+
+    assistantMessageId = null;
+    resetAssistantBuffers();
   };
 
   const emitCommandStart = async (item: Record<string, unknown>) => {
@@ -618,6 +658,7 @@ async function executeCodex(
         if (text.trim()) {
           agentBuffer = text.trim();
         }
+        streamAssistantDraft(true);
         await flushAssistantMessage(true);
         break;
       }
@@ -625,12 +666,14 @@ async function executeCodex(
         const text = pickFirstString(record.text);
         if (text) {
           thinkingSegments.push(text);
+          streamAssistantDraft();
         }
         break;
       }
       default: {
         if (record.text && typeof record.text === 'string') {
           thinkingSegments.push(record.text);
+          streamAssistantDraft();
         }
         break;
       }
@@ -647,6 +690,7 @@ async function executeCodex(
       const text = pickFirstString(record.text);
       if (text) {
         agentBuffer += text;
+        streamAssistantDraft();
       }
     }
   };
