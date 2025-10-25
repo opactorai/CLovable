@@ -511,8 +511,27 @@ async function executeCodex(
 
   publishStatus(projectId, 'ready', requestId, `Codex CLI detected (${modelDisplayName}). Starting execution...`);
 
-  const promptBase = `${AUTO_INSTRUCTIONS}\n\n${instruction}`.trim();
+  const promptBase = instruction.trim();
   const promptWithContext = await appendProjectContext(promptBase, repoPath);
+
+  const codexConfigArgs = [
+    '-c',
+    'include_apply_patch_tool=true',
+    '-c',
+    'include_plan_tool=true',
+    '-c',
+    'tools.web_search_request=true',
+    '-c',
+    'use_experimental_streamable_shell_tool=true',
+    '-c',
+    'sandbox_mode=danger-full-access',
+    '-c',
+    'max_turns=20',
+    '-c',
+    'max_thinking_tokens=4096',
+    '-c',
+    `instructions=${JSON.stringify(AUTO_INSTRUCTIONS)}`,
+  ];
 
   const codexArgs = [
     'exec',
@@ -523,6 +542,7 @@ async function executeCodex(
     'never',
     '--cd',
     repoPath,
+    ...codexConfigArgs,
     '--model',
     normalizedModel,
     promptWithContext,
