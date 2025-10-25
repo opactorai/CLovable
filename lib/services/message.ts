@@ -53,6 +53,11 @@ export async function getMessagesByProjectId(
  */
 export async function createMessage(input: CreateMessageInput): Promise<Message> {
   const metadataJson = input.metadata ? JSON.stringify(input.metadata) : undefined;
+  const metadataLength = metadataJson ? metadataJson.length : 0;
+  const metadataPreview =
+    metadataJson && metadataJson.length > 0
+      ? `${metadataJson.substring(0, 500)}${metadataJson.length > 500 ? '...' : ''}`
+      : '';
   let lastError: Error | null = null;
 
   console.log('[MessageService] Creating message with metadata:', {
@@ -61,8 +66,8 @@ export async function createMessage(input: CreateMessageInput): Promise<Message>
     role: input.role,
     hasMetadata: !!input.metadata,
     metadataKeys: input.metadata ? Object.keys(input.metadata) : [],
-    metadataJsonLength: metadataJson?.length || 0,
-    metadataJson: metadataJson?.substring(0, 500) + (metadataJson?.length > 500 ? '...' : '')
+    metadataJsonLength: metadataLength,
+    metadataJson: metadataPreview,
   });
 
   // Retry logic with exponential backoff for database operations
@@ -84,13 +89,18 @@ export async function createMessage(input: CreateMessageInput): Promise<Message>
       });
 
       console.log(`[MessageService] Created message: ${message.id} (${input.role})${input.requestId ? ` [requestId: ${input.requestId}]` : ''} on attempt ${attempt}`);
-      console.log('[MessageService] Stored metadataJson length:', metadataJson?.length || 0);
+      console.log('[MessageService] Stored metadataJson length:', metadataLength);
 
       const mappedMessage = mapPrismaMessage(message);
+      const mappedMetadataLength = mappedMessage.metadataJson ? mappedMessage.metadataJson.length : 0;
+      const mappedMetadataPreview =
+        mappedMessage.metadataJson && mappedMetadataLength > 0
+          ? `${mappedMessage.metadataJson.substring(0, 200)}${mappedMetadataLength > 200 ? '...' : ''}`
+          : '';
       console.log('[MessageService] Mapped message metadata:', {
-        hasMetadataJson: !!mappedMessage.metadataJson,
-        metadataJsonLength: mappedMessage.metadataJson?.length || 0,
-        metadataJsonPreview: mappedMessage.metadataJson?.substring(0, 200) + (mappedMessage.metadataJson?.length > 200 ? '...' : '')
+        hasMetadataJson: mappedMetadataLength > 0,
+        metadataJsonLength: mappedMetadataLength,
+        metadataJsonPreview: mappedMetadataPreview,
       });
 
       return mappedMessage;

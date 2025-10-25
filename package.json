@@ -6,8 +6,14 @@
   "scripts": {
     "dev": "node scripts/run-web.js",
     "dev:web": "node scripts/run-web.js",
+    "dev:desktop": "node scripts/run-desktop.js",
+    "dev:electron": "npm run dev:desktop",
     "ensure:env": "node scripts/setup-env.js",
     "build": "next build",
+    "build:desktop": "npm run build && electron-builder",
+    "package:mac": "npm run build && electron-builder --mac",
+    "package:win": "npm run build && electron-builder --win",
+    "package:linux": "npm run build && electron-builder --linux",
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
@@ -43,6 +49,8 @@
     "autoprefixer": "^10.4.20",
     "eslint": "^9.17.0",
     "eslint-config-next": "15.1.0",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.6",
     "postcss": "^8.4.49",
     "prettier": "^3.4.2",
     "prisma": "^6.1.0",
@@ -68,5 +76,54 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/yourusername/claudable.git"
+  },
+  "build": {
+    "appId": "com.claudable.desktop",
+    "productName": "Claudable",
+    "files": [
+      "electron/**/*",
+      ".next/standalone/**/*",
+      ".next/static/**/*",
+      "public/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/static",
+        "to": ".next/static"
+      },
+      {
+        "from": "public",
+        "to": "public"
+      }
+    ],
+    "asar": true,
+    "directories": {
+      "buildResources": "resources",
+      "output": "dist"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Development"
+    }
   }
 }

@@ -141,6 +141,16 @@ cd apps/web && npx prisma db push
 
 ## Desktop App (Electron)
 
+### Run in Development
+
+```bash
+# Next.js + Electron 동시 실행
+npm run dev:desktop
+```
+
+- 스크립트가 Next 개발 서버와 Electron 프로세스를 순차로 띄워줍니다.
+- 자동으로 할당된 포트(`PORT`, `WEB_PORT`)는 Electron에도 공유되며, 창을 닫으면 두 프로세스 모두 종료됩니다.
+
 ### Download Pre-built App
 
 **macOS Users:** Download the ready-to-use desktop app directly!
@@ -159,19 +169,22 @@ cd apps/web && npx prisma db push
 Build and distribute a desktop app that bundles the web UI and runs the local API automatically.
 
 ```bash
-# Build production Next.js and package Electron app
+# Next.js 프로덕션 빌드 + Electron 패키징
 npm run build:desktop
 
-# Output installers
-# - macOS: apps/desktop/dist/*.dmg
-# - Windows: apps/desktop/dist/*.exe
-# - Linux: apps/desktop/dist/*.AppImage
+# 플랫폼별 설치 파일만 생성하려면
+npm run package:mac     # macOS (.dmg/.zip)
+npm run package:win     # Windows (NSIS .exe)
+npm run package:linux   # Linux (.AppImage)
+
+# 산출물은 dist/ 디렉터리에 생성됩니다.
 ```
 
 Notes:
-- First launch will set up a Python virtual environment in your user data folder and install API dependencies (internet required). Subsequent launches are fast and offline.
-- The desktop app serves the UI at http://localhost:8080 and proxies /api/* to the local Python API.
-- If port 8080 is in use, close the conflicting app before launching the desktop app.
+- `npm run build` 에서 Next.js를 `standalone` 모드로 빌드하여 Electron 빌드에 필요한 `.next/standalone`과 `.next/static` 아티팩트를 생성합니다.
+- macOS 패키징/서명은 반드시 macOS 환경에서 실행해야 하며, Windows 설치 파일은 Windows에서 생성하는 것이 가장 안정적입니다.
+- 아이콘 등의 추가 리소스는 `resources/` 디렉터리에 배치해 `electron-builder` 설정에서 참조할 수 있습니다.
+- Electron 런타임이 Next.js 서버를 내부적으로 띄우므로, 포트 충돌이 있다면 (기본 3000) 다른 앱을 종료하거나 `.env`에서 포트를 조정하세요.
 
 ## Setup
 

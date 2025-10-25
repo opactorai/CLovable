@@ -121,10 +121,11 @@ async function ensureDatabaseSynced() {
   }
 }
 
-async function start() {
-  const argv = process.argv.slice(2);
-  const { preferredPort, passthrough } = parseCliArgs(argv);
-
+async function startWebDevServer({
+  preferredPort,
+  passthrough = [],
+  stdio = 'inherit',
+} = {}) {
   const { port, url } = await ensureEnvironment({
     preferredPort,
   });
@@ -145,7 +146,7 @@ async function start() {
     ['next', 'dev', '--port', resolvedPort.toString(), ...passthrough],
     {
       cwd: rootDir,
-      stdio: 'inherit',
+      stdio,
       shell: isWindows,
       env: {
         ...process.env,
@@ -157,6 +158,30 @@ async function start() {
       },
     }
   );
+
+  await new Promise((resolve, reject) => {
+    const handleError = (error) => {
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+    child.once('error', handleError);
+    child.once('spawn', () => {
+      child.removeListener('error', handleError);
+      resolve();
+    });
+  });
+
+  return { child, port: resolvedPort, url: resolvedUrl };
+}
+
+async function runFromCli() {
+  const argv = process.argv.slice(2);
+  const { preferredPort, passthrough } = parseCliArgs(argv);
+
+  const { child } = await startWebDevServer({
+    preferredPort,
+    passthrough,
+    stdio: 'inherit',
+  });
 
   child.on('error', (error) => {
     console.error('\n❌ Failed to start Next.js dev server');
@@ -172,8 +197,15 @@ async function start() {
   });
 }
 
-start().catch((error) => {
-  console.error('\n❌ Failed to launch dev server');
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+if (require.main === module) {
+  runFromCli().catch((error) => {
+    console.error('\n❌ Failed to launch dev server');
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  parseCliArgs,
+  startWebDevServer,
+};

@@ -896,9 +896,16 @@ async function runCursorOnce(params: {
   if (processError || exitCode === null || exitCode !== 0) {
     const inferredError =
       detectedError ?? detectCursorError(stderrLines) ?? (processError ? 'network' : undefined);
+    const processErrorMessage =
+      processError &&
+      typeof processError === 'object' &&
+      'message' in processError &&
+      typeof (processError as { message?: unknown }).message === 'string'
+        ? (processError as { message: string }).message
+        : undefined;
     const message =
       errorMessage ??
-      processError?.message ??
+      processErrorMessage ??
       (exitCode !== null ? `cursor-agent exited with code ${exitCode}` : 'cursor-agent terminated unexpectedly');
 
     return {

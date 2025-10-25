@@ -958,13 +958,19 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
 
   // Cleanup processed IDs when project changes to prevent memory leaks
   useEffect(() => {
+    const processedIds = processedMessageIds.current;
+    const processedRequests = processedRequestIds.current;
+    const sources = messageSources.current;
+    const lifecycleMap = messageLifecycleRef.current;
+    const pendingIds = pendingMessageIds.current;
+
     return () => {
       console.log('🧹 [Cleanup] Cleaning up ChatLog state for project change');
-      processedMessageIds.current.clear();
-      processedRequestIds.current.clear();
-      messageSources.current.clear();
-      messageLifecycleRef.current.clear();
-      pendingMessageIds.current.clear();
+      processedIds.clear();
+      processedRequests.clear();
+      sources.clear();
+      lifecycleMap.clear();
+      pendingIds.clear();
       activeTransport.current = null;
     };
   }, [projectId]);
@@ -1115,7 +1121,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
     } else if (!chatMessage.isOptimistic && chatMessage.role === 'assistant' && chatMessage.isFinal) {
       setNeedsHistoryRefresh(true);
     }
-  }, [setIsWaitingForResponse, isMessageProcessed, markMessageAsProcessed, activeTransport]);
+  }, [setIsWaitingForResponse, isMessageProcessed, markMessageAsProcessed, activeTransport, trackMessageLifecycle]);
 
   const handleRealtimeStatus = useCallback(
     (status: string, payload?: RealtimeStatus | Record<string, unknown>, requestId?: string) => {
@@ -1403,7 +1409,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
         clearTimeout(reconnectTimer);
       }
     };
-  }, [projectId, enableSseFallback, handleRealtimeEnvelope, onSseFallbackActive]);
+  }, [projectId, enableSseFallback, handleRealtimeEnvelope, onSseFallbackActive, recoverMissingMessages]);
 
   useEffect(() => {
     return () => {
@@ -1530,7 +1536,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
         setHasLoadedOnce(true);
       }
     },
-    [projectId, hasMoreMessages, totalMessageCount, messages.length]
+    [projectId]
   );
 
   useEffect(() => {
@@ -1721,7 +1727,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
         pollIntervalRef.current = null;
       }
     };
-  }, [projectId, isConnected, isSseConnected, enableSseFallback, messages]);
+  }, [projectId, isConnected, isSseConnected, enableSseFallback, messages, loadChatHistory]);
 
   // Initial load
   useEffect(() => {
@@ -1745,7 +1751,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
         pollIntervalRef.current = null;
       }
     };
-  }, [projectId, checkActiveSession]);
+  }, [projectId, checkActiveSession, loadChatHistory]);
 
   useEffect(() => {
     hasLoadedInitialDataRef.current = false;

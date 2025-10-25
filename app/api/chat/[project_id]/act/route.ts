@@ -335,10 +335,11 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
     console.log('📸 Message created successfully:', {
       messageId: userMessage.id,
-      hasMetadata: !!userMessage.metadata,
-      metadataType: typeof userMessage.metadata,
-      metadataKeys: userMessage.metadata ? Object.keys(userMessage.metadata) : [],
-      metadataString: JSON.stringify(userMessage.metadata, null, 2)
+      hasMetadata: Boolean(metadata),
+      metadataType: metadata ? typeof metadata : 'undefined',
+      metadataKeys: metadata ? Object.keys(metadata) : [],
+      metadataString: metadata ? JSON.stringify(metadata, null, 2) : undefined,
+      metadataJsonLength: userMessage.metadataJson ? userMessage.metadataJson.length : 0,
     });
 
     if (requestId) {

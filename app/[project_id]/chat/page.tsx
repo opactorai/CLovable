@@ -1636,10 +1636,11 @@ const persistProjectPreferences = useCallback(
   // Initialize stable handlers once
   useEffect(() => {
     stableMessageHandlers.current = createStableMessageHandlers();
+    const optimisticMessages = optimisticMessagesRef.current;
 
     return () => {
       stableMessageHandlers.current = null;
-      optimisticMessagesRef.current.clear();
+      optimisticMessages.clear();
     };
   }, [createStableMessageHandlers]);
 
@@ -2146,8 +2147,9 @@ const persistProjectPreferences = useCallback(
 
   // Cleanup pending requests on unmount
   useEffect(() => {
+    const pendingRequests = pendingRequestsRef.current;
     return () => {
-      pendingRequestsRef.current.clear();
+      pendingRequests.clear();
     };
   }, []);
 

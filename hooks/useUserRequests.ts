@@ -111,7 +111,7 @@ export function useUserRequests({ projectId }: UseUserRequestsOptions) {
         console.warn('[UserRequests] Failed to check active requests (network issue):', error);
       }
     }
-  }, [projectId, isTabVisible]);
+  }, [projectId, isTabVisible, setFromActiveSet]);
 
   // Adaptive polling configuration
   useEffect(() => {
