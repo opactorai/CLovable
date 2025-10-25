@@ -197,6 +197,100 @@ function summarizeMcpTool(payload: CodexEvent['msg']): { content: string; metada
   };
 }
 
+type TodoListPhase = 'started' | 'update' | 'completed';
+
+interface TodoListItem {
+  text: string;
+  completed: boolean;
+  index: number;
+}
+
+function extractTodoListItems(record: Record<string, unknown>): unknown {
+  if (Array.isArray(record.items)) {
+    return record.items;
+  }
+  const nestedItem = record.item;
+  if (nestedItem && typeof nestedItem === 'object' && Array.isArray((nestedItem as Record<string, unknown>).items)) {
+    return (nestedItem as Record<string, unknown>).items;
+  }
+  const delta = record.delta;
+  if (delta && typeof delta === 'object' && Array.isArray((delta as Record<string, unknown>).items)) {
+    return (delta as Record<string, unknown>).items;
+  }
+  return [];
+}
+
+function normalizeTodoListItems(input: unknown): TodoListItem[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  const result: TodoListItem[] = [];
+
+  input.forEach((entry, index) => {
+    if (!entry || typeof entry !== 'object') {
+      return;
+    }
+    const record = entry as Record<string, unknown>;
+    const text = pickFirstString(record.text) ?? `Step ${index + 1}`;
+    const completed = record.completed === true || record.done === true;
+    result.push({
+      text,
+      completed,
+      index,
+    });
+  });
+
+  return result;
+}
+
+function buildTodoListContent(items: TodoListItem[], phase: TodoListPhase): string {
+  if (items.length === 0) {
+    switch (phase) {
+      case 'started':
+        return 'Started plan with no explicit steps.';
+      case 'completed':
+        return 'Plan completed.';
+      default:
+        return 'Plan updated.';
+    }
+  }
+
+  const header =
+    phase === 'completed'
+      ? 'Plan completed:'
+      : phase === 'started'
+      ? 'Plan generated:'
+      : 'Plan updated:';
+
+  const stepLines = items.map((item, idx) => {
+    const bullet = item.completed ? '✅' : '⬜️';
+    const label = `Step ${idx + 1}`;
+    return `${bullet} ${label}: ${item.text}`;
+  });
+
+  return [header, ...stepLines].join('\n');
+}
+
+function createTodoListMetadata(items: TodoListItem[], phase: TodoListPhase, extra?: Record<string, unknown>) {
+  const totalSteps = items.length;
+  const completedSteps = items.filter((item) => item.completed).length;
+  return {
+    toolName: 'Plan',
+    tool_name: 'Plan',
+    planPhase: phase,
+    planStatus: phase === 'completed' ? 'completed' : 'in_progress',
+    totalSteps,
+    completedSteps,
+    items: items.map(({ text, completed, index }) => ({
+      text,
+      completed,
+      index,
+    })),
+    ...(extra ?? {}),
+  };
+}
+
 async function persistMessage(
   projectId: string,
   payload: {
@@ -250,19 +344,35 @@ async function persistMessage(
   }
 }
 
+const encodeHash = (value: string): string =>
+  Buffer.from(value, 'utf-8').toString('base64');
+
 async function dispatchToolMessage(
   projectId: string,
   content: string,
   metadata: Record<string, unknown>,
   requestId?: string,
-  options: { messageType?: 'tool_use' | 'tool_result'; persist?: boolean; isStreaming?: boolean } = {},
+  options: {
+    messageType?: 'tool_use' | 'tool_result';
+    persist?: boolean;
+    isStreaming?: boolean;
+    streamedToolHashes?: Set<string>;
+  } = {},
 ) {
   const trimmedContent = content.trim();
   if (!trimmedContent) {
     return;
   }
 
-  const { messageType = 'tool_use', persist = true, isStreaming = false } = options;
+  const { messageType = 'tool_use', persist = true, isStreaming = false, streamedToolHashes } = options;
+
+  // Enhanced duplicate detection for tool messages
+  const toolHash = encodeHash(`${messageType}:${trimmedContent}:${JSON.stringify(metadata)}`).substring(0, 16);
+  if (streamedToolHashes?.has(toolHash)) {
+    console.debug(`[CodexService] Tool message already processed (hash: ${toolHash}), skipping`);
+    return;
+  }
+
   const enrichedMetadata: Record<string, unknown> = {
     cli_type: 'codex',
     ...(metadata ?? {}),
@@ -274,6 +384,10 @@ async function dispatchToolMessage(
   }
   if (!snakeToolName && camelToolName) {
     enrichedMetadata['tool_name'] = camelToolName;
+  }
+
+  if (streamedToolHashes) {
+    streamedToolHashes.add(toolHash);
   }
 
   if (!persist) {
@@ -293,6 +407,7 @@ async function dispatchToolMessage(
       isFinal: !isStreaming,
     });
     streamManager.publish(projectId, { type: 'message', data: realtime });
+    console.debug(`[CodexService] Dispatched transient tool message (hash: ${toolHash})`);
     return;
   }
 
@@ -307,6 +422,7 @@ async function dispatchToolMessage(
     requestId,
     { isStreaming, isFinal: !isStreaming },
   );
+  console.debug(`[CodexService] Persisted tool message (hash: ${toolHash})`);
 }
 
 const pickFirstString = (value: unknown): string | undefined => {
@@ -402,7 +518,6 @@ async function executeCodex(
     'exec',
     '--json',
     '--skip-git-repo-check',
-    '--include-plan-tool',
     '--dangerously-bypass-approvals-and-sandbox',
     '--color',
     'never',
@@ -443,6 +558,10 @@ async function executeCodex(
   let assistantMessageId: string | null = null;
   let lastStreamedAssistantPayload: string | null = null;
 
+  // Enhanced message tracking to prevent duplicates
+  const streamedMessageIds = new Set<string>();
+  const streamedToolHashes = new Set<string>();
+
   const buildAssistantPayload = () => {
     const trimmedAssistant = agentBuffer.trim();
     const thinkingContent = thinkingSegments
@@ -470,6 +589,13 @@ async function executeCodex(
       return;
     }
     const id = assistantMessageId ?? (assistantMessageId = randomUUID());
+
+    // Enhanced duplicate prevention
+    if (streamedMessageIds.has(id) && !force) {
+      console.debug(`[CodexService] Assistant message ${id} already streamed, skipping`);
+      return;
+    }
+
     const realtime = createRealtimeMessage({
       id,
       projectId,
@@ -477,12 +603,15 @@ async function executeCodex(
       messageType: 'chat',
       content: combined,
       metadata: { cli_type: 'codex' },
+      cliSource: 'codex',
       requestId,
       isStreaming: true,
       isFinal: false,
     });
     streamManager.publish(projectId, { type: 'message', data: realtime });
+    streamedMessageIds.add(id);
     lastStreamedAssistantPayload = combined;
+    console.debug(`[CodexService] Streamed assistant message: ${id} (length: ${combined.length})`);
   };
 
   const resetAssistantBuffers = () => {
@@ -537,7 +666,7 @@ async function executeCodex(
         status: pickFirstString(item.status) ?? 'in_progress',
       },
       requestId,
-      { persist: false, isStreaming: true },
+      { persist: false, isStreaming: true, streamedToolHashes },
     );
   };
 
@@ -581,7 +710,7 @@ async function executeCodex(
         is_error: isError ? true : undefined,
       },
       requestId,
-      { messageType: 'tool_result' },
+      { messageType: 'tool_result', streamedToolHashes },
     );
   };
 
@@ -613,7 +742,33 @@ async function executeCodex(
         is_error: isError ? true : undefined,
       },
       requestId,
-      { messageType: 'tool_result' },
+      { messageType: 'tool_result', streamedToolHashes },
+    );
+  };
+
+  const emitTodoListUpdate = async (record: Record<string, unknown>, phase: TodoListPhase) => {
+    const rawItems = extractTodoListItems(record);
+    const items = normalizeTodoListItems(rawItems);
+    const content = buildTodoListContent(items, phase);
+    const status =
+      pickFirstString(record.status) ??
+      (phase === 'completed' ? 'completed' : 'in_progress');
+    const metadata = createTodoListMetadata(items, phase, {
+      status,
+      planId: pickFirstString(record.id),
+    });
+
+    await dispatchToolMessage(
+      projectId,
+      content,
+      metadata,
+      requestId,
+      {
+        messageType: phase === 'completed' ? 'tool_result' : 'tool_use',
+        persist: phase !== 'update',
+        isStreaming: phase === 'update',
+        streamedToolHashes,
+      },
     );
   };
 
@@ -630,6 +785,9 @@ async function executeCodex(
     switch (type) {
       case 'command_execution':
         await emitCommandStart(record);
+        break;
+      case 'todo_list':
+        await emitTodoListUpdate(record, 'started');
         break;
       default:
         break;
@@ -670,6 +828,9 @@ async function executeCodex(
         }
         break;
       }
+      case 'todo_list':
+        await emitTodoListUpdate(record, 'completed');
+        break;
       default: {
         if (record.text && typeof record.text === 'string') {
           thinkingSegments.push(record.text);
@@ -680,7 +841,7 @@ async function executeCodex(
     }
   };
 
-  const handleItemDelta = (delta: unknown) => {
+  const handleItemDelta = async (delta: unknown) => {
     if (!delta || typeof delta !== 'object') {
       return;
     }
@@ -692,6 +853,14 @@ async function executeCodex(
         agentBuffer += text;
         streamAssistantDraft();
       }
+    } else if (type === 'reasoning') {
+      const text = pickFirstString(record.text);
+      if (text) {
+        thinkingSegments.push(text);
+        streamAssistantDraft();
+      }
+    } else if (type === 'todo_list') {
+      await emitTodoListUpdate(record, 'update');
     }
   };
 
@@ -751,7 +920,7 @@ async function executeCodex(
           await handleItemStarted((event as { item?: unknown }).item ?? null);
           break;
         case 'item.delta':
-          handleItemDelta((event as { delta?: unknown }).delta ?? null);
+          await handleItemDelta((event as { delta?: unknown }).delta ?? null);
           break;
         case 'item.completed':
           await handleItemCompleted((event as { item?: unknown }).item ?? null);

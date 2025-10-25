@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getMessagesByProjectId, createMessage, deleteMessagesByProjectId } from '@/lib/services/message';
+import { getMessagesByProjectId, createMessage, deleteMessagesByProjectId, getMessagesCountByProjectId } from '@/lib/services/message';
 import type { CreateMessageInput } from '@/types/backend';
 import { serializeMessages, serializeMessage } from '@/lib/serializers/chat';
 
@@ -26,16 +26,21 @@ export async function GET(
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    const messages = await getMessagesByProjectId(project_id, limit, offset);
+    const [messages, totalCount] = await Promise.all([
+      getMessagesByProjectId(project_id, limit, offset),
+      getMessagesCountByProjectId(project_id),
+    ]);
     const serialized = serializeMessages(messages);
 
     const res = NextResponse.json({
       success: true,
       data: serialized,
+      totalCount,
       pagination: {
         limit,
         offset,
         count: serialized.length,
+        hasMore: offset + serialized.length < totalCount,
       },
     });
     res.headers.set('Cache-Control', 'no-store');

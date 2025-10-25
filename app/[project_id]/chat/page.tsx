@@ -224,6 +224,18 @@ export default function ChatPage() {
     add: (message: any) => void;
     remove: (messageId: string) => void;
   } | null>(null);
+
+  // Ref to track pending requests for deduplication
+  const pendingRequestsRef = useRef<Set<string>>(new Set());
+
+  // Stable message handlers to prevent reassignment issues
+  const stableMessageHandlers = useRef<{
+    add: (message: any) => void;
+    remove: (messageId: string) => void;
+  } | null>(null);
+
+  // Track active optimistic messages by requestId
+  const optimisticMessagesRef = useRef<Map<string, any>>(new Map());
   const [mode, setMode] = useState<'act' | 'chat'>('act');
   const [isRunning, setIsRunning] = useState(false);
   const [isSseFallbackActive, setIsSseFallbackActive] = useState(false);
@@ -1573,6 +1585,64 @@ const persistProjectPreferences = useCallback(
     checkCurrentDeploymentRef.current = checkCurrentDeployment;
   }, [checkCurrentDeployment]);
 
+  // Stable message handlers with useCallback to prevent reassignment
+  const createStableMessageHandlers = useCallback(() => {
+    const addMessage = (message: any) => {
+      console.log('🔄 [StableHandler] Adding message via stable handler:', {
+        messageId: message.id,
+        role: message.role,
+        isOptimistic: message.isOptimistic,
+        requestId: message.requestId
+      });
+
+      // Track optimistic messages by requestId
+      if (message.isOptimistic && message.requestId) {
+        optimisticMessagesRef.current.set(message.requestId, message);
+        console.log('🔄 [StableHandler] Tracking optimistic message:', {
+          requestId: message.requestId,
+          tempId: message.id
+        });
+      }
+
+      // Also call the current handlers if they exist
+      if (messageHandlersRef.current) {
+        messageHandlersRef.current.add(message);
+      }
+    };
+
+    const removeMessage = (messageId: string) => {
+      console.log('🔄 [StableHandler] Removing message via stable handler:', messageId);
+
+      // Remove from optimistic messages tracking if it's an optimistic message
+      const optimisticMessage = Array.from(optimisticMessagesRef.current.values())
+        .find(msg => msg.id === messageId);
+      if (optimisticMessage && optimisticMessage.requestId) {
+        optimisticMessagesRef.current.delete(optimisticMessage.requestId);
+        console.log('🔄 [StableHandler] Removed optimistic message tracking:', {
+          requestId: optimisticMessage.requestId,
+          tempId: messageId
+        });
+      }
+
+      // Also call the current handlers if they exist
+      if (messageHandlersRef.current) {
+        messageHandlersRef.current.remove(messageId);
+      }
+    };
+
+    return { add: addMessage, remove: removeMessage };
+  }, []);
+
+  // Initialize stable handlers once
+  useEffect(() => {
+    stableMessageHandlers.current = createStableMessageHandlers();
+
+    return () => {
+      stableMessageHandlers.current = null;
+      optimisticMessagesRef.current.clear();
+    };
+  }, [createStableMessageHandlers]);
+
   // Handle image upload with base64 conversion
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -1621,9 +1691,27 @@ const persistProjectPreferences = useCallback(
       finalMessage = finalMessage + "\n\nDo not modify code, only answer to the user's request.";
     }
 
+    // Create request fingerprint for deduplication
+    const requestFingerprint = JSON.stringify({
+      message: finalMessage.trim(),
+      imageCount: imagesToUse.length,
+      cliPreference: preferredCli,
+      model: selectedModel,
+      mode
+    });
+
+    // Check for duplicate pending requests
+    if (pendingRequestsRef.current.has(requestFingerprint)) {
+      console.log('🔄 [DEBUG] Duplicate request detected, skipping:', requestFingerprint);
+      return;
+    }
+
     setIsRunning(true);
     const requestId = crypto.randomUUID();
     let tempUserMessageId: string | null = null;
+
+    // Add to pending requests
+    pendingRequestsRef.current.add(requestFingerprint);
 
     try {
       const uploadImageFromBase64 = async (img: { base64: string; name?: string }) => {
@@ -1675,21 +1763,35 @@ const persistProjectPreferences = useCallback(
         };
       };
 
+      console.log('🖼️ Processing images in runAct:', {
+          imageCount: imagesToUse.length,
+          cli: preferredCli,
+          requestId
+        });
       const processedImages: { name: string; path: string; url?: string; public_url?: string; publicUrl?: string }[] = [];
 
       for (let i = 0; i < imagesToUse.length; i += 1) {
         const image = imagesToUse[i];
+        console.log(`🖼️ Processing image ${i}:`, {
+          id: image.id,
+          filename: image.filename,
+          hasPath: !!image.path,
+          hasPublicUrl: !!image.publicUrl,
+          hasAssetUrl: !!image.assetUrl
+        });
         if (image?.path) {
           const name = image.filename || image.name || `Image ${i + 1}`;
           const candidateUrl = typeof image.assetUrl === 'string' ? image.assetUrl : undefined;
           const candidatePublicUrl = typeof image.publicUrl === 'string' ? image.publicUrl : undefined;
-          processedImages.push({
+          const processedImage = {
             name,
             path: image.path,
             url: candidateUrl && candidateUrl.startsWith('/') ? candidateUrl : undefined,
             public_url: candidatePublicUrl,
             publicUrl: candidatePublicUrl,
-          });
+          };
+          console.log(`🖼️ Created processed image ${i}:`, processedImage);
+          processedImages.push(processedImage);
           continue;
         }
 
@@ -1701,6 +1803,8 @@ const persistProjectPreferences = useCallback(
             console.error('Image upload failed:', uploadError);
             alert('Failed to upload image. Please try again.');
             setIsRunning(false);
+            // Remove from pending requests
+            pendingRequestsRef.current.delete(requestFingerprint);
             return;
           }
         }
@@ -1715,6 +1819,19 @@ const persistProjectPreferences = useCallback(
         requestId,
         selectedModel,
       };
+
+      console.log('📸 Sending request to act API:', {
+        messageLength: finalMessage.length,
+        imageCount: processedImages.length,
+        cli: preferredCli,
+        requestId,
+        images: processedImages.map(img => ({
+          name: img.name,
+          hasPath: !!img.path,
+          hasUrl: !!img.url,
+          hasPublicUrl: !!img.publicUrl
+        }))
+      });
 
       // Optimistically add user message to UI BEFORE API call for instant feedback
       tempUserMessageId = requestId + '-user-temp';
@@ -1732,8 +1849,31 @@ const persistProjectPreferences = useCallback(
           isStreaming: false,
           isFinal: false,
           isOptimistic: true,
+          metadata:
+            processedImages.length > 0
+              ? {
+                  attachments: processedImages.map((img) => ({
+                    name: img.name,
+                    path: img.path,
+                    url: img.url,
+                    publicUrl: img.publicUrl ?? img.public_url,
+                  })),
+                }
+              : undefined,
         };
-        messageHandlersRef.current.add(optimisticUserMessage);
+        console.log('🔄 [Optimistic] Adding optimistic user message via stable handler:', {
+          tempId: tempUserMessageId,
+          requestId,
+          content: finalMessage.substring(0, 50) + '...'
+        });
+
+        // Use stable handlers instead of direct messageHandlersRef to prevent reassignment issues
+        if (stableMessageHandlers.current) {
+          stableMessageHandlers.current.add(optimisticUserMessage);
+        } else if (messageHandlersRef.current) {
+          // Fallback to direct handlers if stable handlers aren't ready yet
+          messageHandlersRef.current.add(optimisticUserMessage);
+        }
       }
 
       // Add timeout to prevent indefinite waiting
@@ -1755,8 +1895,13 @@ const persistProjectPreferences = useCallback(
           const errorText = await r.text();
           console.error('API Error:', errorText);
 
-          if (tempUserMessageId && messageHandlersRef.current) {
-            messageHandlersRef.current.remove(tempUserMessageId);
+          if (tempUserMessageId) {
+            console.log('🔄 [Optimistic] Removing optimistic user message due to API error via stable handler:', tempUserMessageId);
+            if (stableMessageHandlers.current) {
+              stableMessageHandlers.current.remove(tempUserMessageId);
+            } else if (messageHandlersRef.current) {
+              messageHandlersRef.current.remove(tempUserMessageId);
+            }
           }
 
           alert(`Failed to send message: ${r.status} ${r.statusText}\n${errorText}`);
@@ -1765,8 +1910,13 @@ const persistProjectPreferences = useCallback(
       } catch (fetchError: any) {
         clearTimeout(timeoutId);
         if (fetchError.name === 'AbortError') {
-          if (tempUserMessageId && messageHandlersRef.current) {
-            messageHandlersRef.current.remove(tempUserMessageId);
+          if (tempUserMessageId) {
+            console.log('🔄 [Optimistic] Removing optimistic user message due to timeout via stable handler:', tempUserMessageId);
+            if (stableMessageHandlers.current) {
+              stableMessageHandlers.current.remove(tempUserMessageId);
+            } else if (messageHandlersRef.current) {
+              messageHandlersRef.current.remove(tempUserMessageId);
+            }
           }
 
           alert('Request timed out after 60 seconds. Please check your connection and try again.');
@@ -1776,6 +1926,14 @@ const persistProjectPreferences = useCallback(
       }
 
       const result = await r.json();
+
+      console.log('📸 Act API response received:', {
+        success: result.success,
+        userMessageId: result.userMessageId,
+        conversationId: result.conversationId,
+        requestId: result.requestId,
+        hasAttachments: processedImages.length > 0
+      });
 
       const returnedConversationId =
         typeof result?.conversationId === 'string'
@@ -1818,14 +1976,21 @@ const persistProjectPreferences = useCallback(
     } catch (error: any) {
       console.error('Act execution error:', error);
 
-      if (tempUserMessageId && messageHandlersRef.current) {
-        messageHandlersRef.current.remove(tempUserMessageId);
+      if (tempUserMessageId) {
+        console.log('🔄 [Optimistic] Removing optimistic user message due to execution error via stable handler:', tempUserMessageId);
+        if (stableMessageHandlers.current) {
+          stableMessageHandlers.current.remove(tempUserMessageId);
+        } else if (messageHandlersRef.current) {
+          messageHandlersRef.current.remove(tempUserMessageId);
+        }
       }
 
       const errorMessage = error?.message || String(error);
       alert(`Failed to send message: ${errorMessage}\n\nPlease try again. If the problem persists, check the console for details.`);
     } finally {
       setIsRunning(false);
+      // Remove from pending requests
+      pendingRequestsRef.current.delete(requestFingerprint);
     }
   }
 
@@ -1979,6 +2144,13 @@ const persistProjectPreferences = useCallback(
     };
   }, [projectId]);
 
+  // Cleanup pending requests on unmount
+  useEffect(() => {
+    return () => {
+      pendingRequestsRef.current.clear();
+    };
+  }, []);
+
   // React to global settings changes when using global defaults
   const { settings: globalSettings } = useGlobalSettings();
   useEffect(() => {
@@ -2097,7 +2269,15 @@ const persistProjectPreferences = useCallback(
                 <ChatLog
                   projectId={projectId}
                   onAddUserMessage={(handlers) => {
+                    console.log('🔄 [HandlerSetup] ChatLog provided new handlers, updating references');
                     messageHandlersRef.current = handlers;
+
+                    // Also update stable handlers if they exist
+                    if (stableMessageHandlers.current) {
+                      console.log('🔄 [HandlerSetup] Updating stable handlers reference');
+                      // Note: stableMessageHandlers.current already has its own add/remove logic
+                      // We don't replace it completely, just keep the reference to handlers
+                    }
                   }}
                   onSessionStatusChange={(isRunningValue) => {
                   console.log('🔍 [DEBUG] Session status change:', isRunningValue);

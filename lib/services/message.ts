@@ -53,24 +53,74 @@ export async function getMessagesByProjectId(
  */
 export async function createMessage(input: CreateMessageInput): Promise<Message> {
   const metadataJson = input.metadata ? JSON.stringify(input.metadata) : undefined;
+  let lastError: Error | null = null;
 
-  const message = await prisma.message.create({
-    data: {
-      ...(input.id ? { id: input.id } : {}),
-      projectId: input.projectId,
-      role: input.role,
-      messageType: input.messageType,
-      content: input.content,
-      metadataJson,
-      sessionId: input.sessionId,
-      conversationId: input.conversationId,
-      cliSource: input.cliSource,
-      requestId: input.requestId,
-    },
+  console.log('[MessageService] Creating message with metadata:', {
+    messageId: input.id,
+    projectId: input.projectId,
+    role: input.role,
+    hasMetadata: !!input.metadata,
+    metadataKeys: input.metadata ? Object.keys(input.metadata) : [],
+    metadataJsonLength: metadataJson?.length || 0,
+    metadataJson: metadataJson?.substring(0, 500) + (metadataJson?.length > 500 ? '...' : '')
   });
 
-  console.log(`[MessageService] Created message: ${message.id} (${input.role})${input.requestId ? ` [requestId: ${input.requestId}]` : ''}`);
-  return mapPrismaMessage(message);
+  // Retry logic with exponential backoff for database operations
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const message = await prisma.message.create({
+        data: {
+          ...(input.id ? { id: input.id } : {}),
+          projectId: input.projectId,
+          role: input.role,
+          messageType: input.messageType,
+          content: input.content,
+          metadataJson,
+          sessionId: input.sessionId,
+          conversationId: input.conversationId,
+          cliSource: input.cliSource,
+          requestId: input.requestId,
+        },
+      });
+
+      console.log(`[MessageService] Created message: ${message.id} (${input.role})${input.requestId ? ` [requestId: ${input.requestId}]` : ''} on attempt ${attempt}`);
+      console.log('[MessageService] Stored metadataJson length:', metadataJson?.length || 0);
+
+      const mappedMessage = mapPrismaMessage(message);
+      console.log('[MessageService] Mapped message metadata:', {
+        hasMetadataJson: !!mappedMessage.metadataJson,
+        metadataJsonLength: mappedMessage.metadataJson?.length || 0,
+        metadataJsonPreview: mappedMessage.metadataJson?.substring(0, 200) + (mappedMessage.metadataJson?.length > 200 ? '...' : '')
+      });
+
+      return mappedMessage;
+    } catch (error) {
+      lastError = error as Error;
+      console.error(`[MessageService] Attempt ${attempt} failed to create message:`, error);
+
+      if (attempt < 3) {
+        // Exponential backoff: 200ms, 400ms
+        const delayMs = Math.pow(2, attempt) * 100;
+        console.log(`[MessageService] Retrying in ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  // All retries failed
+  console.error('[MessageService] All retry attempts failed to create message:', lastError);
+  throw lastError || new Error('Failed to create message after 3 attempts');
+}
+
+/**
+ * Get total count of messages for a project
+ */
+export async function getMessagesCountByProjectId(projectId: string): Promise<number> {
+  const count = await prisma.message.count({
+    where: { projectId },
+  });
+
+  return count;
 }
 
 /**

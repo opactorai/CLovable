@@ -125,41 +125,60 @@ async function persistAssistantMessage(
   requestId?: string,
   overrides?: Partial<RealtimeMessage>,
 ) {
-  try {
-    const saved = await createMessage({
-      projectId,
-      role: payload.role,
-      messageType: payload.messageType,
-      content: payload.content,
-      metadata: payload.metadata ?? null,
-      cliSource: 'glm',
-      requestId,
-    });
+  let lastError: Error | null = null;
 
-    streamManager.publish(projectId, {
-      type: 'message',
-      data: serializeMessage(saved, {
-        ...(requestId ? { requestId } : {}),
-        ...(overrides ?? {}),
-      }),
-    });
-  } catch (error) {
-    console.error('[GLMService] Failed to persist assistant message. Falling back to realtime emit:', error);
-    const fallback = createRealtimeMessage({
-      projectId,
-      role: payload.role,
-      messageType: payload.messageType,
-      content: payload.content,
-      metadata: payload.metadata ?? null,
-      cliSource: 'glm',
-      requestId,
-      ...(overrides ?? {}),
-    });
-    streamManager.publish(projectId, {
-      type: 'message',
-      data: fallback,
-    });
+  // Retry logic with exponential backoff
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const saved = await createMessage({
+        projectId,
+        role: payload.role,
+        messageType: payload.messageType,
+        content: payload.content,
+        metadata: payload.metadata ?? null,
+        cliSource: 'glm',
+        requestId,
+      });
+
+      streamManager.publish(projectId, {
+        type: 'message',
+        data: serializeMessage(saved, {
+          ...(requestId ? { requestId } : {}),
+          ...(overrides ?? {}),
+        }),
+      });
+
+      console.log(`[GLMService] Successfully persisted message on attempt ${attempt}`);
+      return; // Success, exit the function
+    } catch (error) {
+      lastError = error as Error;
+      console.error(`[GLMService] Attempt ${attempt} failed to persist assistant message:`, error);
+
+      if (attempt < 3) {
+        // Exponential backoff: 1s, 2s
+        const delayMs = Math.pow(2, attempt - 1) * 1000;
+        console.log(`[GLMService] Retrying in ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
   }
+
+  // All retries failed, fallback to realtime emit
+  console.error('[GLMService] All retry attempts failed. Falling back to realtime emit:', lastError);
+  const fallback = createRealtimeMessage({
+    projectId,
+    role: payload.role,
+    messageType: payload.messageType,
+    content: payload.content,
+    metadata: payload.metadata ?? null,
+    cliSource: 'glm',
+    requestId,
+    ...(overrides ?? {}),
+  });
+  streamManager.publish(projectId, {
+    type: 'message',
+    data: fallback,
+  });
 }
 
 async function persistToolMessage(
@@ -476,7 +495,7 @@ async function executeGLM(
               await emitToolMessage(
                 `Finished using tool: ${toolName}`,
                 metadata,
-                { persist: false, isStreaming: false, messageType: 'tool_result' },
+                { persist: true, isStreaming: false, messageType: 'tool_result' },
               );
             }
             break;
@@ -532,7 +551,7 @@ async function executeGLM(
             await emitToolMessage(
               resultText,
               metadata,
-              { persist: false, isStreaming: false, messageType: 'tool_result' },
+              { persist: true, isStreaming: false, messageType: 'tool_result' },
             );
             break;
           }
@@ -622,7 +641,7 @@ async function executeGLM(
             await emitToolMessage(
               resultText,
               metadata,
-              { persist: false, isStreaming: false, messageType: 'tool_result' },
+              { persist: true, isStreaming: false, messageType: 'tool_result' },
             );
           }
         }

@@ -8,6 +8,9 @@ interface RouteContext {
 }
 
 const PROJECTS_DIR = process.env.PROJECTS_DIR || './data/projects';
+const PROJECTS_DIR_ABSOLUTE = path.isAbsolute(PROJECTS_DIR)
+  ? PROJECTS_DIR
+  : path.resolve(process.cwd(), PROJECTS_DIR);
 
 export async function POST(request: Request, { params }: RouteContext) {
   try {
@@ -24,7 +27,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     }
 
     const buffer = Buffer.from(b64, 'base64');
-    const assetsPath = path.join(PROJECTS_DIR, project_id, 'assets');
+    const assetsPath = path.join(PROJECTS_DIR_ABSOLUTE, project_id, 'assets');
     await fs.mkdir(assetsPath, { recursive: true });
     const logoPath = path.join(assetsPath, 'logo.png');
     await fs.writeFile(logoPath, buffer);

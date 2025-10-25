@@ -40,23 +40,32 @@ function coerceString(value: unknown): string | null {
 }
 
 const PROJECTS_DIR = process.env.PROJECTS_DIR || './data/projects';
+const PROJECTS_DIR_ABSOLUTE = path.isAbsolute(PROJECTS_DIR)
+  ? PROJECTS_DIR
+  : path.resolve(process.cwd(), PROJECTS_DIR);
 
 function resolveAssetsPath(projectId: string): string {
-  return path.join(PROJECTS_DIR, projectId, 'assets');
+  return path.join(PROJECTS_DIR_ABSOLUTE, projectId, 'assets');
 }
 
 function ensureAbsoluteAssetPath(projectId: string, inputPath: string): string {
-  if (path.isAbsolute(inputPath)) {
-    return inputPath;
+  const normalized = path.normalize(inputPath);
+  if (path.isAbsolute(normalized)) {
+    return normalized;
   }
-  return path.join(PROJECTS_DIR, projectId, inputPath);
+  const resolvedFromCwd = path.resolve(process.cwd(), normalized);
+  if (resolvedFromCwd.startsWith(PROJECTS_DIR_ABSOLUTE)) {
+    return resolvedFromCwd;
+  }
+  const projectBase = path.join(PROJECTS_DIR_ABSOLUTE, projectId);
+  return path.resolve(projectBase, normalized);
 }
 
 function resolveProjectRoot(projectId: string, repoPath?: string | null): string {
   if (repoPath) {
     return path.isAbsolute(repoPath) ? repoPath : path.resolve(process.cwd(), repoPath);
   }
-  return path.resolve(process.cwd(), PROJECTS_DIR, projectId);
+  return path.join(PROJECTS_DIR_ABSOLUTE, projectId);
 }
 
 async function mirrorAssetToPublic(
@@ -64,6 +73,23 @@ async function mirrorAssetToPublic(
   filename: string,
   sourcePath: string,
 ): Promise<{ publicPath: string | null; publicUrl: string | null }> {
+  const resolvedSourcePath = path.isAbsolute(sourcePath) ? sourcePath : path.resolve(process.cwd(), sourcePath);
+  const hostUploadsDir = path.join(process.cwd(), 'public', 'uploads');
+  let hostPublicPath: string | null = null;
+
+  try {
+    await fs.mkdir(hostUploadsDir, { recursive: true });
+    const destinationPath = path.join(hostUploadsDir, filename);
+    try {
+      await fs.access(destinationPath);
+    } catch {
+      await fs.copyFile(resolvedSourcePath, destinationPath);
+    }
+    hostPublicPath = destinationPath;
+  } catch (error) {
+    console.warn('[API] Failed to mirror asset into application public/uploads:', error);
+  }
+
   try {
     const uploadsDir = path.join(projectRoot, 'public', 'uploads');
     await fs.mkdir(uploadsDir, { recursive: true });
@@ -71,11 +97,17 @@ async function mirrorAssetToPublic(
     try {
       await fs.access(destinationPath);
     } catch {
-      await fs.copyFile(sourcePath, destinationPath);
+      await fs.copyFile(resolvedSourcePath, destinationPath);
     }
-    return { publicPath: destinationPath, publicUrl: `/uploads/${filename}` };
+    return {
+      publicPath: hostPublicPath ?? destinationPath,
+      publicUrl: hostPublicPath ? `/uploads/${filename}` : null,
+    };
   } catch (error) {
-    console.warn('[API] Failed to mirror asset into public/uploads:', error);
+    console.warn('[API] Failed to mirror asset into project public/uploads:', error);
+    if (hostPublicPath) {
+      return { publicPath: hostPublicPath, publicUrl: `/uploads/${filename}` };
+    }
     return { publicPath: null, publicUrl: null };
   }
 }
@@ -282,6 +314,14 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           }
         : undefined;
 
+    console.log('📸 Creating message with attachments:', {
+      projectId: project_id,
+      hasAttachments: processedImages.length > 0,
+      attachmentsCount: processedImages.length,
+      metadataKeys: metadata ? Object.keys(metadata) : [],
+      metadataString: JSON.stringify(metadata, null, 2)
+    });
+
     const userMessage = await createMessage({
       projectId: project_id,
       role: 'user',
@@ -291,6 +331,14 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       cliSource: cliPreference,
       metadata,
       requestId: requestId,
+    });
+
+    console.log('📸 Message created successfully:', {
+      messageId: userMessage.id,
+      hasMetadata: !!userMessage.metadata,
+      metadataType: typeof userMessage.metadata,
+      metadataKeys: userMessage.metadata ? Object.keys(userMessage.metadata) : [],
+      metadataString: JSON.stringify(userMessage.metadata, null, 2)
     });
 
     if (requestId) {

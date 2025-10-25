@@ -373,9 +373,18 @@ const expandMessageWithToolPlaceholder = (message: ChatMessage): ChatMessage[] =
   return [toolMessage, sanitizedMessage];
 };
 
+const hashString = (value: string): string => {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(16);
+};
+
 const expandMessagesList = (messages: ChatMessage[]): ChatMessage[] => {
   const result: ChatMessage[] = [];
   const seen = new Set<string>();
+  const seenByContent = new Map<string, string>(); // Track by content to detect near-duplicates
 
   messages.forEach((message) => {
     const expanded = expandMessageWithToolPlaceholder(message);
@@ -383,14 +392,40 @@ const expandMessagesList = (messages: ChatMessage[]): ChatMessage[] => {
       if (!entry.id) {
         entry.id = randomMessageId();
       }
-      if (!seen.has(entry.id)) {
-        result.push(entry);
-        seen.add(entry.id);
+
+      // Enhanced duplicate detection
+      if (seen.has(entry.id)) {
+        return; // Skip exact ID duplicates
       }
+
+      // Check for content-based duplicates (for tool messages that might have different IDs)
+      if (entry.role === 'tool' && entry.content) {
+        const contentHash = hashString(entry.content).substring(0, 16);
+        if (seenByContent.has(contentHash)) {
+          const existingId = seenByContent.get(contentHash);
+          if (existingId !== entry.id) {
+            return; // Skip content duplicates
+          }
+        }
+        seenByContent.set(contentHash, entry.id);
+      }
+
+      result.push(entry);
+      seen.add(entry.id);
     });
   });
 
   return result;
+};
+
+const metadataEquals = (a: any, b: any): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return !a && !b;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
 };
 
 const areMessagesEqual = (prev: ChatMessage[], next: ChatMessage[]) => {
@@ -408,8 +443,184 @@ const areMessagesEqual = (prev: ChatMessage[], next: ChatMessage[]) => {
     if (a.messageType !== b.messageType) return false;
     if (a.content !== b.content) return false;
     if (a.updatedAt !== b.updatedAt) return false;
+    if (a.requestId !== b.requestId) return false;
+    if (a.isStreaming !== b.isStreaming) return false;
+    if (a.isFinal !== b.isFinal) return false;
+    if (a.isOptimistic !== b.isOptimistic) return false;
+    if (!metadataEquals(a.metadata, b.metadata)) return false;
   }
   return true;
+};
+
+const mergeMetadataObjects = (
+  existing: Record<string, unknown> | null | undefined,
+  incoming: Record<string, unknown> | null | undefined
+): Record<string, unknown> | null => {
+  if (!existing && !incoming) {
+    return null;
+  }
+  if (!existing) {
+    return incoming ? { ...incoming } : null;
+  }
+  if (!incoming) {
+    return { ...existing };
+  }
+
+  const existingAttachments = Array.isArray((existing as any)?.attachments)
+    ? (existing as any).attachments
+    : undefined;
+  const incomingAttachments = Array.isArray((incoming as any)?.attachments)
+    ? (incoming as any).attachments
+    : undefined;
+
+  const merged = { ...existing, ...incoming };
+
+  if (incomingAttachments && incomingAttachments.length > 0) {
+    (merged as any).attachments = incomingAttachments;
+  } else if (existingAttachments && existingAttachments.length > 0) {
+    (merged as any).attachments = existingAttachments;
+  }
+
+  return merged;
+};
+
+const mergeMessageRecord = (existing: ChatMessage, incoming: ChatMessage): ChatMessage => {
+  const incomingContent = normalizeChatContent(incoming.content);
+  const existingContent = normalizeChatContent(existing.content);
+  const shouldKeepExistingContent =
+    incomingContent.trim().length === 0 && existingContent.trim().length > 0;
+
+  const resolvedCreatedAt = (() => {
+    if (!existing.createdAt) return incoming.createdAt ?? existing.createdAt;
+    if (!incoming.createdAt) return existing.createdAt;
+    return new Date(incoming.createdAt).getTime() < new Date(existing.createdAt).getTime()
+      ? incoming.createdAt
+      : existing.createdAt;
+  })();
+
+  const resolvedUpdatedAt = (() => {
+    const existingTime = existing.updatedAt ?? existing.createdAt;
+    const incomingTime = incoming.updatedAt ?? incoming.createdAt;
+    if (!existingTime) return incomingTime ?? existingTime;
+    if (!incomingTime) return existingTime;
+    return new Date(incomingTime).getTime() >= new Date(existingTime).getTime()
+      ? incomingTime
+      : existingTime;
+  })();
+
+  const mergedMetadata = mergeMetadataObjects(
+    existing.metadata as Record<string, unknown> | null | undefined,
+    incoming.metadata as Record<string, unknown> | null | undefined
+  );
+
+  const merged: ChatMessage = {
+    ...existing,
+    ...incoming,
+    content: shouldKeepExistingContent ? existing.content : incoming.content,
+    metadata: mergedMetadata,
+    createdAt: resolvedCreatedAt ?? existing.createdAt,
+    updatedAt: resolvedUpdatedAt,
+    requestId: incoming.requestId ?? existing.requestId,
+    isOptimistic: incoming.isOptimistic ?? existing.isOptimistic,
+    isStreaming: incoming.isStreaming ?? existing.isStreaming,
+    isFinal: incoming.isFinal ?? existing.isFinal,
+  };
+
+  const unchanged =
+    merged.content === existing.content &&
+    merged.updatedAt === existing.updatedAt &&
+    merged.isStreaming === existing.isStreaming &&
+    merged.isFinal === existing.isFinal &&
+    merged.isOptimistic === existing.isOptimistic &&
+    merged.requestId === existing.requestId &&
+    metadataEquals(merged.metadata, existing.metadata);
+
+  return unchanged ? existing : merged;
+};
+
+const ensureMessageIdentity = (message: ChatMessage): ChatMessage => {
+  if (message.id) {
+    return message;
+  }
+  return { ...message, id: randomMessageId() };
+};
+
+const integrateMessages = (
+  previous: ChatMessage[],
+  incoming: ChatMessage[]
+): ChatMessage[] => {
+  if (incoming.length === 0) {
+    return previous;
+  }
+
+  const map = new Map<string, ChatMessage>();
+
+  previous.forEach((original) => {
+    const message = ensureMessageIdentity(original);
+    map.set(message.id, message);
+  });
+
+  incoming.forEach((rawMessage) => {
+    let message = ensureMessageIdentity(rawMessage);
+
+    if (!message.isOptimistic && message.requestId) {
+      let preservedAttachments: any[] | undefined;
+
+      Array.from(map.entries()).forEach(([key, existing]) => {
+        if (existing.requestId === message.requestId && existing.isOptimistic) {
+          const existingAttachments = Array.isArray((existing.metadata as any)?.attachments)
+            ? (existing.metadata as any).attachments
+            : undefined;
+          if (
+            existingAttachments &&
+            existingAttachments.length > 0 &&
+            (!preservedAttachments || preservedAttachments.length === 0)
+          ) {
+            preservedAttachments = [...existingAttachments];
+            console.log('🖼️ Preserving optimistic attachments for request:', {
+              requestId: message.requestId,
+              attachments: preservedAttachments,
+            });
+          }
+          map.delete(key);
+        }
+      });
+
+      if (
+        preservedAttachments &&
+        preservedAttachments.length > 0 &&
+        (!Array.isArray((message.metadata as any)?.attachments) ||
+          ((message.metadata as any)?.attachments?.length ?? 0) === 0)
+      ) {
+        message = {
+          ...message,
+          metadata: {
+            ...(message.metadata ?? {}),
+            attachments: preservedAttachments,
+          },
+        };
+      }
+    }
+
+    const existing = map.get(message.id);
+    if (existing) {
+      const merged = mergeMessageRecord(existing, message);
+      map.set(merged.id ?? message.id, merged);
+    } else {
+      map.set(message.id, message);
+    }
+  });
+
+  const sorted = Array.from(map.values()).sort((a, b) => {
+    const timeDiff =
+      new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime();
+    if (timeDiff !== 0) {
+      return timeDiff;
+    }
+    return (a.id ?? '').localeCompare(b.id ?? '');
+  });
+
+  return areMessagesEqual(previous, sorted) ? previous : sorted;
 };
 
 // Tool Message Component - Enhanced with new design
@@ -615,8 +826,11 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
+  const [needsHistoryRefresh, setNeedsHistoryRefresh] = useState(false);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const hasLoadedInitialDataRef = useRef(false);
@@ -624,10 +838,214 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
   const hasLoggedSseFallbackRef = useRef(false);
   const [enableSseFallback, setEnableSseFallback] = useState(false);
   const [isSseConnected, setIsSseConnected] = useState(false);
+  const [failedImageUrls, setFailedImageUrls] = useState<Set<string>>(new Set());
+
+  // 에러 처리 함수
+  const handleError = useCallback((error: Error | string, context?: string) => {
+    const message = typeof error === 'string' ? error : error.message;
+    console.error(`[ChatLog] Error${context ? ` in ${context}` : ''}:`, error);
+    setErrorMessage(message);
+    setHasError(true);
+    setIsLoading(false);
+
+    // 5초 후 자동으로 에러 상태 해제
+    setTimeout(() => {
+      setHasError(false);
+      setErrorMessage(null);
+    }, 5000);
+  }, []);
+
+  // 에러 상태 초기화 함수
+  const clearError = useCallback(() => {
+    setHasError(false);
+    setErrorMessage(null);
+  }, []);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [totalMessageCount, setTotalMessageCount] = useState(0);
+
+  // Enhanced deduplication system to prevent duplicate messages
+  const processedMessageIds = useRef(new Set<string>());
+  const processedRequestIds = useRef(new Map<string, string>());
+  const pendingMessageIds = useRef(new Set<string>());
+
+  // Transport layer coordination - track message sources
+  const messageSources = useRef<Map<string, 'websocket' | 'sse' | 'optimistic' | 'unknown'>>(new Map());
+  const activeTransport = useRef<'websocket' | 'sse' | null>(null);
+
+  // Comprehensive debugging system
+  const messageLifecycleRef = useRef<Map<string, {
+    createdAt: number;
+    source: string;
+    events: Array<{timestamp: number; event: string; details?: any}>;
+  }>>(new Map());
+
+  // Debug function to track message lifecycle
+  const trackMessageLifecycle = useCallback((messageId: string, event: string, details?: any) => {
+    if (!messageLifecycleRef.current.has(messageId)) {
+      messageLifecycleRef.current.set(messageId, {
+        createdAt: Date.now(),
+        source: details?.source || 'unknown',
+        events: []
+      });
+    }
+
+    const lifecycle = messageLifecycleRef.current.get(messageId)!;
+    lifecycle.events.push({
+      timestamp: Date.now(),
+      event,
+      details
+    });
+
+    // Log significant events
+    if (event === 'received' || event === 'processed' || event === 'replaced_optimistic') {
+      console.log(`🔍 [Lifecycle] Message ${event}:`, {
+        messageId,
+        source: lifecycle.source,
+        details,
+        totalEvents: lifecycle.events.length
+      });
+    }
+  }, []);
+
+  const isMessageProcessed = useCallback((message: ChatMessage): boolean => {
+    // Check by message ID first
+    if (message.id && processedMessageIds.current.has(message.id)) {
+      console.debug(`[ChatLog] Message already processed by ID: ${message.id}`);
+      return true;
+    }
+
+    // Check by request ID for optimistic message replacement
+    if (message.requestId && processedRequestIds.current.has(message.requestId)) {
+      const existingMessageId = processedRequestIds.current.get(message.requestId);
+      if (existingMessageId === message.id) {
+        console.debug(`[ChatLog] Message already processed by RequestId: ${message.requestId} -> ${message.id}`);
+        return true;
+      }
+    }
+
+    return false;
+  }, []);
+
+  const markMessageAsProcessed = useCallback((message: ChatMessage, transport?: 'websocket' | 'sse' | 'optimistic' | 'unknown') => {
+    const source = transport || activeTransport.current || 'unknown';
+    const shouldFinalize = !message.isStreaming || message.isFinal;
+
+    if (message.id) {
+      if (shouldFinalize) {
+        processedMessageIds.current.add(message.id);
+      }
+      messageSources.current.set(message.id, source);
+
+      // Track message lifecycle
+      trackMessageLifecycle(message.id, 'processed', {
+        role: message.role,
+        requestId: message.requestId,
+        transport: source,
+        isOptimistic: message.isOptimistic,
+        isStreaming: message.isStreaming,
+        isFinal: message.isFinal
+      });
+
+      console.debug(
+        `[ChatLog] Marked message as processed by ID: ${message.id} (role: ${message.role}, type: ${message.messageType}, transport: ${source}, streaming: ${message.isStreaming}, final: ${message.isFinal})`
+      );
+    }
+    if (shouldFinalize && message.requestId) {
+      processedRequestIds.current.set(message.requestId, message.id || '');
+      console.debug(`[ChatLog] Marked message as processed by RequestId: ${message.requestId} -> ${message.id}`);
+    }
+  }, [activeTransport, trackMessageLifecycle]);
+
+  // Cleanup processed IDs when project changes to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      console.log('🧹 [Cleanup] Cleaning up ChatLog state for project change');
+      processedMessageIds.current.clear();
+      processedRequestIds.current.clear();
+      messageSources.current.clear();
+      messageLifecycleRef.current.clear();
+      pendingMessageIds.current.clear();
+      activeTransport.current = null;
+    };
+  }, [projectId]);
+
+  // Message recovery mechanism for network interruptions
+  const recoverMissingMessages = useCallback(async () => {
+    if (!projectId) return;
+
+    try {
+      console.log('[ChatLog] Checking for missing messages due to network interruption...');
+
+      // Get current message count from UI state
+      const currentMessageCount = messages.length;
+
+      // Get actual message count from database
+      const response = await fetch(`/api/chat/${projectId}/messages?limit=1&offset=0`);
+      if (!response.ok) return;
+
+      const data = await response.json();
+      const totalMessages = data.totalCount || 0;
+
+      // If database has more messages than UI state, trigger a reload flag
+      if (totalMessages > currentMessageCount) {
+        console.log(`[ChatLog] Detected ${totalMessages - currentMessageCount} missing messages. Setting reload flag...`);
+        // Set a flag to trigger reload in the polling effect
+        setHasLoadedOnce(false);
+      }
+    } catch (error) {
+      console.error('[ChatLog] Error checking for missing messages:', error);
+    }
+  }, [projectId, messages.length]);
 
   const handleRealtimeMessage = useCallback((message: unknown) => {
     const chatMessage = toChatMessage(message);
+    const transportSource = activeTransport.current || 'unknown';
+    const messageId = chatMessage.id ?? null;
+
+    console.debug(`[ChatLog] Received realtime message: ID=${chatMessage.id}, Role=${chatMessage.role}, Type=${chatMessage.messageType}, RequestId=${chatMessage.requestId}, Streaming=${chatMessage.isStreaming}, Transport=${transportSource}`);
+
+    // Track message lifecycle
+    trackMessageLifecycle(chatMessage.id || 'unknown', 'received', {
+      role: chatMessage.role,
+      requestId: chatMessage.requestId,
+      transport: transportSource,
+      content: chatMessage.content?.substring(0, 50) + '...'
+    });
+
+    const isFinalUpdate = !chatMessage.isStreaming || chatMessage.isFinal;
+
+    if (messageId && pendingMessageIds.current.has(messageId) && !isFinalUpdate) {
+      console.debug(`[ChatLog] Message already pending processing: ID=${messageId}`);
+      return;
+    }
+
+    if (isMessageProcessed(chatMessage)) {
+      if (isFinalUpdate) {
+        console.debug(`[ChatLog] Final update for already processed message ID=${chatMessage.id}, allowing merge.`);
+      } else {
+        return;
+      }
+    }
+
+    // Enhanced transport-based duplicate detection
+    if (chatMessage.id) {
+      const existingSource = messageSources.current.get(chatMessage.id);
+      if (existingSource && existingSource !== transportSource) {
+        if (!isFinalUpdate) {
+          console.warn(`[ChatLog] Duplicate streaming message from different transport: ID=${chatMessage.id}, existing=${existingSource}, new=${transportSource}. Skipping interim duplicate.`);
+          return;
+        }
+        console.debug(`[ChatLog] Transport changed for final message ID=${chatMessage.id} (${existingSource} -> ${transportSource}). Accepting final update.`);
+      }
+
+    }
+
+    if (messageId) {
+      pendingMessageIds.current.add(messageId);
+    }
+
     const expandedMessages = expandMessageWithToolPlaceholder(chatMessage);
+    console.debug(`[ChatLog] Expanded to ${expandedMessages.length} message(s)`);
 
     const assistantUpdates = expandedMessages.filter((msg) => msg.role === 'assistant');
     if (assistantUpdates.length > 0) {
@@ -639,95 +1057,65 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
         return Boolean(msg.isFinal);
       });
       if (shouldStopWaiting) {
+        console.debug(`[ChatLog] Stopping wait for response due to assistant updates`);
         setIsWaitingForResponse(false);
       }
     }
 
-    setMessages((prev) => {
-      if (expandedMessages.length === 0) {
-        return prev;
+    const expandedWithIds = expandedMessages.map((incoming) =>
+      incoming.id ? incoming : { ...incoming, id: randomMessageId() }
+    );
+
+    const filteredMessages = expandedWithIds.filter((msg) => {
+      if (isMessageProcessed(msg)) {
+        return false;
       }
+      return true;
+    });
 
-      const indexById = new Map(prev.map((msg, index) => [msg.id, index]));
-      let changed = false;
-      let next = [...prev];
+    filteredMessages.forEach((msg) => {
+      if (
+        Array.isArray((msg.metadata as any)?.attachments) &&
+        (msg.metadata as any).attachments.length > 0
+      ) {
+        console.log('🖼️ Realtime message includes attachments:', {
+          messageId: msg.id,
+          attachments: (msg.metadata as any).attachments,
+        });
+      }
+    });
 
-      expandedMessages.forEach((incoming) => {
-        const messageWithId: ChatMessage = incoming.id ? incoming : { ...incoming, id: randomMessageId() };
-
-        // Check if this real message should replace an optimistic one
-        if (messageWithId.requestId) {
-          const optimisticIndex = next.findIndex(
-            (m) => m.isOptimistic && m.requestId === messageWithId.requestId
-          );
-
-          if (optimisticIndex !== -1) {
-            // Remove optimistic message and replace with real one
-            next.splice(optimisticIndex, 1);
-            indexById.clear();
-            next.forEach((msg, idx) => indexById.set(msg.id, idx));
-            changed = true;
-          }
-        }
-
-        const existingIndex = indexById.get(messageWithId.id);
-
-        if (existingIndex != null) {
-          const existing = next[existingIndex];
-          const mergedMetadata =
-            messageWithId.metadata !== undefined
-              ? messageWithId.metadata ?? null
-              : existing.metadata ?? null;
-          const incomingContent = normalizeChatContent(messageWithId.content);
-          const existingContent = normalizeChatContent(existing.content);
-          const shouldReplaceContent =
-            incomingContent.trim().length > 0 ||
-            existing.content == null ||
-            existingContent.trim().length === 0;
-
-          const mergedContent = shouldReplaceContent ? incomingContent : existing.content;
-
-          const merged: ChatMessage = {
-            ...existing,
-            ...messageWithId,
-            content: mergedContent,
-            metadata: mergedMetadata,
-            isOptimistic: false, // Real message from server, not optimistic
-          };
-
-          const metadataChanged = (() => {
-            if (existing.metadata === merged.metadata) return false;
-            try {
-              return JSON.stringify(existing.metadata ?? null) !== JSON.stringify(merged.metadata ?? null);
-            } catch {
-              return true;
-            }
-          })();
-
-          if (
-            merged.content !== existing.content ||
-            merged.updatedAt !== existing.updatedAt ||
-            merged.isStreaming !== existing.isStreaming ||
-            merged.isFinal !== existing.isFinal ||
-            merged.isOptimistic !== existing.isOptimistic ||
-            metadataChanged
-          ) {
-            next[existingIndex] = merged;
-            changed = true;
-          }
-          return;
-        }
-
-        // Ensure incoming message is not marked as optimistic (it's real from server)
-        const realMessage = { ...messageWithId, isOptimistic: false };
-        next.push(realMessage);
-        indexById.set(realMessage.id, next.length - 1);
-        changed = true;
+    let processedInUpdate = false;
+    if (filteredMessages.length > 0) {
+      setMessages((prev) => {
+        const next = integrateMessages(prev, filteredMessages);
+        processedInUpdate = next !== prev;
+        return next;
       });
 
-      return changed ? next : prev;
-    });
-  }, [setIsWaitingForResponse]);
+      filteredMessages.forEach((messageWithId) => {
+        markMessageAsProcessed(messageWithId, transportSource);
+      });
+    }
+
+    if (messageId) {
+      pendingMessageIds.current.delete(messageId);
+      if (!processedInUpdate && !processedMessageIds.current.has(messageId)) {
+        trackMessageLifecycle(messageId, 'processed', {
+          role: chatMessage.role,
+          requestId: chatMessage.requestId,
+          transport: transportSource,
+          skipped: true
+        });
+      }
+    }
+
+    if (!chatMessage.isOptimistic && chatMessage.role === 'user') {
+      setNeedsHistoryRefresh(true);
+    } else if (!chatMessage.isOptimistic && chatMessage.role === 'assistant' && chatMessage.isFinal) {
+      setNeedsHistoryRefresh(true);
+    }
+  }, [setIsWaitingForResponse, isMessageProcessed, markMessageAsProcessed, activeTransport]);
 
   const handleRealtimeStatus = useCallback(
     (status: string, payload?: RealtimeStatus | Record<string, unknown>, requestId?: string) => {
@@ -842,21 +1230,27 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
   );
 
   // Use the centralized WebSocket hook (with SSE fallback defined below)
-  const { isConnected } = useWebSocket({
+  const { isConnected, isConnecting } = useWebSocket({
     projectId,
     onMessage: handleRealtimeMessage,
     onStatus: handleRealtimeStatus,
     onConnect: () => {
+      console.log('🔌 [Transport] WebSocket connected, switching to WebSocket transport');
       setEnableSseFallback(false);
       hasLoggedSseFallbackRef.current = false;
       onSseFallbackActive?.(false);
+      activeTransport.current = 'websocket';
       if (sseFallbackTimerRef.current) {
         clearTimeout(sseFallbackTimerRef.current);
         sseFallbackTimerRef.current = null;
       }
+      // Recover any missing messages that might have been lost during disconnection
+      recoverMissingMessages();
     },
     onDisconnect: () => {
+      console.log('🔌 [Transport] WebSocket disconnected, preparing SSE fallback');
       setEnableSseFallback(true);
+      activeTransport.current = null; // Reset transport to allow SSE to take over
     },
     onError: handleRealtimeError,
   });
@@ -873,13 +1267,26 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
       return;
     }
 
+    if (isConnecting) {
+      if (sseFallbackTimerRef.current) {
+        clearTimeout(sseFallbackTimerRef.current);
+        sseFallbackTimerRef.current = null;
+      }
+      return () => {
+        if (sseFallbackTimerRef.current) {
+          clearTimeout(sseFallbackTimerRef.current);
+          sseFallbackTimerRef.current = null;
+        }
+      };
+    }
+
     if (sseFallbackTimerRef.current) {
       clearTimeout(sseFallbackTimerRef.current);
     }
 
     sseFallbackTimerRef.current = setTimeout(() => {
       setEnableSseFallback((previous) => previous || true);
-    }, 1500);
+    }, 2500);
 
     return () => {
       if (sseFallbackTimerRef.current) {
@@ -887,7 +1294,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
         sseFallbackTimerRef.current = null;
       }
     };
-  }, [isConnected, onSseFallbackActive]);
+  }, [isConnected, isConnecting, onSseFallbackActive]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -919,9 +1326,17 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
 
       try {
         if (!hasLoggedSseFallbackRef.current) {
-          console.warn('🔄 [Realtime] WebSocket unavailable, using SSE fallback');
+          console.warn('🔄 [Transport] WebSocket unavailable, switching to SSE transport');
           hasLoggedSseFallbackRef.current = true;
         }
+
+        // Only activate SSE if WebSocket is not connected
+        if (activeTransport.current === 'websocket') {
+          console.log('🔄 [Transport] WebSocket is active, skipping SSE connection');
+          return;
+        }
+
+        activeTransport.current = 'sse';
 
         const streamUrl = resolveStreamUrl();
         let source: EventSource;
@@ -938,8 +1353,11 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
         eventSource = source;
 
         source.onopen = () => {
+          console.log('🔄 [Transport] SSE connection established');
           setIsSseConnected(true);
           onSseFallbackActive?.(true);
+          // Recover any missing messages that might have been lost during SSE disconnection
+          recoverMissingMessages();
         };
 
         source.onmessage = (event) => {
@@ -1056,7 +1474,8 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
       }
 
       try {
-        const response = await fetch(`${API_BASE}/api/chat/${projectId}/messages`);
+        // Load more messages per request to reduce pagination needs
+        const response = await fetch(`${API_BASE}/api/chat/${projectId}/messages?limit=200&offset=0`);
         if (response.ok) {
           didSucceed = true;
           const payload = await response.json();
@@ -1067,89 +1486,37 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
             ? expandMessagesList(chatMessages.map(toChatMessage))
             : [];
 
-          // Merge DB messages with optimistic messages instead of replacing
-          setMessages((prev) => {
-            const keyForMessage = (message: ChatMessage): string | null => {
-              if (message.id) {
-                return `id:${message.id}`;
-              }
-              if (message.requestId) {
-                return `request:${message.requestId}`;
-              }
-              return null;
-            };
-
-            const prevByKey = new Map<string, ChatMessage>();
-            prev.forEach((message) => {
-              const key = keyForMessage(message);
-              if (key) {
-                prevByKey.set(key, message);
-              }
-            });
-
-            const merged = normalized.map((message) => {
-              const key = keyForMessage(message);
-              if (!key) {
-                return message;
-              }
-
-              const previous = prevByKey.get(key);
-              if (!previous) {
-                return message;
-              }
-
-              const incomingContent = normalizeChatContent(message.content);
-              const previousContent = normalizeChatContent(previous.content);
-
-              const shouldKeepPreviousContent =
-                previousContent.trim().length > 0 && incomingContent.trim().length === 0;
-
-              if (shouldKeepPreviousContent) {
-                return {
-                  ...message,
-                  content: previous.content,
-                  isStreaming: previous.isStreaming,
-                  metadata: message.metadata ?? previous.metadata ?? null,
-                };
-              }
-
-              return message;
-            });
-
-            const mergedKeys = new Set<string>();
-            merged.forEach((message) => {
-              const key = keyForMessage(message);
-              if (key) {
-                mergedKeys.add(key);
-              }
-            });
-
-            // Keep transient messages during polling if the DB hasn't persisted them yet.
-            // - optimistic messages (local/UI placeholders)
-            // - in-progress streaming messages (isStreaming && !isFinal)
-            const transientMessages = prev.filter(
-              (m) => m.isOptimistic || (m.isStreaming && !m.isFinal)
-            );
-
-            transientMessages.forEach((msg) => {
-              const key = keyForMessage(msg);
-              if (key && mergedKeys.has(key)) {
-                return;
-              }
-              if (key) {
-                mergedKeys.add(key);
-              }
-              merged.push(msg);
-            });
-
-            // Sort by creation time
-            const sorted = merged.sort(
-              (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-            );
-
-            // Only update if there's an actual change
-            return areMessagesEqual(prev, sorted) ? prev : sorted;
+          console.log('[ChatLog] Loaded messages from API:', {
+            totalMessages: normalized.length,
+            messagesWithMetadata: normalized.filter(msg => !!msg.metadata).length,
+            messagesWithAttachments: normalized.filter(msg =>
+              msg.metadata &&
+              typeof msg.metadata === 'object' &&
+              (msg.metadata as any).attachments
+            ).length,
+            sampleMessageMetadata: normalized[0]?.metadata
           });
+
+          // Update pagination state
+          if (payload.pagination) {
+            console.log(`[ChatLog] Loaded ${payload.pagination.count}/${payload.totalCount} messages`);
+            setHasMoreMessages(payload.pagination.hasMore || false);
+            setTotalMessageCount(payload.totalCount || 0);
+          } else {
+            setHasMoreMessages(false);
+            setTotalMessageCount(normalized.length);
+          }
+
+          normalized.forEach((message) => {
+            if (Array.isArray((message.metadata as any)?.attachments) && (message.metadata as any).attachments.length > 0) {
+              console.log('🖼️ DB loaded message with attachments:', {
+                messageId: message.id,
+                attachments: (message.metadata as any).attachments,
+              });
+            }
+          });
+
+          setMessages((prev) => integrateMessages(prev, normalized));
         }
       } catch (error) {
         if (process.env.NODE_ENV === 'development') {
@@ -1163,8 +1530,53 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
         setHasLoadedOnce(true);
       }
     },
-    [projectId]
+    [projectId, hasMoreMessages, totalMessageCount, messages.length]
   );
+
+  useEffect(() => {
+    if (!needsHistoryRefresh) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      setNeedsHistoryRefresh(false);
+      void loadChatHistory({ showLoading: false });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [needsHistoryRefresh, loadChatHistory]);
+
+  // Load older messages (pagination)
+  const loadOlderMessages = useCallback(async () => {
+    if (!projectId || !hasMoreMessages) return;
+
+    try {
+      const currentOffset = messages.length;
+      const response = await fetch(`${API_BASE}/api/chat/${projectId}/messages?limit=100&offset=${currentOffset}`);
+
+      if (response.ok) {
+        const payload = await response.json();
+        const chatMessages = Array.isArray(payload)
+          ? payload
+          : payload?.data ?? payload?.messages ?? [];
+        const normalized = Array.isArray(chatMessages)
+          ? expandMessagesList(chatMessages.map(toChatMessage))
+          : [];
+
+        // Update pagination state
+        if (payload.pagination) {
+          setHasMoreMessages(payload.pagination.hasMore || false);
+          setTotalMessageCount(payload.totalCount || 0);
+          console.log(`[ChatLog] Loaded ${payload.pagination.count} older messages (${messages.length + normalized.length}/${payload.totalCount} total)`);
+        }
+
+        // Prepend older messages to the existing list
+        if (normalized.length > 0) {
+          setMessages((prev) => integrateMessages(prev, normalized));
+        }
+      }
+    } catch (error) {
+      console.error('[ChatLog] Failed to load older messages:', error);
+    }
+  }, [projectId, hasMoreMessages, messages.length]);
 
   // Poll session status periodically
   const startSessionPolling = useCallback(
@@ -1190,7 +1602,8 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
                 pollIntervalRef.current = null;
               }
 
-              loadChatHistory({ showLoading: false });
+              // Trigger reload flag instead of direct call
+          setHasLoadedOnce(false);
             }
           }
         } catch (error) {
@@ -1200,7 +1613,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
         }
       }, 3000); // Poll every 3 seconds
     },
-    [projectId, onSessionStatusChange, loadChatHistory]
+    [projectId, onSessionStatusChange]
   );
 
   // Check for active session on component mount
@@ -1247,9 +1660,18 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
     }
   }, [projectId, onSessionStatusChange, startSessionPolling]);
 
+  // Enhanced polling system to prevent conflicts with real-time connections
   useEffect(() => {
     if (!projectId) return;
-    if (isConnected && !enableSseFallback) return;
+
+    // Don't poll if we have active real-time connections
+    if (isConnected || isSseConnected) {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      return;
+    }
 
     const isStreamingMessagePending = messages.some(
       (message) => message.role === 'assistant' && message.isStreaming && !message.isFinal
@@ -1259,16 +1681,47 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
       return;
     }
 
-    const interval = setInterval(() => {
+    // Only poll when both WebSocket and SSE are disconnected
+    const shouldPoll = !isConnected && !isSseConnected && enableSseFallback;
+
+    if (!shouldPoll) {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      return;
+    }
+
+    // Clear any existing interval
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+    }
+
+    pollIntervalRef.current = setInterval(() => {
+      // Double-check connection status before polling
+      if (isConnected || isSseConnected) {
+        console.debug(`[ChatLog] Stopping polling due to active connection: WebSocket=${isConnected}, SSE=${isSseConnected}`);
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+        return;
+      }
+
+      console.debug(`[ChatLog] Polling for chat history updates...`);
       loadChatHistory({ showLoading: false }).catch(() => {
         // Suppress polling errors; realtime channels may still recover.
+        console.debug(`[ChatLog] Polling completed with errors (suppressed)`);
       });
-    }, (!isConnected && enableSseFallback && !isSseConnected) ? 2000 : 5000);
+    }, 3000); // Consistent 3-second interval when polling
 
     return () => {
-      clearInterval(interval);
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
     };
-  }, [projectId, isConnected, enableSseFallback, isSseConnected, loadChatHistory, messages]);
+  }, [projectId, isConnected, isSseConnected, enableSseFallback, messages]);
 
   // Initial load
   useEffect(() => {
@@ -1292,7 +1745,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
         pollIntervalRef.current = null;
       }
     };
-  }, [projectId, loadChatHistory, checkActiveSession]);
+  }, [projectId, checkActiveSession]);
 
   useEffect(() => {
     hasLoadedInitialDataRef.current = false;
@@ -1376,6 +1829,8 @@ const ToolResultMessage = ({
   const renderContentWithThinking = (content: string): ReactElement => {
     const parts: ReactElement[] = [];
     let lastIndex = 0;
+    let segmentCounter = 0;
+    const createKey = (prefix: string) => `${prefix}-${segmentCounter++}`;
     const regex = /<thinking>([\s\S]*?)<\/thinking>/g;
     let match;
 
@@ -1386,7 +1841,7 @@ const ToolResultMessage = ({
         if (beforeText) {
           parts.push(
             <ReactMarkdown 
-              key={`text-${lastIndex}`}
+              key={createKey('text-before')}
               components={{
                 p: ({children}) => <p className="mb-2 last:mb-0 break-words">{children}</p>,
                 strong: ({children}) => <strong className="font-medium">{children}</strong>,
@@ -1409,7 +1864,7 @@ const ToolResultMessage = ({
       if (thinkingText) {
         parts.push(
           <ThinkingSection 
-            key={`thinking-${match.index}`}
+            key={createKey('thinking')}
             content={thinkingText}
           />
         );
@@ -1424,7 +1879,7 @@ const ToolResultMessage = ({
       if (remainingText) {
         parts.push(
           <ReactMarkdown 
-            key={`text-${lastIndex}`}
+            key={createKey('text-after')}
             components={{
               p: ({children}) => {
                 // Check for Planning tool message pattern
@@ -1573,11 +2028,21 @@ const ToolResultMessage = ({
     }
 
     if (metadata && (metadata as { isTransientToolMessage?: boolean }).isTransientToolMessage) {
-      if (message.messageType === 'tool_use' || message.role === 'tool') {
+      if (
+        message.messageType === 'tool_use' ||
+        message.messageType === 'tool_result' ||
+        message.role === 'tool'
+      ) {
         // Keep transient tool updates visible so users can follow in-flight work
       } else {
         return false;
       }
+    }
+
+    // **중요**: attachments가 있는 메시지는 항상 표시
+    if (metadata && metadata.attachments && Array.isArray(metadata.attachments) && metadata.attachments.length > 0) {
+      console.log('🖼️ Message has attachments, displaying:', { messageId: message.id, attachments: metadata.attachments });
+      return true;
     }
 
     if (message.messageType === 'tool_result') {
@@ -1591,18 +2056,32 @@ const ToolResultMessage = ({
           pickFirstString(meta.summary) ??
           pickFirstString(meta.result) ??
           pickFirstString(meta.resultSummary) ??
-          pickFirstString(meta.result_summary);
+          pickFirstString(meta.result_summary) ??
+          pickFirstString(meta.command) ??
+          pickFirstString(meta.content) ??
+          pickFirstString(meta.output);
         const diff =
           pickFirstString(meta.diff) ??
           pickFirstString(meta.diff_info) ??
           pickFirstString(meta.toolOutput) ??
           pickFirstString(meta.tool_output);
-        return Boolean(summary ?? diff);
+        // Check for tool name to identify Executed operations even without visible content
+        const toolName =
+          pickFirstString(meta.tool_name) ??
+          pickFirstString(meta.toolName) ??
+          pickFirstString(meta.action);
+        return Boolean(summary ?? diff ?? toolName);
       }
       return false;
     }
 
     if (message.messageType === 'tool_use' || isToolUsageMessage(message)) {
+      return true;
+    }
+
+    // **중요**: 이미지 경로 패턴이 있는 메시지도 표시 (하위 호환성)
+    if (contentText && contentText.includes('Image #') && contentText.includes('path:')) {
+      console.log('🖼️ Message contains image paths, displaying:', { messageId: message.id, content: contentText });
       return true;
     }
 
@@ -1773,14 +2252,55 @@ const ToolResultMessage = ({
   useEffect(() => {
     if (onAddUserMessage) {
       const addMessage = (message: ChatMessage) => {
+        console.log('🔄 [Parent] Adding message via parent callback:', {
+          messageId: message.id,
+          role: message.role,
+          isOptimistic: message.isOptimistic,
+          requestId: message.requestId
+        });
+
         setMessages((prev) => {
           const exists = prev.some(m => m.id === message.id);
-          if (exists) return prev;
+          if (exists) {
+            console.log('🔄 [Parent] Message already exists, skipping:', message.id);
+            return prev;
+          }
+
+          // Enhanced optimistic message replacement with atomic operation
+          if (message.requestId && !message.isOptimistic) {
+            const optimisticMessages = prev.filter(
+              (m) => m.isOptimistic && m.requestId === message.requestId
+            );
+
+            if (optimisticMessages.length > 0) {
+              console.log('🔄 [Parent] Found optimistic messages to replace via parent callback:', {
+                count: optimisticMessages.length,
+                requestId: message.requestId,
+                realId: message.id,
+                realRole: message.role,
+                optimisticIds: optimisticMessages.map(m => m.id)
+              });
+
+              // Atomic operation: remove ALL optimistic messages for this requestId
+              let newMessages = [...prev];
+              optimisticMessages.forEach(optimisticMessage => {
+                const index = newMessages.findIndex(m => m.id === optimisticMessage.id);
+                if (index !== -1) {
+                  console.log('🔄 [Parent] Removing optimistic message:', optimisticMessage.id);
+                  newMessages.splice(index, 1);
+                }
+              });
+
+              return [...newMessages, message];
+            }
+          }
+
           return [...prev, message];
         });
       };
 
       const removeMessage = (messageId: string) => {
+        console.log('🔄 [Parent] Removing message via parent callback:', messageId);
         setMessages((prev) => prev.filter(m => m.id !== messageId));
       };
 
@@ -1791,9 +2311,45 @@ const ToolResultMessage = ({
   return (
     <div className="flex flex-col h-full bg-white ">
 
+      {/* Error Display */}
+      {hasError && (
+        <div className="mx-8 mt-3 p-4 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg">
+          <div className="flex items-start justify-between">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
+                  연결 오류
+                </h3>
+                <div className="mt-2 text-sm text-red-700 dark:text-red-300">
+                  <p>{errorMessage}</p>
+                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                    몇 초 후 자동으로 다시 시도합니다...
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="ml-auto pl-3">
+              <button
+                onClick={clearError}
+                className="inline-flex text-red-400 hover:text-red-600 focus:outline-none focus:text-red-600 transition-colors"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Display messages and logs together */}
       <div className="flex-1 overflow-y-auto px-8 py-3 space-y-2 custom-scrollbar ">
-        {isLoading && !hasLoadedOnce && (
+        {isLoading && !hasLoadedOnce && !hasError && (
           <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
             <div className="flex flex-col items-center">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900 mb-2 mx-auto"></div>
@@ -1810,7 +2366,20 @@ const ToolResultMessage = ({
             </div>
           </div>
         )}
-        
+
+        {/* Load older messages button */}
+        {hasMoreMessages && (
+          <div className="mb-4 flex justify-center">
+            <button
+              onClick={loadOlderMessages}
+              className="px-4 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Loading...' : `Load older messages (${totalMessageCount - messages.length} remaining)`}
+            </button>
+          </div>
+        )}
+
         {/* Render chat messages */}
         {messages.filter(shouldDisplayMessage).map((message, index) => {
           const messageMetadata = message.metadata as Record<string, unknown> | null;
@@ -1851,68 +2420,96 @@ const ToolResultMessage = ({
                                 const attachments = Array.isArray((messageMetadata as Record<string, any>)?.attachments)
                                   ? ((messageMetadata as Record<string, any>).attachments as any[])
                                   : [];
+                                console.log('🖼️ Message attachments:', attachments);
                                 if (attachments.length > 0) {
                                   return (
                                     <div className="mt-2 flex flex-wrap gap-2">
                                       {attachments.map((attachment: any, idx: number) => {
-                                        const rawUrl =
-                                          (typeof attachment.publicUrl === 'string' && attachment.publicUrl.trim().length > 0
-                                            ? attachment.publicUrl.trim()
-                                            : typeof attachment.url === 'string' && attachment.url.trim().length > 0
-                                            ? attachment.url.trim()
-                                            : null);
-                                        if (!rawUrl) {
+                                        console.log(`🖼️ Processing attachment ${idx}:`, attachment);
+                                        const candidateRawUrls: string[] = [];
+                                        const pushCandidate = (value: unknown) => {
+                                          if (typeof value === 'string') {
+                                            const trimmed = value.trim();
+                                            if (trimmed.length > 0) {
+                                              candidateRawUrls.push(trimmed);
+                                            }
+                                          }
+                                        };
+
+                                        pushCandidate((attachment as Record<string, unknown>)?.publicUrl);
+                                        pushCandidate((attachment as Record<string, unknown>)?.public_url);
+                                        pushCandidate((attachment as Record<string, unknown>)?.url);
+                                        pushCandidate((attachment as Record<string, unknown>)?.assetUrl);
+
+                                        const uniqueCandidates = Array.from(new Set(candidateRawUrls));
+                                        if (uniqueCandidates.length === 0) {
+                                          console.log(`🖼️ No URL found for attachment ${idx}`);
                                           return null;
                                         }
                                         const resolveUrl = (value: string) => {
                                           if (/^https?:\/\//i.test(value)) {
                                             return value;
                                           }
-                                          if (API_BASE) {
-                                            if (value.startsWith('/')) {
-                                              return `${API_BASE}${value}`;
-                                            }
-                                            return `${API_BASE}/${value}`;
+                                          // API_BASE가 비어있더라도 올바르게 처리
+                                          if (value.startsWith('/')) {
+                                            return API_BASE ? `${API_BASE}${value}` : value;
                                           }
-                                          return value.startsWith('/') ? value : `/${value}`;
+                                          return API_BASE ? `${API_BASE}/${value}` : `/${value}`;
                                         };
-                                      const imageUrl = resolveUrl(rawUrl);
-                                      return (
-                                        <div key={idx} className="relative group">
-                                          <div className="w-40 h-40 bg-gray-200 rounded-lg overflow-hidden border border-gray-300 ">
-                                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                                            <img 
-                                              src={imageUrl}
-                                              alt={`Image ${idx + 1}`}
-                                              className="w-full h-full object-cover"
-                                              onError={(e) => {
-                                                // Fallback to icon if image fails to load
-                                                const target = e.target as HTMLImageElement;
-                                                console.error('❌ Image failed to load:', target.src, 'Error:', e);
-                                                target.style.display = 'none';
-                                                const parent = target.parentElement;
-                                                if (parent) {
-                                                  parent.innerHTML = `
-                                                    <div class="w-full h-full flex items-center justify-center">
-                                                      <svg class="w-16 h-16 text-gray-400 " fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                                      </svg>
-                                                    </div>
-                                                  `;
-                                                }
-                                              }}
-                                            />
+                                        const resolvedCandidates = uniqueCandidates.map(resolveUrl);
+                                        const imageUrl =
+                                          resolvedCandidates.find(url => !failedImageUrls.has(url)) ??
+                                          resolvedCandidates[0];
+                                        if (!imageUrl) {
+                                          console.log(`🖼️ Failed to resolve any URL for attachment ${idx}`);
+                                          return null;
+                                        }
+                                        const allCandidatesFailed = resolvedCandidates.every(url => failedImageUrls.has(url));
+                                        console.log(`🖼️ Resolved image URL for attachment ${idx}:`, imageUrl, {
+                                          candidates: resolvedCandidates,
+                                          allCandidatesFailed,
+                                        });
+
+                                        const handleImageError = () => {
+                                          console.error('❌ Image failed to load:', imageUrl);
+                                          setFailedImageUrls(prev => {
+                                            const next = new Set(prev);
+                                            next.add(imageUrl);
+                                            return next;
+                                          });
+                                        };
+
+                                        return (
+                                          <div key={idx} className="relative group">
+                                            <div className="w-40 h-40 bg-gray-200 rounded-lg overflow-hidden border border-gray-300 ">
+                                              {allCandidatesFailed ? (
+                                                // 실패 시 아이콘 표시
+                                                <div className="w-full h-full flex items-center justify-center">
+                                                  <svg className="w-16 h-16 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                  </svg>
+                                                </div>
+                                              ) : (
+                                                // 정상 이미지 표시
+                                                /* eslint-disable-next-line @next/next/no-img-element */
+                                                <img
+                                                  src={imageUrl}
+                                                  alt={`Image ${idx + 1}`}
+                                                  className="w-full h-full object-cover"
+                                                  onError={handleImageError}
+                                                />
+                                              )}
+                                            </div>
+                                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 rounded-lg transition-opacity flex items-center justify-center">
+                                              <span className="text-white text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-60 px-2 py-1 rounded">
+                                                #{idx + 1}
+                                              </span>
+                                            </div>
+                                            {/* Tooltip with filename */}
+                                            <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                                              {toRelativePath(attachment.name)}
+                                            </div>
                                           </div>
-                                          <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 rounded-lg transition-opacity flex items-center justify-center">
-                                            <span className="text-white text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-60 px-2 py-1 rounded">
-                                              #{idx + 1}
-                                            </span>
-                                          </div>
-                                          {/* Tooltip with filename */}
-                                          <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                                            {toRelativePath(attachment.name)}
-                                          </div>
-                                        </div>
                                         );
                                       })}
                                     </div>

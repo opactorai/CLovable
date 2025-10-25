@@ -30,6 +30,7 @@ export function useWebSocket({
   const shouldReconnectRef = useRef(true);
   const manualCloseRef = useRef(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const handlersRef = useRef({
     onMessage,
     onStatus,
@@ -126,11 +127,13 @@ export function useWebSocket({
     };
 
     const openWebSocket = () => {
+      setIsConnecting(true);
       const ws = new WebSocket(resolveWebSocketUrl());
       manualCloseRef.current = false;
 
       ws.onopen = () => {
         setIsConnected(true);
+        setIsConnecting(false);
         connectionAttemptsRef.current = 0;
         startHeartbeat();
         handlersRef.current.onConnect?.();
@@ -212,17 +215,20 @@ export function useWebSocket({
 
       ws.onerror = (error) => {
         if (manualCloseRef.current) {
+          setIsConnecting(false);
           return;
         }
         console.error('❌ WebSocket error:', error);
         console.error('❌ WebSocket readyState:', ws.readyState);
         console.error('❌ WebSocket URL:', ws.url);
         clearHeartbeat();
+        setIsConnecting(false);
         handlersRef.current.onError?.(new Error(`WebSocket connection error to ${ws.url}`));
       };
 
       ws.onclose = () => {
         setIsConnected(false);
+        setIsConnecting(false);
         clearHeartbeat();
         handlersRef.current.onDisconnect?.();
         
@@ -273,6 +279,7 @@ export function useWebSocket({
         try {
           openWebSocket();
         } catch (error) {
+          setIsConnecting(false);
           console.error('Failed to create WebSocket connection:', error);
           handlersRef.current.onError?.(error as Error);
         }
@@ -284,6 +291,7 @@ export function useWebSocket({
     shouldReconnectRef.current = false;
     manualCloseRef.current = true;
     clearHeartbeat();
+    setIsConnecting(false);
     
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
@@ -334,6 +342,7 @@ export function useWebSocket({
 
   return {
     isConnected,
+    isConnecting,
     connect,
     disconnect,
     sendMessage,
