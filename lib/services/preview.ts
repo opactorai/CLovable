@@ -8,11 +8,28 @@ import fs from 'fs/promises';
 import { findAvailablePort } from '@/lib/utils/ports';
 import { getProjectById, updateProject, updateProjectStatus } from './project';
 import { scaffoldBasicNextApp } from '@/lib/utils/scaffold';
+import { PREVIEW_CONFIG } from '@/lib/config/constants';
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const LOG_LIMIT = 400;
-const PREVIEW_FALLBACK_PORT_START = 3_100;
-const PREVIEW_FALLBACK_PORT_END = 3_999;
+const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+const yarnCommand = process.platform === 'win32' ? 'yarn.cmd' : 'yarn';
+const bunCommand = process.platform === 'win32' ? 'bun.exe' : 'bun';
+
+type PackageManagerId = 'npm' | 'pnpm' | 'yarn' | 'bun';
+
+const PACKAGE_MANAGER_COMMANDS: Record<
+  PackageManagerId,
+  { command: string; installArgs: string[] }
+> = {
+  npm: { command: npmCommand, installArgs: ['install'] },
+  pnpm: { command: pnpmCommand, installArgs: ['install'] },
+  yarn: { command: yarnCommand, installArgs: ['install'] },
+  bun: { command: bunCommand, installArgs: ['install'] },
+};
+
+const LOG_LIMIT = PREVIEW_CONFIG.LOG_LIMIT;
+const PREVIEW_FALLBACK_PORT_START = PREVIEW_CONFIG.FALLBACK_PORT_START;
+const PREVIEW_FALLBACK_PORT_END = PREVIEW_CONFIG.FALLBACK_PORT_END;
 const PREVIEW_MAX_PORT = 65_535;
 const ROOT_ALLOWED_FILES = new Set([
   '.DS_Store',
@@ -218,6 +235,77 @@ async function fileExists(targetPath: string): Promise<boolean> {
     return stat.isFile();
   } catch {
     return false;
+  }
+}
+
+function parsePackageManagerField(value: unknown): PackageManagerId | null {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return null;
+  }
+  const [rawName] = value.split('@');
+  const name = rawName.trim().toLowerCase();
+  if (name === 'npm' || name === 'pnpm' || name === 'yarn' || name === 'bun') {
+    return name as PackageManagerId;
+  }
+  return null;
+}
+
+function isCommandNotFound(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  const err = error as NodeJS.ErrnoException;
+  return err.code === 'ENOENT';
+}
+
+async function detectPackageManager(projectPath: string): Promise<PackageManagerId> {
+  const packageJson = await readPackageJson(projectPath);
+  const fromField = parsePackageManagerField(packageJson?.packageManager);
+  if (fromField) {
+    return fromField;
+  }
+
+  if (await fileExists(path.join(projectPath, 'pnpm-lock.yaml'))) {
+    return 'pnpm';
+  }
+  if (await fileExists(path.join(projectPath, 'yarn.lock'))) {
+    return 'yarn';
+  }
+  if (await fileExists(path.join(projectPath, 'bun.lockb'))) {
+    return 'bun';
+  }
+  if (await fileExists(path.join(projectPath, 'package-lock.json'))) {
+    return 'npm';
+  }
+  return 'npm';
+}
+
+async function runInstallWithPreferredManager(
+  projectPath: string,
+  env: NodeJS.ProcessEnv,
+  logger: (chunk: Buffer | string) => void
+): Promise<void> {
+  const manager = await detectPackageManager(projectPath);
+  const { command, installArgs } = PACKAGE_MANAGER_COMMANDS[manager];
+
+  logger(`[PreviewManager] Installing dependencies using ${manager}.`);
+  try {
+    await appendCommandLogs(command, installArgs, projectPath, env, logger);
+  } catch (error) {
+    if (manager !== 'npm' && isCommandNotFound(error)) {
+      logger(
+        `[PreviewManager] ${command} unavailable. Falling back to npm install.`
+      );
+      await appendCommandLogs(
+        PACKAGE_MANAGER_COMMANDS.npm.command,
+        PACKAGE_MANAGER_COMMANDS.npm.installArgs,
+        projectPath,
+        env,
+        logger
+      );
+      return;
+    }
+    throw error;
   }
 }
 
@@ -493,7 +581,7 @@ async function ensureDependencies(
     // node_modules missing, fall back to npm install
   }
 
-  await appendCommandLogs(npmCommand, ['install'], projectPath, env, logger);
+  await runInstallWithPreferredManager(projectPath, env, logger);
 }
 
 export interface PreviewInfo {
@@ -561,15 +649,13 @@ class PreviewManager {
         .forEach((line) => record(line));
     };
 
-    // Use a per-project lock to avoid concurrent npm installs
+    // Use a per-project lock to avoid concurrent install commands
     const runInstall = async () => {
       const installPromise = (async () => {
         try {
           const hasNodeModules = await directoryExists(path.join(projectPath, 'node_modules'));
           if (!hasNodeModules) {
-            await appendCommandLogs(
-              npmCommand,
-              ['install'],
+            await runInstallWithPreferredManager(
               projectPath,
               { ...process.env },
               collectFromChunk
@@ -593,7 +679,7 @@ class PreviewManager {
     }
 
     if (hadNodeModules) {
-      record('Dependencies already installed. Skipped npm install.');
+      record('Dependencies already installed. Skipped install command.');
     } else {
       record('Dependency installation completed.');
     }
@@ -686,7 +772,7 @@ class PreviewManager {
         try {
           // Double-check just before install
           if (!(await directoryExists(path.join(projectPath, 'node_modules')))) {
-            await appendCommandLogs(npmCommand, ['install'], projectPath, env, log);
+            await runInstallWithPreferredManager(projectPath, env, log);
           }
         } finally {
           this.installing.delete(projectId);
@@ -832,11 +918,14 @@ class PreviewManager {
   public async stop(projectId: string): Promise<PreviewInfo> {
     const processInfo = this.processes.get(projectId);
     if (!processInfo) {
-      await updateProject(projectId, {
-        previewUrl: null,
-        previewPort: null,
-      });
-      await updateProjectStatus(projectId, 'idle');
+      const project = await getProjectById(projectId);
+      if (project) {
+        await updateProject(projectId, {
+          previewUrl: null,
+          previewPort: null,
+        });
+        await updateProjectStatus(projectId, 'idle');
+      }
       return {
         port: null,
         url: null,

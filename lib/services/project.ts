@@ -3,12 +3,15 @@
  */
 
 import { prisma } from '@/lib/db/client';
-import type { Project, CreateProjectInput, UpdateProjectInput } from '@/backend-types';
+import type { Project, CreateProjectInput, UpdateProjectInput } from '@/types/backend';
 import fs from 'fs/promises';
 import path from 'path';
-import { normalizeClaudeModelId } from '@/lib/constants/claudeModels';
+import { normalizeModelId, getDefaultModelForCli } from '@/lib/constants/cliModels';
 
 const PROJECTS_DIR = process.env.PROJECTS_DIR || './data/projects';
+const PROJECTS_DIR_ABSOLUTE = path.isAbsolute(PROJECTS_DIR)
+  ? PROJECTS_DIR
+  : path.resolve(process.cwd(), PROJECTS_DIR);
 
 /**
  * Retrieve all projects
@@ -21,7 +24,7 @@ export async function getAllProjects(): Promise<Project[]> {
   });
   return projects.map(project => ({
     ...project,
-    selectedModel: project.selectedModel ? normalizeClaudeModelId(project.selectedModel) : null,
+    selectedModel: normalizeModelId(project.preferredCli ?? 'claude', project.selectedModel ?? undefined),
   })) as Project[];
 }
 
@@ -35,7 +38,7 @@ export async function getProjectById(id: string): Promise<Project | null> {
   if (!project) return null;
   return {
     ...project,
-    selectedModel: project.selectedModel ? normalizeClaudeModelId(project.selectedModel) : null,
+    selectedModel: normalizeModelId(project.preferredCli ?? 'claude', project.selectedModel ?? undefined),
   } as Project;
 }
 
@@ -44,7 +47,7 @@ export async function getProjectById(id: string): Promise<Project | null> {
  */
 export async function createProject(input: CreateProjectInput): Promise<Project> {
   // Create project directory
-  const projectPath = path.join(PROJECTS_DIR, input.project_id);
+  const projectPath = path.join(PROJECTS_DIR_ABSOLUTE, input.project_id);
   await fs.mkdir(projectPath, { recursive: true });
 
   // Create project in database
@@ -56,7 +59,7 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
       initialPrompt: input.initialPrompt,
       repoPath: projectPath,
       preferredCli: input.preferredCli || 'claude',
-      selectedModel: normalizeClaudeModelId(input.selectedModel),
+      selectedModel: normalizeModelId(input.preferredCli || 'claude', input.selectedModel ?? getDefaultModelForCli(input.preferredCli || 'claude')),
       status: 'idle',
       templateType: 'nextjs',
       lastActiveAt: new Date(),
@@ -68,7 +71,7 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
   console.log(`[ProjectService] Created project: ${project.id}`);
   return {
     ...project,
-    selectedModel: project.selectedModel ? normalizeClaudeModelId(project.selectedModel) : null,
+    selectedModel: normalizeModelId(project.preferredCli ?? 'claude', project.selectedModel ?? undefined),
   } as Project;
 }
 
@@ -79,12 +82,21 @@ export async function updateProject(
   id: string,
   input: UpdateProjectInput
 ): Promise<Project> {
+  const existing = await prisma.project.findUnique({
+    where: { id },
+    select: { preferredCli: true },
+  });
+  const targetCli = input.preferredCli ?? existing?.preferredCli ?? 'claude';
+  const normalizedModel = input.selectedModel
+    ? normalizeModelId(targetCli, input.selectedModel)
+    : undefined;
+
   const project = await prisma.project.update({
     where: { id },
     data: {
       ...input,
       ...(input.selectedModel
-        ? { selectedModel: normalizeClaudeModelId(input.selectedModel) }
+        ? { selectedModel: normalizedModel }
         : {}),
       updatedAt: new Date(),
     },
@@ -93,7 +105,7 @@ export async function updateProject(
   console.log(`[ProjectService] Updated project: ${id}`);
   return {
     ...project,
-    selectedModel: project.selectedModel ? normalizeClaudeModelId(project.selectedModel) : null,
+    selectedModel: normalizeModelId(project.preferredCli ?? 'claude', project.selectedModel ?? undefined),
   } as Project;
 }
 
@@ -171,7 +183,7 @@ export async function getProjectCliPreference(projectId: string): Promise<Projec
   return {
     preferredCli: project.preferredCli ?? 'claude',
     fallbackEnabled: project.fallbackEnabled ?? false,
-    selectedModel: project.selectedModel ? normalizeClaudeModelId(project.selectedModel) : null,
+    selectedModel: normalizeModelId(project.preferredCli ?? 'claude', project.selectedModel ?? undefined),
   };
 }
 
@@ -179,6 +191,12 @@ export async function updateProjectCliPreference(
   projectId: string,
   input: Partial<ProjectCliPreference>
 ): Promise<ProjectCliPreference> {
+  const existing = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { preferredCli: true },
+  });
+  const targetCli = input.preferredCli ?? existing?.preferredCli ?? 'claude';
+
   const result = await prisma.project.update({
     where: { id: projectId },
     data: {
@@ -187,7 +205,7 @@ export async function updateProjectCliPreference(
         ? { fallbackEnabled: input.fallbackEnabled }
         : {}),
       ...(input.selectedModel
-        ? { selectedModel: normalizeClaudeModelId(input.selectedModel) }
+        ? { selectedModel: normalizeModelId(targetCli, input.selectedModel) }
         : input.selectedModel === null
         ? { selectedModel: null }
         : {}),
@@ -203,6 +221,6 @@ export async function updateProjectCliPreference(
   return {
     preferredCli: result.preferredCli ?? 'claude',
     fallbackEnabled: result.fallbackEnabled ?? false,
-    selectedModel: result.selectedModel ? normalizeClaudeModelId(result.selectedModel) : null,
+    selectedModel: normalizeModelId(result.preferredCli ?? 'claude', result.selectedModel ?? undefined),
   };
 }

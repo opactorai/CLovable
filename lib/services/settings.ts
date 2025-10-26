@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { CLAUDE_DEFAULT_MODEL, normalizeClaudeModelId } from '@/lib/constants/claudeModels';
+import { getDefaultModelForCli, normalizeModelId } from '@/lib/constants/cliModels';
 
 const DATA_DIR = process.env.SETTINGS_DIR || path.join(process.cwd(), 'data');
 const SETTINGS_FILE = path.join(DATA_DIR, 'global-settings.json');
@@ -16,7 +16,19 @@ const DEFAULT_SETTINGS: GlobalSettings = {
   default_cli: 'claude',
   cli_settings: {
     claude: {
-      model: CLAUDE_DEFAULT_MODEL,
+      model: getDefaultModelForCli('claude'),
+    },
+    codex: {
+      model: getDefaultModelForCli('codex'),
+    },
+    cursor: {
+      model: getDefaultModelForCli('cursor'),
+    },
+    qwen: {
+      model: getDefaultModelForCli('qwen'),
+    },
+    glm: {
+      model: getDefaultModelForCli('glm'),
     },
   },
 };
@@ -33,11 +45,21 @@ async function readSettingsFile(): Promise<GlobalSettings | null> {
       return null;
     }
 
+    const defaultCli = typeof parsed.default_cli === 'string'
+      ? parsed.default_cli
+      : DEFAULT_SETTINGS.default_cli;
+
+    const cliSettings =
+      typeof parsed.cli_settings === 'object' && parsed.cli_settings !== null
+        ? parsed.cli_settings
+        : {};
+
     return {
       default_cli: typeof parsed.default_cli === 'string' ? parsed.default_cli : DEFAULT_SETTINGS.default_cli,
-      cli_settings: typeof parsed.cli_settings === 'object' && parsed.cli_settings !== null
-        ? parsed.cli_settings
-        : DEFAULT_SETTINGS.cli_settings,
+      cli_settings: {
+        ...DEFAULT_SETTINGS.cli_settings,
+        ...cliSettings,
+      },
     };
   } catch (error) {
     return null;
@@ -52,7 +74,14 @@ async function writeSettings(settings: GlobalSettings): Promise<void> {
 export async function loadGlobalSettings(): Promise<GlobalSettings> {
   const existing = await readSettingsFile();
   if (existing) {
-    return existing;
+    const merged: GlobalSettings = {
+      default_cli: existing.default_cli ?? DEFAULT_SETTINGS.default_cli,
+      cli_settings: {
+        ...DEFAULT_SETTINGS.cli_settings,
+        ...(existing.cli_settings ?? {}),
+      },
+    };
+    return merged;
   }
 
   await writeSettings(DEFAULT_SETTINGS);
@@ -72,7 +101,7 @@ export function normalizeCliSettings(settings: unknown): CLISettings | undefined
       };
       const model = normalized[cli].model as string | undefined;
       if (model) {
-        normalized[cli].model = normalizeClaudeModelId(model);
+        normalized[cli].model = normalizeModelId(cli, model);
       }
     }
   }

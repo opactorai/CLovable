@@ -4,10 +4,13 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { encrypt, decrypt } from '@/lib/crypto';
 import type { EnvVar } from '@prisma/client';
-import type { Project } from '@/backend-types';
+import type { Project } from '@/types/backend';
 import { getProjectById } from '@/lib/services/project';
 
 const PROJECTS_DIR = process.env.PROJECTS_DIR || './data/projects';
+const PROJECTS_DIR_ABSOLUTE = path.isAbsolute(PROJECTS_DIR)
+  ? PROJECTS_DIR
+  : path.resolve(process.cwd(), PROJECTS_DIR);
 
 export interface EnvVarRecord {
   id: string;
@@ -29,7 +32,7 @@ interface CreateEnvVarInput {
 }
 
 function resolveRepoRoot(project: Project): string {
-  const repoPath = project.repoPath || path.join(PROJECTS_DIR, project.id);
+  const repoPath = project.repoPath || path.join(PROJECTS_DIR_ABSOLUTE, project.id);
   return path.isAbsolute(repoPath) ? repoPath : path.resolve(process.cwd(), repoPath);
 }
 

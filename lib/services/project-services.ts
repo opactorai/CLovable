@@ -12,6 +12,12 @@ function deserializeServiceData(connection: ProjectServiceConnection) {
       serviceData: connection.serviceData ? JSON.parse(connection.serviceData) : {},
     };
   } catch (error) {
+    console.error(
+      `[ProjectServices] Failed to deserialize service data for connection ${connection.id}:`,
+      error instanceof Error ? error.message : 'Unknown error',
+      '\nRaw data:',
+      connection.serviceData
+    );
     return {
       ...connection,
       serviceData: {},
