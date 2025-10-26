@@ -1,4 +1,4 @@
-import type { MessageMetadata } from '@/backend-types';
+import type { MessageMetadata } from '@/types/backend';
 
 export type MessageRole = 'assistant' | 'user' | 'system' | 'tool';
 
@@ -20,6 +20,7 @@ export interface RealtimeMessage {
   updatedAt?: string;
   isStreaming?: boolean;
   isFinal?: boolean;
+  isOptimistic?: boolean; // Flag for optimistically added messages (not yet confirmed by server)
 }
 
 export interface RealtimeStatus {
@@ -37,6 +38,7 @@ export interface ConnectionInfo {
   timestamp: string;
   sessionId?: string;
   transport?: StreamTransport;
+  connectionStage?: 'handshake' | 'assistant';
 }
 
 export interface HeartbeatInfo {

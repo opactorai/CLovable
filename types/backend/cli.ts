@@ -2,7 +2,7 @@
  * AI CLI-related types
  */
 
-export type CLIType = 'claude' | 'cursor' | 'codex' | 'gemini' | 'qwen';
+export type CLIType = 'claude' | 'cursor' | 'codex' | 'gemini' | 'qwen' | 'glm';
 
 export type SessionType = 'chat' | 'code_gen' | 'error_fix';
 
@@ -44,6 +44,7 @@ export interface CLIStatus {
     version?: string;
     checking: boolean;
     error?: string;
+    models?: string[];
   };
 }
 

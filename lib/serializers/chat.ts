@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import type { Message, MessageMetadata } from '@/backend-types';
+import type { Message, MessageMetadata } from '@/types/backend';
 import type { RealtimeMessage } from '@/types';
 
 function parseMetadata(metadataJson?: string | null): MessageMetadata | null {
@@ -45,6 +45,11 @@ export function serializeMessages(messages: Message[]): RealtimeMessage[] {
 export function createRealtimeMessage(
   payload: Partial<RealtimeMessage> & Pick<RealtimeMessage, 'projectId' | 'role' | 'messageType' | 'content'>
 ): RealtimeMessage {
+  const createdAt = payload.createdAt ?? new Date().toISOString();
+  const updatedAt =
+    payload.updatedAt ??
+    createdAt;
+
   return {
     id: payload.id ?? randomUUID(),
     projectId: payload.projectId,
@@ -57,9 +62,10 @@ export function createRealtimeMessage(
     sessionId: payload.sessionId ?? null,
     cliSource: payload.cliSource ?? null,
     requestId: payload.requestId ?? undefined,
-    createdAt: payload.createdAt ?? new Date().toISOString(),
-    updatedAt: payload.updatedAt,
+    createdAt,
+    updatedAt,
     isStreaming: payload.isStreaming,
     isFinal: payload.isFinal,
+    isOptimistic: payload.isOptimistic,
   };
 }

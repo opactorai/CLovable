@@ -15,9 +15,9 @@ export interface Message {
   projectId: string;
   conversationId: string | null;
   sessionId: string | null;
-  role: 'assistant' | 'user' | 'system';
+  role: 'assistant' | 'user' | 'system' | 'tool';
   content: string;
-  messageType: 'chat' | 'tool_use' | 'error' | 'info';
+  messageType: 'chat' | 'tool_use' | 'tool_result' | 'error' | 'info' | 'system';
   metadataJson: string | null;
   parentMessageId: string | null;
   cliSource: string | null;
@@ -65,11 +65,12 @@ export interface ChatActRequest {
 export interface CreateMessageInput {
   id?: string;
   projectId: string;
-  role: 'assistant' | 'user' | 'system';
-  messageType: 'chat' | 'tool_use' | 'error' | 'info';
+  role: 'assistant' | 'user' | 'system' | 'tool';
+  messageType: 'chat' | 'tool_use' | 'tool_result' | 'error' | 'info' | 'system';
   content: string;
   metadata?: MessageMetadata | null;
   sessionId?: string | null;
   conversationId?: string | null;
   cliSource?: string | null;
+  requestId?: string | null;
 }
