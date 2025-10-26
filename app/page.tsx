@@ -2,14 +2,26 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import CreateProjectModal from '@/components/CreateProjectModal';
-import DeleteProjectModal from '@/components/DeleteProjectModal';
-import GlobalSettings from '@/components/GlobalSettings';
+import CreateProjectModal from '@/components/modals/CreateProjectModal';
+import DeleteProjectModal from '@/components/modals/DeleteProjectModal';
+import GlobalSettings from '@/components/settings/GlobalSettings';
 import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
-import { CLAUDE_MODEL_DEFINITIONS, CLAUDE_DEFAULT_MODEL, normalizeClaudeModelId, getClaudeModelDisplayName } from '@/lib/constants/claudeModels';
+import { getDefaultModelForCli, getModelDisplayName } from '@/lib/constants/cliModels';
 import Image from 'next/image';
 import { Image as ImageIcon } from 'lucide-react';
 import type { Project as ProjectSummary } from '@/types/project';
+import { fetchCliStatusSnapshot, createCliStatusFallback } from '@/hooks/useCLI';
+import type { CLIStatus } from '@/types/cli';
+import {
+  ACTIVE_CLI_BRAND_COLORS,
+  ACTIVE_CLI_MODEL_OPTIONS,
+  ACTIVE_CLI_OPTIONS,
+  ACTIVE_CLI_OPTIONS_MAP,
+  DEFAULT_ACTIVE_CLI,
+  normalizeModelForCli,
+  sanitizeActiveCli,
+  type ActiveCliId,
+} from '@/lib/utils/cliOptions';
 
 // Ensure fetch is available
 const fetchAPI = globalThis.fetch || fetch;
@@ -17,12 +29,15 @@ const fetchAPI = globalThis.fetch || fetch;
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 
 // Define assistant brand colors
-const assistantBrandColors: { [key: string]: string } = {
-  claude: '#DE7356'
-};
+const ASSISTANT_OPTIONS = ACTIVE_CLI_OPTIONS.map(({ id, name, icon }) => ({
+  id,
+  name,
+  icon,
+}));
 
-const CLAUDE_MODEL_OPTIONS = CLAUDE_MODEL_DEFINITIONS.map(({ id, name }) => ({ id, name }));
-const ASSISTANT_OPTIONS = [{ id: 'claude', name: 'Claude Code', icon: '/claude.png' }];
+const assistantBrandColors = ACTIVE_CLI_BRAND_COLORS;
+
+const MODEL_OPTIONS_BY_ASSISTANT = ACTIVE_CLI_MODEL_OPTIONS;
 
 export default function HomePage() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -34,16 +49,20 @@ export default function HomePage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [prompt, setPrompt] = useState('');
-  const DEFAULT_ASSISTANT = 'claude';
-  const DEFAULT_MODEL = CLAUDE_DEFAULT_MODEL;
+  const DEFAULT_ASSISTANT: ActiveCliId = DEFAULT_ACTIVE_CLI;
+  const DEFAULT_MODEL = getDefaultModelForCli(DEFAULT_ASSISTANT);
   const sanitizeAssistant = useCallback(
-    (cli?: string | null) => (cli && cli.toLowerCase() === 'claude' ? 'claude' : DEFAULT_ASSISTANT),
+    (cli?: string | null) => sanitizeActiveCli(cli, DEFAULT_ASSISTANT),
     [DEFAULT_ASSISTANT]
   );
-  const sanitizeModel = useCallback((model?: string | null) => normalizeClaudeModelId(model), []);
+  const normalizeModelForAssistant = useCallback(
+    (assistant: string, model?: string | null) => normalizeModelForCli(assistant, model, DEFAULT_ASSISTANT),
+    [DEFAULT_ASSISTANT]
+  );
+
   const normalizeProjectPayload = useCallback((project: any): ProjectSummary => {
     const preferred = sanitizeAssistant(project?.preferredCli ?? project?.preferred_cli);
-    const selected = sanitizeModel(project?.selectedModel ?? project?.selected_model);
+    const selected = normalizeModelForAssistant(preferred, project?.selectedModel ?? project?.selected_model);
 
     return {
       id: project.id,
@@ -61,21 +80,17 @@ export default function HomePage() {
       selectedModel: selected,
       fallbackEnabled: project.fallbackEnabled ?? project.fallback_enabled ?? false,
     };
-  }, [sanitizeAssistant, sanitizeModel]);
-  const [selectedAssistant, setSelectedAssistant] = useState(sanitizeAssistant('claude'));
+  }, [sanitizeAssistant, normalizeModelForAssistant]);
+  const [selectedAssistant, setSelectedAssistant] = useState<ActiveCliId>(DEFAULT_ASSISTANT);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const [usingGlobalDefaults, setUsingGlobalDefaults] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [cliStatus, setCLIStatus] = useState<{ [key: string]: { installed: boolean; checking: boolean; version?: string; error?: string; } }>({});
+  const [cliStatus, setCLIStatus] = useState<CLIStatus>({});
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  
-  // Define models for each assistant statically
-  const modelsByAssistant = {
-    claude: CLAUDE_MODEL_OPTIONS
-  } as const;
+  const selectedAssistantOption = ACTIVE_CLI_OPTIONS_MAP[selectedAssistant];
   
   // Get available models based on current assistant
-  const availableModels = modelsByAssistant[selectedAssistant as keyof typeof modelsByAssistant] || [];
+  const availableModels = MODEL_OPTIONS_BY_ASSISTANT[selectedAssistant] || [];
   
   // Sync with Global Settings (until user overrides locally)
   const { settings: globalSettings } = useGlobalSettings();
@@ -96,7 +111,7 @@ export default function HomePage() {
 
       if (storedModelRaw) {
         const storedAssistant = sanitizeAssistant(storedAssistantRaw);
-        const storedModel = sanitizeModel(storedModelRaw);
+        const storedModel = normalizeModelForAssistant(storedAssistant, storedModelRaw);
         setSelectedAssistant(storedAssistant);
         setSelectedModel(storedModel);
         setUsingGlobalDefaults(false);
@@ -109,7 +124,7 @@ export default function HomePage() {
     return () => {
       // Don't clear on navigation, only on actual page unload
     };
-  }, [sanitizeAssistant, sanitizeModel]);
+  }, [sanitizeAssistant, normalizeModelForAssistant]);
   
   // Apply global settings when using defaults
   useEffect(() => {
@@ -117,18 +132,18 @@ export default function HomePage() {
     
     const cli = sanitizeAssistant(globalSettings?.default_cli);
     setSelectedAssistant(cli);
-    const modelFromGlobal =
-      globalSettings?.cli_settings?.[cli]?.model;
-    setSelectedModel(sanitizeModel(modelFromGlobal));
-  }, [globalSettings, usingGlobalDefaults, isInitialLoad, sanitizeAssistant, sanitizeModel]);
+    const modelFromGlobal = globalSettings?.cli_settings?.[cli]?.model;
+    setSelectedModel(normalizeModelForAssistant(cli, modelFromGlobal));
+  }, [globalSettings, usingGlobalDefaults, isInitialLoad, sanitizeAssistant, normalizeModelForAssistant]);
   
   // Save selections to sessionStorage when they change
   useEffect(() => {
     if (!isInitialLoad && selectedAssistant && selectedModel) {
-      sessionStorage.setItem('selectedAssistant', sanitizeAssistant(selectedAssistant));
-      sessionStorage.setItem('selectedModel', sanitizeModel(selectedModel));
+      const normalizedAssistant = sanitizeAssistant(selectedAssistant);
+      sessionStorage.setItem('selectedAssistant', normalizedAssistant);
+      sessionStorage.setItem('selectedModel', normalizeModelForAssistant(normalizedAssistant, selectedModel));
     }
-  }, [selectedAssistant, selectedModel, isInitialLoad, sanitizeAssistant, sanitizeModel]);
+  }, [selectedAssistant, selectedModel, isInitialLoad, sanitizeAssistant, normalizeModelForAssistant]);
   
   // Clear navigation flag on page unload
   useEffect(() => {
@@ -153,63 +168,44 @@ export default function HomePage() {
 
   // Check CLI installation status
   useEffect(() => {
-    const checkCLIStatus = async () => {
-      // Initialize with checking status
-      const checkingStatus: { [key: string]: { installed: boolean; checking: boolean; } } = {};
-      ASSISTANT_OPTIONS.forEach(cli => {
-        checkingStatus[cli.id] = { installed: false, checking: true };
-      });
-      setCLIStatus(checkingStatus);
-      
-      try {
-        const response = await fetch(`${API_BASE}/api/settings/cli-status`);
-        if (response.ok) {
-          const data = await response.json();
-          setCLIStatus(data);
-        } else {
-          // Fallback if API endpoint doesn't exist
-          const fallbackStatus: { [key: string]: { installed: boolean; checking: boolean; error: string; } } = {};
-          ASSISTANT_OPTIONS.forEach(cli => {
-            fallbackStatus[cli.id] = {
-              installed: cli.id === 'claude',
-              checking: false,
-              error: 'Unable to check installation status'
-            };
-          });
-          setCLIStatus(fallbackStatus);
-        }
-      } catch (error) {
-        console.error('Failed to check CLI status:', error);
-        // Error fallback
-        const errorStatus: { [key: string]: { installed: boolean; checking: boolean; error: string; } } = {};
-        ASSISTANT_OPTIONS.forEach(cli => {
-          errorStatus[cli.id] = {
-            installed: cli.id === 'claude',
-            checking: false,
-            error: 'Network error'
-          };
-        });
-        setCLIStatus(errorStatus);
-      }
-    };
+    const checkingStatus = ASSISTANT_OPTIONS.reduce<CLIStatus>((acc, cli) => {
+      acc[cli.id] = {
+        installed: false,
+        checking: true,
+        available: false,
+        configured: false,
+      };
+      return acc;
+    }, {});
+    setCLIStatus(checkingStatus);
 
-    checkCLIStatus();
+    fetchCliStatusSnapshot()
+      .then((status) => setCLIStatus(status))
+      .catch((error) => {
+        console.error('Failed to check CLI status:', error);
+        setCLIStatus(createCliStatusFallback());
+      });
   }, []);
 
   // Click outside handler
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (assistantDropdownRef.current && !assistantDropdownRef.current.contains(event.target as Node)) {
+    const handleDocumentClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+
+      const assistantEl = assistantDropdownRef.current;
+      if (assistantEl && !assistantEl.contains(target)) {
         setShowAssistantDropdown(false);
       }
-      if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) {
+
+      const modelEl = modelDropdownRef.current;
+      if (modelEl && !modelEl.contains(target)) {
         setShowModelDropdown(false);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('mousedown', handleDocumentClick);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('mousedown', handleDocumentClick);
     };
   }, []);
 
@@ -234,16 +230,6 @@ export default function HomePage() {
     // Parse the date as UTC
     const date = new Date(utcDateString);
     const now = new Date();
-    
-    // Debug: Log the conversion (remove in production)
-    console.log('Time formatting:', {
-      input: dateString,
-      converted: utcDateString,
-      parsedISO: date.toISOString(),
-      parsedLocal: date.toLocaleString(),
-      nowISO: now.toISOString()
-    });
-    
     // Calculate the actual time difference
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / (1000 * 60));
@@ -264,9 +250,11 @@ export default function HomePage() {
 
   // Format CLI and model information
   const formatCliInfo = (cli?: string, model?: string) => {
-    const cliName = 'Claude';
-    const modelId = sanitizeModel(model);
-    const modelLabel = getClaudeModelDisplayName(modelId);
+    const normalizedCli = sanitizeAssistant(cli);
+    const assistantOption = ACTIVE_CLI_OPTIONS_MAP[normalizedCli];
+    const cliName = assistantOption?.name ?? 'Claude Code';
+    const modelId = normalizeModelForAssistant(normalizedCli, model);
+    const modelLabel = getModelDisplayName(normalizedCli, modelId);
     return `${cliName} • ${modelLabel}`;
   };
 
@@ -400,29 +388,23 @@ export default function HomePage() {
   }
 
   // Handle files (for both drag drop and file input)
-  const handleFiles = useCallback(async (files: FileList) => {
+  const handleFiles = useCallback(async (files: FileList | File[]) => {
     setIsUploading(true);
     
     try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        
-        // Check if file is an image
-        if (!file.type.startsWith('image/')) {
-          continue;
-        }
-        
-        const imageUrl = URL.createObjectURL(file);
-
-        const newImage = {
+      const filesArray = Array.from(files as ArrayLike<File>);
+      const imagesToAdd = filesArray
+        .filter(file => file.type.startsWith('image/'))
+        .map(file => ({
           id: crypto.randomUUID(),
           name: file.name,
-          url: imageUrl,
-          path: '', // Will be set after upload
-          file: file // Store the actual file for later upload
-        };
+          url: URL.createObjectURL(file),
+          path: '',
+          file,
+        }));
 
-        setUploadedImages(prev => [...prev, newImage]);
+      if (imagesToAdd.length > 0) {
+        setUploadedImages(prev => [...prev, ...imagesToAdd]);
       }
     } catch (error) {
       console.error('Image processing failed:', error);
@@ -535,13 +517,10 @@ export default function HomePage() {
       }
       
       // Upload images if any
-      let finalPrompt = prompt.trim();
       let imageData: any[] = [];
       
       if (uploadedImages.length > 0) {
         try {
-          const uploadedPaths = [];
-          
           for (let i = 0; i < uploadedImages.length; i++) {
             const image = uploadedImages[i];
             if (!image.file) continue;
@@ -556,19 +535,13 @@ export default function HomePage() {
 
             if (uploadResponse.ok) {
               const result = await uploadResponse.json();
-              // Use absolute path so AI can read the file with Read tool
-              uploadedPaths.push(`Image #${i + 1} path: ${result.absolute_path}`);
-              
               // Track image data for API
               imageData.push({
                 name: result.filename || image.name,
-                path: result.absolute_path
+                path: result.absolute_path,
+                public_url: typeof result.public_url === 'string' ? result.public_url : undefined
               });
             }
-          }
-          
-          if (uploadedPaths.length > 0) {
-            finalPrompt = finalPrompt ? `${finalPrompt}\n\n${uploadedPaths.join('\n')}` : uploadedPaths.join('\n');
           }
         } catch (uploadError) {
           console.error('Image upload failed:', uploadError);
@@ -577,7 +550,7 @@ export default function HomePage() {
       }
       
       // Execute initial prompt directly with images
-      if (finalPrompt.trim()) {
+      if (prompt.trim()) {
         try {
           const actResponse = await fetchAPI(`${API_BASE}/api/chat/${createdProjectId}/act`, {
             method: 'POST',
@@ -592,7 +565,7 @@ export default function HomePage() {
           });
           
           if (actResponse.ok) {
-            console.log('✅ ACT started successfully with images:', imageData);
+            // Successfully kicked off ACT with image payloads
           } else {
             console.error('❌ ACT failed:', await actResponse.text());
           }
@@ -602,6 +575,14 @@ export default function HomePage() {
       }
       
       // Navigate to chat page with model and CLI parameters
+      uploadedImages.forEach(image => {
+        if (image.url) {
+          URL.revokeObjectURL(image.url);
+        }
+      });
+      setUploadedImages([]);
+      setPrompt('');
+
       const params = new URLSearchParams();
       if (selectedAssistant) params.set('cli', selectedAssistant);
       if (selectedModel) params.set('model', selectedModel);
@@ -610,6 +591,7 @@ export default function HomePage() {
     } catch (error) {
       console.error('Failed to create project:', error);
       showToast('Failed to create project', 'error');
+    } finally {
       setIsCreatingProject(false);
     }
   };
@@ -666,35 +648,16 @@ export default function HomePage() {
     };
   }, [selectedAssistant, handleFiles, load]);
 
-  // Close dropdowns when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Element;
-      if (!target.closest('.relative')) {
-        setShowAssistantDropdown(false);
-        setShowModelDropdown(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
-
   // Update models when assistant changes
   const handleAssistantChange = (assistant: string) => {
     // Don't allow selecting uninstalled CLIs
     if (!cliStatus[assistant]?.installed) return;
 
     const sanitized = sanitizeAssistant(assistant);
-
-    console.log('🔧 Assistant changing from', selectedAssistant, 'to', sanitized);
     setUsingGlobalDefaults(false);
     setIsInitialLoad(false);
     setSelectedAssistant(sanitized);
-    setSelectedModel(DEFAULT_MODEL);
+    setSelectedModel(getDefaultModelForCli(sanitized));
 
     setShowAssistantDropdown(false);
   };
@@ -702,18 +665,18 @@ export default function HomePage() {
   const handleModelChange = (modelId: string) => {
     setUsingGlobalDefaults(false);
     setIsInitialLoad(false);
-    setSelectedModel(sanitizeModel(modelId));
+    setSelectedModel(normalizeModelForAssistant(selectedAssistant, modelId));
     setShowModelDropdown(false);
   };
 
 
   return (
-    <div className="flex h-screen relative overflow-hidden bg-white dark:bg-black">
+    <div className="flex h-screen relative overflow-hidden bg-white ">
       {/* Radial gradient background from bottom center */}
       <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-white dark:bg-black" />
+        <div className="absolute inset-0 bg-white " />
         <div 
-          className="absolute inset-0 dark:block hidden transition-all duration-1000 ease-in-out"
+          className="absolute inset-0 hidden transition-all duration-1000 ease-in-out"
           style={{
             background: `radial-gradient(circle at 50% 100%, 
               ${(assistantBrandColors[selectedAssistant] || assistantBrandColors.claude)}66 0%, 
@@ -724,7 +687,7 @@ export default function HomePage() {
         />
         {/* Light mode gradient - subtle */}
         <div 
-          className="absolute inset-0 block dark:hidden transition-all duration-1000 ease-in-out"
+          className="absolute inset-0 block transition-all duration-1000 ease-in-out"
           style={{
             background: `radial-gradient(circle at 50% 100%, 
               ${(assistantBrandColors[selectedAssistant] || assistantBrandColors.claude)}40 0%, 
@@ -737,10 +700,10 @@ export default function HomePage() {
       {/* Content wrapper */}
       <div className="relative z-10 flex h-full w-full">
         {/* Thin sidebar bar when closed */}
-        <div className={`${sidebarOpen ? 'w-0' : 'w-12'} fixed inset-y-0 left-0 z-40 bg-transparent border-r border-gray-200/20 dark:border-white/5 transition-all duration-300 flex flex-col`}>
+        <div className={`${sidebarOpen ? 'w-0' : 'w-12'} fixed inset-y-0 left-0 z-40 bg-transparent border-r border-gray-200/20 transition-all duration-300 flex flex-col`}>
           <button
             onClick={() => setSidebarOpen(true)}
-            className="w-full h-12 flex items-center justify-center text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+            className="w-full h-12 flex items-center justify-center text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
             title="Open sidebar"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -752,7 +715,7 @@ export default function HomePage() {
           <div className="mt-auto mb-2">
             <button
               onClick={() => setShowGlobalSettings(true)}
-              className="w-full h-12 flex items-center justify-center text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+              className="w-full h-12 flex items-center justify-center text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
               title="Settings"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -764,17 +727,17 @@ export default function HomePage() {
         </div>
         
         {/* Sidebar - Overlay style */}
-        <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed inset-y-0 left-0 z-40 w-64 bg-white/95 dark:bg-black/90 backdrop-blur-2xl border-r border-gray-200 dark:border-white/10 transition-transform duration-300`}>
+        <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed inset-y-0 left-0 z-40 w-64 bg-white/95 backdrop-blur-2xl border-r border-gray-200 transition-transform duration-300`}>
         <div className="flex flex-col h-full">
           {/* History header with close button */}
-          <div className="p-3 border-b border-gray-200 dark:border-white/10">
+          <div className="p-3 border-b border-gray-200 ">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 px-2 py-1">
-                <h2 className="text-gray-900 dark:text-white font-medium text-lg">History</h2>
+                <h2 className="text-gray-900 font-medium text-lg">History</h2>
               </div>
               <button
                 onClick={() => setSidebarOpen(false)}
-                className="p-1 text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded transition-colors"
+                className="p-1 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
                 title="Close sidebar"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -791,13 +754,15 @@ export default function HomePage() {
                   <p className="text-gray-500 text-sm">No conversations yet</p>
                 </div>
               ) : (
-                projects.map((project) => (
-                  <div 
-                    key={project.id}
-                    className="p-2 px-3 rounded-lg transition-all group"
+                projects.map((project) => {
+                  const projectCli = sanitizeAssistant(project.preferredCli);
+                  const projectColor = assistantBrandColors[projectCli] || assistantBrandColors[DEFAULT_ASSISTANT];
+                  return (
+                    <div 
+                      key={project.id}
+                      className="p-2 px-3 rounded-lg transition-all group"
                     onMouseEnter={(e) => {
-                      const color = assistantBrandColors[project.preferredCli || 'claude'] || assistantBrandColors.claude;
-                      e.currentTarget.style.backgroundColor = `${color}15`;
+                      e.currentTarget.style.backgroundColor = `${projectColor}15`;
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.backgroundColor = 'transparent';
@@ -819,7 +784,7 @@ export default function HomePage() {
                         <input
                           name="name"
                           defaultValue={project.name}
-                          className="w-full px-2 py-1 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          className="w-full px-2 py-1 text-sm bg-white border border-gray-300 rounded text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
                           autoFocus
                           onBlur={() => setEditingProject(null)}
                         />
@@ -853,9 +818,9 @@ export default function HomePage() {
                           }}
                         >
                           <h3 
-                            className="text-gray-900 dark:text-white text-sm transition-colors truncate"
+                            className="text-gray-900 text-sm transition-colors truncate"
                             style={{
-                              '--hover-color': assistantBrandColors[project.preferredCli || 'claude'] || '#DE7356'
+                              '--hover-color': projectColor || '#DE7356'
                             } as React.CSSProperties}
                           >
                             <span 
@@ -877,13 +842,13 @@ export default function HomePage() {
                             {project.preferredCli && (
                               <div className="flex items-center gap-1">
                                 <span className="text-gray-400 text-xs">•</span>
-                                <span 
+                                <span
                                   className="text-xs transition-colors"
                                   style={{
-                                    color: (assistantBrandColors[project.preferredCli || 'claude'] || '#6B7280') + 'CC'
+                                    color: (projectColor || '#6B7280') + 'CC'
                                   }}
                                 >
-                                  Claude
+                                  {formatCliInfo(projectCli, project.selectedModel ?? undefined)}
                                 </span>
                               </div>
                             )}
@@ -917,16 +882,17 @@ export default function HomePage() {
                         </div>
                       </div>
                     )}
-                  </div>
-                ))
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
           
-          <div className="p-2 border-t border-gray-200 dark:border-white/10">
+          <div className="p-2 border-t border-gray-200 ">
             <button 
               onClick={() => setShowGlobalSettings(true)}
-              className="w-full flex items-center gap-2 p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition-all text-sm"
+              className="w-full flex items-center gap-2 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all text-sm"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -958,7 +924,7 @@ export default function HomePage() {
                   Claudable
                 </h1>
               </div>
-              <p className="text-xl text-gray-700 dark:text-white/80 font-light tracking-tight">
+              <p className="text-xl text-gray-700 font-light tracking-tight">
                 Connect CLI Agent • Build what you want • Deploy instantly
               </p>
             </div>
@@ -972,7 +938,7 @@ export default function HomePage() {
                     <img 
                       src={image.url} 
                       alt={image.name}
-                      className="w-20 h-20 object-cover rounded-lg border border-gray-200 dark:border-gray-600"
+                      className="w-20 h-20 object-cover rounded-lg border border-gray-200 "
                     />
                     <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs px-1 py-0.5 rounded-b-lg">
                       Image #{index + 1}
@@ -998,8 +964,8 @@ export default function HomePage() {
               onDrop={handleDrop}
               className={`group flex flex-col gap-4 p-4 w-full rounded-[28px] border backdrop-blur-xl text-base shadow-xl transition-all duration-150 ease-in-out mb-6 relative overflow-visible ${
                 isDragOver 
-                  ? 'border-[#DE7356] bg-[#DE7356]/10 dark:bg-[#DE7356]/20' 
-                  : 'border-gray-200 dark:border-white/10 bg-white dark:bg-black/20'
+                  ? 'border-[#DE7356] bg-[#DE7356]/10 ' 
+                  : 'border-gray-200 bg-white '
               }`}
             >
               <div className="relative flex flex-1 items-center">
@@ -1008,7 +974,7 @@ export default function HomePage() {
                   onChange={(e) => setPrompt(e.target.value)}
                   placeholder="Ask Claudable to create a blog about..."
                   disabled={isCreatingProject}
-                  className="flex w-full rounded-md px-2 py-2 placeholder:text-gray-400 dark:placeholder:text-white/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 resize-none text-[16px] leading-snug md:text-base focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent focus:bg-transparent flex-1 text-gray-900 dark:text-white overflow-y-auto"
+                  className="flex w-full rounded-md px-2 py-2 placeholder:text-gray-400 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 resize-none text-[16px] leading-snug md:text-base focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent focus:bg-transparent flex-1 text-gray-900 overflow-y-auto"
                   style={{ height: '120px' }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
@@ -1026,13 +992,13 @@ export default function HomePage() {
               
               {/* Drag overlay */}
               {isDragOver && (
-                <div className="absolute inset-0 bg-[#DE7356]/10 dark:bg-[#DE7356]/20 rounded-[28px] flex items-center justify-center z-10 border-2 border-dashed border-[#DE7356]">
+                <div className="absolute inset-0 bg-[#DE7356]/10 rounded-[28px] flex items-center justify-center z-10 border-2 border-dashed border-[#DE7356]">
                   <div className="text-center">
                     <div className="text-3xl mb-3">📸</div>
-                    <div className="text-lg font-semibold text-[#DE7356] dark:text-[#DE7356] mb-2">
+                    <div className="text-lg font-semibold text-[#DE7356] mb-2">
                       Drop images here
                     </div>
-                    <div className="text-sm text-[#DE7356] dark:text-[#DE7356]">
+                    <div className="text-sm text-[#DE7356] ">
                       Supports: JPG, PNG, GIF, WEBP
                     </div>
                   </div>
@@ -1043,7 +1009,7 @@ export default function HomePage() {
                 {/* Image Upload Button */}
                 <div className="flex items-center gap-2">
                   <label 
-                    className="flex items-center justify-center w-8 h-8 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center justify-center w-8 h-8 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Upload images"
                   >
                     <ImageIcon className="h-4 w-4" />
@@ -1066,19 +1032,19 @@ export default function HomePage() {
                       setShowAssistantDropdown(!showAssistantDropdown);
                       setShowModelDropdown(false);
                     }}
-                    className="justify-center whitespace-nowrap text-sm font-medium transition-colors duration-100 ease-in-out focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border border-gray-200/50 dark:border-white/5 bg-transparent shadow-sm hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300/50 dark:hover:border-white/10 px-3 py-2 flex h-8 items-center gap-1 rounded-full text-gray-700 dark:text-white/80 hover:text-gray-900 dark:hover:text-white focus-visible:ring-0"
+                    className="justify-center whitespace-nowrap text-sm font-medium transition-colors duration-100 ease-in-out focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border border-gray-200/50 bg-transparent shadow-sm hover:bg-gray-50 hover:border-gray-300/50 px-3 py-2 flex h-8 items-center gap-1 rounded-full text-gray-700 hover:text-gray-900 focus-visible:ring-0"
                   >
                     <div className="w-4 h-4 rounded overflow-hidden">
                       <Image
-                        src="/claude.png"
-                        alt="Claude"
+                        src={selectedAssistantOption?.icon ?? '/claude.png'}
+                        alt={selectedAssistantOption?.name ?? 'Claude Code'}
                         width={16}
                         height={16}
                         className="w-full h-full object-contain"
                       />
                     </div>
                     <span className="hidden md:flex text-sm font-medium">
-                      Claude Code
+                      {selectedAssistantOption?.name ?? 'Claude Code'}
                     </span>
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 -960 960 960" className="shrink-0 h-3 w-3 rotate-90" fill="currentColor">
                       <path d="M530-481 353-658q-9-9-8.5-21t9.5-21 21.5-9 21.5 9l198 198q5 5 7 10t2 11-2 11-7 10L396-261q-9 9-21 8.5t-21-9.5-9-21.5 9-21.5z"/>
@@ -1086,7 +1052,7 @@ export default function HomePage() {
                   </button>
                   
                   {showAssistantDropdown && (
-                    <div className="absolute top-full mt-1 left-0 z-[300] min-w-full whitespace-nowrap rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-gray-900 backdrop-blur-xl shadow-lg">
+                    <div className="absolute top-full mt-1 left-0 z-[300] min-w-full whitespace-nowrap rounded-2xl border border-gray-200 bg-white backdrop-blur-xl shadow-lg">
                       {ASSISTANT_OPTIONS.map((option) => (
                         <button
                           key={option.id}
@@ -1094,15 +1060,15 @@ export default function HomePage() {
                           disabled={!cliStatus[option.id]?.installed}
                           className={`w-full flex items-center gap-2 px-3 py-2 text-left first:rounded-t-2xl last:rounded-b-2xl transition-colors ${
                             !cliStatus[option.id]?.installed
-                              ? 'opacity-50 cursor-not-allowed text-gray-400 dark:text-gray-500'
+                              ? 'opacity-50 cursor-not-allowed text-gray-400 '
                               : selectedAssistant === option.id 
-                              ? 'bg-gray-100 dark:bg-white/10 text-black dark:text-white font-semibold' 
-                              : 'text-gray-800 dark:text-gray-200 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10'
+                              ? 'bg-gray-100 text-black font-semibold' 
+                              : 'text-gray-800 hover:text-black hover:bg-gray-100 '
                           }`}
                         >
                           <div className="w-4 h-4 rounded overflow-hidden">
                             <Image
-                              src={option.icon}
+                              src={option.icon ?? '/claude.png'}
                               alt={option.name}
                               width={16}
                               height={16}
@@ -1121,46 +1087,34 @@ export default function HomePage() {
                   <button
                     type="button"
                     onClick={() => {
-                      const newState = !showModelDropdown;
-                      console.log('🔍 Model dropdown clicked, changing to:', newState);
-                      setShowModelDropdown(newState);
+                      setShowModelDropdown((current) => !current);
                       setShowAssistantDropdown(false);
                     }}
-                    className="justify-center whitespace-nowrap text-sm font-medium transition-colors duration-100 ease-in-out focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border border-gray-200/50 dark:border-white/5 bg-transparent shadow-sm hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-300/50 dark:hover:border-white/10 px-3 py-2 flex h-8 items-center gap-1 rounded-full text-gray-700 dark:text-white/80 hover:text-gray-900 dark:hover:text-white focus-visible:ring-0 min-w-[140px]"
+                    className="justify-center whitespace-nowrap text-sm font-medium transition-colors duration-100 ease-in-out focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border border-gray-200/50 bg-transparent shadow-sm hover:bg-gray-50 hover:border-gray-300/50 px-3 py-2 flex h-8 items-center gap-1 rounded-full text-gray-700 hover:text-gray-900 focus-visible:ring-0 min-w-[140px]"
                   >
-                    <span className="text-sm font-medium whitespace-nowrap">{availableModels.find(m => m.id === selectedModel)?.name || 'Claude Sonnet 4.5'}</span>
+                    <span className="text-sm font-medium whitespace-nowrap">
+                      {availableModels.find(m => m.id === selectedModel)?.name ?? getModelDisplayName(selectedAssistant, selectedModel)}
+                    </span>
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 -960 960 960" className="shrink-0 h-3 w-3 rotate-90 ml-auto" fill="currentColor">
                       <path d="M530-481 353-658q-9-9-8.5-21t9.5-21 21.5-9 21.5 9l198 198q5 5 7 10t2 11-2 11-7 10L396-261q-9 9-21 8.5t-21-9.5-9-21.5 9-21.5z"/>
                     </svg>
                   </button>
                   
                   {showModelDropdown && (
-                    <div className="absolute top-full mt-1 left-0 z-[300] min-w-full max-h-[300px] overflow-y-auto rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-gray-900 backdrop-blur-xl shadow-lg">
-                      {(() => {
-                        console.log('🔍 Dropdown is OPEN, availableModels:', availableModels);
-                        console.log('🔍 availableModels.length:', availableModels.length);
-                        return availableModels.map((model) => {
-                          console.log('🔍 Rendering model option:', model);
-                          return (
+                    <div className="absolute top-full mt-1 left-0 z-[300] min-w-full max-h-[300px] overflow-y-auto rounded-2xl border border-gray-200 bg-white backdrop-blur-xl shadow-lg">
+                      {availableModels.map((model) => (
                           <button
                             key={model.id}
-                            onClick={() => {
-                              console.log('🎯 Model selected:', model.id, 'from assistant:', selectedAssistant);
-                              console.log('🎯 Before - availableModels:', availableModels);
-                              handleModelChange(model.id);
-                              console.log('🎯 After - availableModels should still be:', availableModels);
-                            }}
+                            onClick={() => handleModelChange(model.id)}
                             className={`w-full px-3 py-2 text-left first:rounded-t-2xl last:rounded-b-2xl transition-colors ${
                               selectedModel === model.id 
-                                ? 'bg-gray-100 dark:bg-white/10 text-black dark:text-white font-semibold' 
-                                : 'text-gray-800 dark:text-gray-200 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10'
+                                ? 'bg-gray-100 text-black font-semibold' 
+                                : 'text-gray-800 hover:text-black hover:bg-gray-100 '
                             }`}
                           >
                             <span className="text-sm font-medium">{model.name}</span>
                           </button>
-                          );
-                        });
-                      })()}
+                        ))}
                     </div>
                   )}
                 </div>
@@ -1170,7 +1124,7 @@ export default function HomePage() {
                   <button
                     type="submit"
                     disabled={(!prompt.trim() && uploadedImages.length === 0) || isCreatingProject}
-                    className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-900 dark:bg-white text-white dark:text-gray-900 transition-opacity duration-150 ease-out disabled:cursor-not-allowed disabled:opacity-50 hover:scale-110"
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-900 text-white transition-opacity duration-150 ease-out disabled:cursor-not-allowed disabled:opacity-50 hover:scale-110"
                   >
                     {isCreatingProject ? (
                       <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -1215,7 +1169,7 @@ export default function HomePage() {
                   key={example.text}
                   onClick={() => setPrompt(example.prompt)}
                   disabled={isCreatingProject}
-                  className="px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-500 bg-transparent border border-[#DE7356]/10 dark:border-[#DE7356]/10 rounded-full hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-[#DE7356]/15 dark:hover:border-[#DE7356]/15 hover:text-gray-700 dark:hover:text-gray-300 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 text-sm font-medium text-gray-500 bg-transparent border border-[#DE7356]/10 rounded-full hover:bg-gray-50 hover:border-[#DE7356]/15 hover:text-gray-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {example.text}
                 </button>
@@ -1233,7 +1187,7 @@ export default function HomePage() {
 
       {/* Delete Project Modal */}
       {deleteModal.isOpen && deleteModal.project && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 dark:bg-black dark:bg-opacity-70 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -1249,18 +1203,18 @@ export default function HomePage() {
             }}
           >
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-red-600 " fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                 </svg>
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Delete Project</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">This action cannot be undone</p>
+                <h3 className="text-lg font-semibold text-gray-900 ">Delete Project</h3>
+                <p className="text-sm text-gray-500 ">This action cannot be undone</p>
               </div>
             </div>
             
-            <p className="text-gray-700 dark:text-gray-300 mb-6">
+            <p className="text-gray-700 mb-6">
               Are you sure you want to delete <strong>&quot;{deleteModal.project.name}&quot;</strong>? 
               This will permanently delete all project files and chat history.
             </p>
@@ -1269,7 +1223,7 @@ export default function HomePage() {
               <button
                 onClick={closeDeleteModal}
                 disabled={isDeleting}
-                className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>

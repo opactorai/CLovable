@@ -55,6 +55,17 @@ How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and 
   # Login
   cursor-agent login
   ```
+  > ℹ️ Store an optional API key through **Settings → AI Agents → Cursor CLI** to inject `CURSOR_API_KEY` automatically for each run.
+- **[GLM CLI](https://docs.z.ai/devpack/tool/claude)**: Zhipu GLM 4.6 running on top of the Claude Code runtime. Text-only model that reuses Claude’s toolset.
+  ```bash
+  # Install (requires Z.ai DevPack)
+  zai devpack install claude
+  # Login
+  zai auth login
+  # Optionally set API key via environment (or use Global Settings → GLM CLI)
+  export ZHIPU_API_KEY="sk-your-glm-key"
+  ```
+  > ℹ️ GLM support is prompt- and session-compatible with Claude Code. Advanced MCP configuration flags are skipped automatically.
 
 **Database & Deployment:**
 - **[Supabase](https://supabase.com/)**: Connect production-ready PostgreSQL database directly to your project.
@@ -67,7 +78,7 @@ How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and 
 Before you begin, ensure you have the following installed:
 - Node.js 18+
 - Python 3.10+
-- Claude Code or Cursor CLI (already logged in)
+- Claude Code, Cursor CLI, Qwen Coder, or GLM CLI (choose at least one and make sure it is logged in)
 - Git
 
 ## Quick Start
@@ -130,6 +141,16 @@ cd apps/web && npx prisma db push
 
 ## Desktop App (Electron)
 
+### Run in Development
+
+```bash
+# Run Next.js and Electron Together
+npm run dev:desktop
+```
+
+- The script starts the Next.js dev server first and then attaches the Electron process.
+- Automatically assigned ports (`PORT`, `WEB_PORT`) are shared with Electron, and closing the window stops both processes.
+
 ### Download Pre-built App
 
 **macOS Users:** Download the ready-to-use desktop app directly!
@@ -148,19 +169,22 @@ cd apps/web && npx prisma db push
 Build and distribute a desktop app that bundles the web UI and runs the local API automatically.
 
 ```bash
-# Build production Next.js and package Electron app
+# Next.js Production Build + Electron Packaging
 npm run build:desktop
 
-# Output installers
-# - macOS: apps/desktop/dist/*.dmg
-# - Windows: apps/desktop/dist/*.exe
-# - Linux: apps/desktop/dist/*.AppImage
+# To generate platform-specific installers only
+npm run package:mac     # macOS (.dmg/.zip)
+npm run package:win     # Windows (NSIS .exe)
+npm run package:linux   # Linux (.AppImage)
+
+# Artifacts are generated in the dist/ directory.
 ```
 
 Notes:
-- First launch will set up a Python virtual environment in your user data folder and install API dependencies (internet required). Subsequent launches are fast and offline.
-- The desktop app serves the UI at http://localhost:8080 and proxies /api/* to the local Python API.
-- If port 8080 is in use, close the conflicting app before launching the desktop app.
+- `npm run build` builds Next.js in `standalone` mode to produce the `.next/standalone` and `.next/static` artifacts required for Electron.
+- Run macOS packaging/signing on macOS, and generate Windows installers on Windows for best stability.
+- Place additional assets such as icons in the `resources/` directory so they can be referenced from the `electron-builder` configuration.
+- Because the Electron runtime launches the Next.js server internally, stop other apps or adjust the port in `.env` if you hit a port conflict (default 3000).
 
 ## Setup
 
@@ -243,6 +267,14 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+### GLM CLI Notes
+
+- GLM 4.6 is text-only. Claudable automatically converts uploaded images into on-disk paths and appends them to the prompt (`Image #n path: ...`) so GLM can inspect the files without native vision support.
+- The integration reuses the Claude Code agent runtime. Make sure the Claude SDK is installed locally through Z.ai DevPack and authenticated with your Z.ai account.
+- Advanced MCP configuration is intentionally disabled for GLM runs because the runtime only supports basic prompt + session parameters today.
+- You can store the API key globally through **Settings → AI Agents → GLM CLI** (kept in `data/global-settings.json`). Claudable will inject it as `ZHIPU_API_KEY`/`ZHIPUAI_API_KEY`/`GLM_API_KEY` during each GLM run. Clearing the field falls back to whichever key is present in the server environment.
+- For best results keep instructions concise and run incremental updates so the session resume token remains valid.
 
 ### Claude Code Permission Issues (Windows/WSL)
 
