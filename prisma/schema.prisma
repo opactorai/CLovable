@@ -88,6 +88,9 @@ model Message {
   // CLI source
   cliSource String? @map("cli_source") // claude, cursor, etc.
 
+  // Request ID for client-server message matching
+  requestId String? @map("request_id")
+
   // Timestamp
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -100,6 +103,7 @@ model Message {
   @@index([sessionId])
   @@index([createdAt])
   @@index([cliSource])
+  @@index([requestId])
   @@map("messages")
 }
 

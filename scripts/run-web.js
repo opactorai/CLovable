@@ -10,6 +10,7 @@ const path = require('path');
 const os = require('os');
 const dotenv = require('dotenv');
 const { ensureEnvironment } = require('./setup-env');
+const { PrismaClient } = require('@prisma/client');
 
 const rootDir = path.join(__dirname, '..');
 const isWindows = os.platform() === 'win32';
@@ -56,13 +57,80 @@ function parseCliArgs(argv) {
   return { preferredPort, passthrough };
 }
 
-async function start() {
-  const argv = process.argv.slice(2);
-  const { preferredPort, passthrough } = parseCliArgs(argv);
+function runPrismaDbPush() {
+  return new Promise((resolve, reject) => {
+    console.log('🗃️  Synchronizing Prisma schema (prisma db push)...');
+    const child = spawn('npx', ['prisma', 'db', 'push'], {
+      cwd: rootDir,
+      stdio: 'inherit',
+      shell: isWindows,
+      env: {
+        ...process.env,
+        PRISMA_HIDE_UPDATE_MESSAGE: '1',
+      },
+    });
 
+    child.on('exit', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(
+          new Error(`prisma db push exited with code ${code ?? 'unknown'}`)
+        );
+      }
+    });
+
+    child.on('error', (error) => {
+      reject(error);
+    });
+  });
+}
+
+async function ensureDatabaseSynced() {
+  if (process.env.SKIP_DB_SYNC === '1') {
+    return;
+  }
+
+  let prisma;
+  try {
+    prisma = new PrismaClient();
+  } catch (error) {
+    console.warn(
+      '⚠️  Failed to initialize Prisma Client, attempting to sync automatically:',
+      error instanceof Error ? error.message : error
+    );
+    await runPrismaDbPush();
+    return;
+  }
+
+  try {
+    const tables = await prisma.$queryRaw`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'projects'`;
+    if (!Array.isArray(tables) || tables.length === 0) {
+      await runPrismaDbPush();
+    }
+  } catch (error) {
+    console.warn(
+      '⚠️  Prisma schema check failed, attempting to sync automatically:',
+      error instanceof Error ? error.message : error
+    );
+    await runPrismaDbPush();
+  } finally {
+    if (prisma) {
+      await prisma.$disconnect().catch(() => {});
+    }
+  }
+}
+
+async function startWebDevServer({
+  preferredPort,
+  passthrough = [],
+  stdio = 'inherit',
+} = {}) {
   const { port, url } = await ensureEnvironment({
     preferredPort,
   });
+
+  await ensureDatabaseSynced();
 
   const resolvedPort = port;
   const resolvedUrl = url;
@@ -78,7 +146,7 @@ async function start() {
     ['next', 'dev', '--port', resolvedPort.toString(), ...passthrough],
     {
       cwd: rootDir,
-      stdio: 'inherit',
+      stdio,
       shell: isWindows,
       env: {
         ...process.env,
@@ -90,6 +158,30 @@ async function start() {
       },
     }
   );
+
+  await new Promise((resolve, reject) => {
+    const handleError = (error) => {
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+    child.once('error', handleError);
+    child.once('spawn', () => {
+      child.removeListener('error', handleError);
+      resolve();
+    });
+  });
+
+  return { child, port: resolvedPort, url: resolvedUrl };
+}
+
+async function runFromCli() {
+  const argv = process.argv.slice(2);
+  const { preferredPort, passthrough } = parseCliArgs(argv);
+
+  const { child } = await startWebDevServer({
+    preferredPort,
+    passthrough,
+    stdio: 'inherit',
+  });
 
   child.on('error', (error) => {
     console.error('\n❌ Failed to start Next.js dev server');
@@ -105,8 +197,15 @@ async function start() {
   });
 }
 
-start().catch((error) => {
-  console.error('\n❌ Failed to launch dev server');
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+if (require.main === module) {
+  runFromCli().catch((error) => {
+    console.error('\n❌ Failed to launch dev server');
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  parseCliArgs,
+  startWebDevServer,
+};
