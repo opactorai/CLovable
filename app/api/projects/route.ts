@@ -1,18 +1,18 @@
 /**
  * Projects API Routes
- * GET /api/projects - 모든 프로젝트 조회
- * POST /api/projects - 새 프로젝트 생성
+ * GET /api/projects - Get all projects
+ * POST /api/projects - Create new project
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllProjects, createProject } from '@/lib/services/project';
-import { CLAUDE_DEFAULT_MODEL, normalizeClaudeModelId } from '@/lib/constants/claudeModels';
-import type { CreateProjectInput } from '@/backend-types';
+import type { CreateProjectInput } from '@/types/backend';
 import { serializeProjects, serializeProject } from '@/lib/serializers/project';
+import { getDefaultModelForCli, normalizeModelId } from '@/lib/constants/cliModels';
 
 /**
  * GET /api/projects
- * 모든 프로젝트 목록 조회
+ * Get all projects list
  */
 export async function GET() {
   try {
@@ -33,23 +33,24 @@ export async function GET() {
 
 /**
  * POST /api/projects
- * 새 프로젝트 생성
+ * Create new project
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const preferredCli = String(body.preferredCli || body.preferred_cli || 'claude').toLowerCase();
+    const requestedModel = body.selectedModel || body.selected_model;
 
     const input: CreateProjectInput = {
       project_id: body.project_id,
       name: body.name,
       initialPrompt: body.initialPrompt || body.initial_prompt,
       preferredCli,
-      selectedModel: normalizeClaudeModelId(body.selectedModel || body.selected_model || CLAUDE_DEFAULT_MODEL),
+      selectedModel: normalizeModelId(preferredCli, requestedModel ?? getDefaultModelForCli(preferredCli)),
       description: body.description,
     };
 
-    // 유효성 검사
+    // Validation
     if (!input.project_id || !input.name) {
       return NextResponse.json(
         {
