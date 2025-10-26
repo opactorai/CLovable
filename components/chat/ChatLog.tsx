@@ -12,6 +12,12 @@ import { toRelativePath } from '@/lib/utils/path';
 
 type ToolAction = 'Edited' | 'Created' | 'Read' | 'Deleted' | 'Generated' | 'Searched' | 'Executed';
 
+type ToolExpansionState = {
+  expanded: boolean;
+  requestId?: string | null;
+  toolCallId?: string | null;
+};
+
 const TOOL_NAME_ACTION_MAP: Record<string, ToolAction> = {
   read: 'Read',
   read_file: 'Read',
@@ -188,6 +194,47 @@ const extractPathFromInput = (input: unknown, action?: ToolAction): string | und
   }
 
   return undefined;
+};
+
+const extractToolCallId = (
+  metadata?: Record<string, unknown> | null
+): string | null => {
+  if (!metadata) return null;
+
+  const directCandidates = [
+    metadata.toolCallId,
+    metadata.tool_call_id,
+    metadata.toolCallID,
+    metadata.tool_callID,
+  ];
+
+  for (const candidate of directCandidates) {
+    const value = pickFirstString(candidate);
+    if (value) {
+      return value;
+    }
+  }
+
+  const nested =
+    (metadata.tool_call ?? metadata.toolCall ?? metadata.tool ?? null) as
+      | Record<string, unknown>
+      | undefined;
+  if (nested && typeof nested === 'object') {
+    const nestedCandidates = [
+      nested.id,
+      nested.toolCallId,
+      nested.tool_call_id,
+      nested.tool_callID,
+    ];
+    for (const candidate of nestedCandidates) {
+      const value = pickFirstString(candidate);
+      if (value) {
+        return value;
+      }
+    }
+  }
+
+  return null;
 };
 
 const deriveToolInfoFromMetadata = (
@@ -910,7 +957,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
   const [enableSseFallback, setEnableSseFallback] = useState(false);
   const [isSseConnected, setIsSseConnected] = useState(false);
   const [failedImageUrls, setFailedImageUrls] = useState<Set<string>>(new Set());
-  const [expandedToolMessages, setExpandedToolMessages] = useState<Record<string, boolean>>({});
+  const [expandedToolMessages, setExpandedToolMessages] = useState<Record<string, ToolExpansionState>>({});
   const fallbackMessageIdRef = useRef<Map<string, string>>(new Map());
 
   const ensureStableMessageId = useCallback((message: ChatMessage): string => {
@@ -995,17 +1042,42 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
     []
   );
 
-  const handleToolMessageToggle = useCallback((key: string, nextExpanded?: boolean) => {
-    if (!key) return;
-    setExpandedToolMessages((prev) => {
-      const current = Boolean(prev[key]);
-      const desired = typeof nextExpanded === 'boolean' ? nextExpanded : !current;
-      if (desired === current) {
-        return prev;
-      }
-      return { ...prev, [key]: desired };
-    });
-  }, []);
+  const handleToolMessageToggle = useCallback(
+    (message: ChatMessage, key: string, nextExpanded?: boolean) => {
+      if (!key) return;
+
+      const metadata =
+        message.metadata && typeof message.metadata === 'object'
+          ? (message.metadata as Record<string, unknown>)
+          : null;
+      const requestId = message.requestId ?? null;
+      const toolCallId = extractToolCallId(metadata);
+
+      setExpandedToolMessages((prev) => {
+        const currentState = prev[key];
+        const current = currentState?.expanded ?? false;
+        const desired = typeof nextExpanded === 'boolean' ? nextExpanded : !current;
+
+        if (
+          desired === current &&
+          currentState?.requestId === requestId &&
+          currentState?.toolCallId === toolCallId
+        ) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          [key]: {
+            expanded: desired,
+            requestId,
+            toolCallId,
+          },
+        };
+      });
+    },
+    []
+  );
 
   // Error handling helper
   const handleError = useCallback((error: Error | string, context?: string) => {
@@ -1652,6 +1724,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
       }
 
       const validKeys = new Set<string>();
+<<<<<<< Updated upstream
       const requestToKey = new Map<string, string>();
       const toolCallToKey = new Map<string, string>();
 
@@ -1671,19 +1744,45 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
           const toolCallId = extractToolCallId(metadata);
           if (toolCallId) {
             toolCallToKey.set(toolCallId, key);
+=======
+      messages.forEach((msg) => {
+        if (msg.messageType === 'tool_result' || isToolUsageMessage(msg)) {
+          const key = ensureStableMessageId(msg);
+          if (key) {
+            validKeys.add(key);
+>>>>>>> Stashed changes
           }
         }
       });
 
+<<<<<<< Updated upstream
       let changed = false;
       const next: Record<string, ToolExpansionState> = {};
 
       validKeys.forEach((key) => {
         if (prev[key]) {
+=======
+      let requiresCleanup = false;
+      for (const key of prevKeys) {
+        if (!validKeys.has(key)) {
+          requiresCleanup = true;
+          break;
+        }
+      }
+
+      if (!requiresCleanup) {
+        return prev;
+      }
+
+      const next: Record<string, boolean> = {};
+      validKeys.forEach((key) => {
+        if (Object.prototype.hasOwnProperty.call(prev, key)) {
+>>>>>>> Stashed changes
           next[key] = prev[key];
         }
       });
 
+<<<<<<< Updated upstream
       prevKeys.forEach((oldKey) => {
         if (validKeys.has(oldKey)) {
           return;
@@ -1714,6 +1813,9 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
       }
 
       return changed ? next : prev;
+=======
+      return next;
+>>>>>>> Stashed changes
     });
   }, [messages, ensureStableMessageId, isToolUsageMessage]);
 
