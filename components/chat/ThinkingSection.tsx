@@ -29,7 +29,7 @@ export default function ThinkingSection({
       // Odd indices are the emphasized text
       if (index % 2 === 1) {
         return (
-          <span key={index} className="font-medium text-gray-600 dark:text-gray-400">
+          <span key={index} className="font-medium text-gray-600 ">
             {part}
           </span>
         );
@@ -46,11 +46,11 @@ export default function ThinkingSection({
   };
 
   return (
-    <div className="my-2 text-sm text-gray-500 dark:text-gray-500">
+    <div className="my-2 text-sm text-gray-500 ">
       {/* Always visible first line */}
       <div 
         onClick={() => hasMoreContent && setIsExpanded(!isExpanded)}
-        className={`${hasMoreContent ? 'cursor-pointer hover:text-gray-600 dark:hover:text-gray-400' : ''} transition-colors`}
+        className={`${hasMoreContent ? 'cursor-pointer hover:text-gray-600 ' : ''} transition-colors`}
       >
         <span className="italic">Thinking: </span>
         <span className="italic">{formatThinkingContent(firstLine.replace(/^\*\*/, '').replace(/\*\*$/, ''))}</span>
@@ -67,7 +67,7 @@ export default function ThinkingSection({
               transition={{ duration: 0.2 }}
               style={{ marginTop: '0.5rem', overflow: 'hidden' }}
             >
-              <div className="italic text-gray-500 dark:text-gray-500 leading-relaxed whitespace-pre-wrap">
+              <div className="italic text-gray-500 leading-relaxed whitespace-pre-wrap">
                 {formatThinkingContent(restContent)}
               </div>
             </motion.div>

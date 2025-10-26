@@ -16,6 +16,31 @@ export function useUserRequests({ projectId }: UseUserRequestsOptions) {
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const previousActiveState = useRef(false);
+  const activeRequestIdsRef = useRef<Set<string>>(new Set());
+
+  const setFromActiveSet = useCallback(() => {
+    const size = activeRequestIdsRef.current.size;
+    setActiveCount(size);
+    setHasActiveRequests(size > 0);
+  }, []);
+
+  const registerActiveRequest = useCallback((requestId: string | null | undefined) => {
+    if (!requestId) return;
+    const set = activeRequestIdsRef.current;
+    const before = set.size;
+    set.add(requestId);
+    if (set.size !== before) {
+      setFromActiveSet();
+    }
+  }, [setFromActiveSet]);
+
+  const unregisterActiveRequest = useCallback((requestId: string | null | undefined) => {
+    if (!requestId) return;
+    const set = activeRequestIdsRef.current;
+    if (set.delete(requestId)) {
+      setFromActiveSet();
+    }
+  }, [setFromActiveSet]);
 
   // Track tab visibility state
   useEffect(() => {
@@ -35,15 +60,20 @@ export function useUserRequests({ projectId }: UseUserRequestsOptions) {
   }, []);
 
   // Query active request status from DB
-  const checkActiveRequests = useCallback(async () => {
-    if (!isTabVisible) return; // Stop polling if tab is inactive
+  const checkActiveRequests = useCallback(async (options?: { force?: boolean }) => {
+    if (!options?.force && !isTabVisible) return; // Stop polling if tab is inactive unless forced
 
     try {
       const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? '';
-      const response = await fetch(`${apiBase}/api/chat/${projectId}/requests/active`);
+      const response = await fetch(`${apiBase}/api/chat/${projectId}/requests/active`, {
+        cache: 'no-store',
+      });
       if (response.status === 404) {
         if (previousActiveState.current) {
           console.log('🔄 [UserRequests] Active requests endpoint unavailable; assuming no active requests.');
+        }
+        if (activeRequestIdsRef.current.size > 0) {
+          activeRequestIdsRef.current.clear();
         }
         setHasActiveRequests(false);
         setActiveCount(0);
@@ -53,6 +83,9 @@ export function useUserRequests({ projectId }: UseUserRequestsOptions) {
 
       if (response.ok) {
         const data: ActiveRequestsResponse = await response.json();
+        if (!data.hasActiveRequests && activeRequestIdsRef.current.size > 0) {
+          activeRequestIdsRef.current.clear();
+        }
         setHasActiveRequests(data.hasActiveRequests);
         setActiveCount(data.activeCount);
 
@@ -66,11 +99,19 @@ export function useUserRequests({ projectId }: UseUserRequestsOptions) {
         return;
       }
     } catch (error) {
+      if (activeRequestIdsRef.current.size > 0) {
+        activeRequestIdsRef.current.clear();
+        setFromActiveSet();
+      } else {
+        setHasActiveRequests(false);
+        setActiveCount(0);
+      }
+      previousActiveState.current = false;
       if (process.env.NODE_ENV === 'development') {
-        console.error('[UserRequests] Failed to check active requests:', error);
+        console.warn('[UserRequests] Failed to check active requests (network issue):', error);
       }
     }
-  }, [projectId, isTabVisible]);
+  }, [projectId, isTabVisible, setFromActiveSet]);
 
   // Adaptive polling configuration
   useEffect(() => {
@@ -95,7 +136,7 @@ export function useUserRequests({ projectId }: UseUserRequestsOptions) {
     checkActiveRequests();
 
     // Start new polling
-    intervalRef.current = setInterval(checkActiveRequests, pollInterval);
+    intervalRef.current = setInterval(() => checkActiveRequests(), pollInterval);
 
     if (process.env.NODE_ENV === 'development') {
       console.log(`⏱️ [UserRequests] Polling interval: ${pollInterval}ms (active: ${hasActiveRequests})`);
@@ -114,6 +155,7 @@ export function useUserRequests({ projectId }: UseUserRequestsOptions) {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
+      activeRequestIdsRef.current.clear();
     };
   }, []);
 
@@ -124,26 +166,29 @@ export function useUserRequests({ projectId }: UseUserRequestsOptions) {
     instruction: string,
     type: 'act' | 'chat' = 'act'
   ) => {
+    registerActiveRequest(requestId);
     // Check status immediately via polling
-    checkActiveRequests();
+    checkActiveRequests({ force: true });
     console.log(`🔄 [UserRequests] Created request: ${requestId}`);
-  }, [checkActiveRequests]);
+  }, [checkActiveRequests, registerActiveRequest]);
 
   const startRequest = useCallback((requestId: string) => {
+    registerActiveRequest(requestId);
     // Check status immediately via polling
-    checkActiveRequests();
+    checkActiveRequests({ force: true });
     console.log(`▶️ [UserRequests] Started request: ${requestId}`);
-  }, [checkActiveRequests]);
+  }, [checkActiveRequests, registerActiveRequest]);
 
   const completeRequest = useCallback((
     requestId: string,
     isSuccessful: boolean,
     errorMessage?: string
   ) => {
+    unregisterActiveRequest(requestId);
     // Check status immediately via polling with slight delay
-    setTimeout(checkActiveRequests, 100);
+    setTimeout(() => checkActiveRequests({ force: true }), 100);
     console.log(`✅ [UserRequests] Completed request: ${requestId} (${isSuccessful ? 'success' : 'failed'})`);
-  }, [checkActiveRequests]);
+  }, [checkActiveRequests, unregisterActiveRequest]);
 
   return {
     hasActiveRequests,

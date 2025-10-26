@@ -1,15 +1,37 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toRelativePath } from '@/lib/utils/path';
 
 interface ToolResultItemProps {
   action: 'Edited' | 'Created' | 'Read' | 'Deleted' | 'Generated' | 'Searched' | 'Executed';
   filePath: string;
   content?: string;
-  timestamp?: string;
+  isExpanded?: boolean;
+  onToggle?: (nextExpanded: boolean) => void;
 }
 
-const ToolResultItem: React.FC<ToolResultItemProps> = ({ action, filePath, content }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+const ToolResultItem: React.FC<ToolResultItemProps> = ({
+  action,
+  filePath,
+  content,
+  isExpanded: controlledExpanded,
+  onToggle,
+}) => {
+  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(false);
+  const isControlled = typeof controlledExpanded === 'boolean';
+  const isExpanded = isControlled ? controlledExpanded : uncontrolledExpanded;
+
+  const handleToggle = () => {
+    if (!content) return;
+    const nextExpanded = !isExpanded;
+    if (!isControlled) {
+      setUncontrolledExpanded(nextExpanded);
+    }
+    onToggle?.(nextExpanded);
+  };
+
+  // Convert to relative path for display
+  const displayPath = toRelativePath(filePath);
   
   const getIcon = () => {
     switch (action) {
@@ -54,35 +76,24 @@ const ToolResultItem: React.FC<ToolResultItemProps> = ({ action, filePath, conte
     }
   };
 
-  const getFileName = (path: string) => {
-    const parts = path.split('/');
-    return parts[parts.length - 1] || path;
-  };
-
-  const getDirectoryPath = (path: string) => {
-    const parts = path.split('/');
-    parts.pop();
-    return parts.join('/') || '/';
-  };
-
   return (
     <div className="mb-2">
       <div 
         className="flex h-6 items-center gap-1.5 whitespace-nowrap text-base font-medium md:text-sm cursor-pointer group"
-        onClick={() => content && setIsExpanded(!isExpanded)}
+        onClick={handleToggle}
       >
         <div className="mb-px mr-1 flex shrink-0 items-center">
           {getIcon()}
         </div>
-        <span className="flex-shrink-0 font-normal text-gray-600 dark:text-gray-400">
+        <span className="flex-shrink-0 font-normal text-gray-600 ">
           {action}
         </span>
-        <span 
-          className="relative w-fit max-w-xs truncate rounded-md bg-gray-100 dark:bg-gray-800 px-2 py-0 text-start text-xs font-normal text-gray-600 dark:text-gray-400 transition-colors hover:bg-gray-200 dark:hover:bg-gray-700"
-          title={filePath}
+        <span
+          className="relative w-fit max-w-xs truncate rounded-md bg-gray-100 px-2 py-0 text-start text-xs font-normal text-gray-600 transition-colors hover:bg-gray-200 "
+          title={displayPath}
         >
           <span className="truncate">
-            {filePath}
+            {displayPath}
           </span>
         </span>
         {content && (
@@ -112,8 +123,8 @@ const ToolResultItem: React.FC<ToolResultItemProps> = ({ action, filePath, conte
             transition={{ duration: 0.2 }}
             style={{ overflow: 'hidden' }}
           >
-            <div className="mt-2 ml-6 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
-              <pre className="text-xs text-gray-700 dark:text-gray-300 font-mono whitespace-pre-wrap break-words">
+            <div className="mt-2 ml-6 p-3 bg-gray-50 rounded-lg">
+              <pre className="text-xs text-gray-700 font-mono whitespace-pre-wrap break-words">
                 {content}
               </pre>
             </div>
