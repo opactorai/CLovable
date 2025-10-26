@@ -3,9 +3,9 @@
  * Manage service integrations
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import GitHubRepoModal from '@/components/GitHubRepoModal';
-import VercelProjectModal from '@/components/VercelProjectModal';
-import SupabaseModal from '@/components/SupabaseModal';
+import GitHubRepoModal from '@/components/modals/GitHubRepoModal';
+import VercelProjectModal from '@/components/modals/VercelProjectModal';
+import SupabaseModal from '@/components/modals/SupabaseModal';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 
@@ -224,56 +224,56 @@ export function ServiceSettings({ projectId, onOpenGlobalSettings }: ServiceSett
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">
+        <h3 className="text-lg font-medium text-gray-900 mb-1">
           Service Integrations
         </h3>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Connect GitHub, Supabase and Vercel with a consistent, polished experience.</p>
+        <p className="text-sm text-gray-600 mb-4">Connect GitHub, Supabase and Vercel with a consistent, polished experience.</p>
 
         <div className="space-y-4">
           {services.map(service => (
             <div
               key={service.id}
-              className="relative group overflow-hidden rounded-2xl border border-gray-200/80 dark:border-white/10 bg-white/70 dark:bg-gray-900/60 backdrop-blur supports-[backdrop-filter]:bg-white/60 transition-all duration-200 hover:shadow-lg"
+              className="relative group overflow-hidden rounded-2xl border border-gray-200/80 bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/60 transition-all duration-200 hover:shadow-lg"
             >
-              <div className="absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-gray-200 dark:via-white/10 to-transparent" />
+              <div className="absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
               <div className="p-5 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 justify-between">
                 <div className="flex items-center gap-4 flex-1 min-w-0">
-                  <div className="w-10 h-10 rounded-xl ring-1 ring-inset ring-gray-200 dark:ring-white/10 bg-gray-50 dark:bg-white/5 text-gray-700 dark:text-gray-300 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-xl ring-1 ring-inset ring-gray-200 bg-gray-50 text-gray-700 flex items-center justify-center">
                     {getProviderIcon(service.icon)}
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-3 mb-1 min-w-0">
-                      <h4 className="text-[15px] font-semibold tracking-tight text-gray-900 dark:text-white">
+                      <h4 className="text-[15px] font-semibold tracking-tight text-gray-900 ">
                         {service.name}
                       </h4>
                       {service.connected && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/30 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium text-emerald-700 bg-emerald-100 whitespace-nowrap">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                           Connected
                         </span>
                       )}
                       {!service.connected && tokenStatus[service.id as keyof typeof tokenStatus] === false && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium text-amber-700 bg-amber-100 whitespace-nowrap">
                           <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/></svg>
                           Token needed
                         </span>
                       )}
                     </div>
 
-                    <div className="text-sm leading-6 text-gray-600 dark:text-gray-400 min-w-0">
+                    <div className="text-sm leading-6 text-gray-600 min-w-0">
                       {!service.connected ? (
                         <p className="truncate whitespace-nowrap sm:whitespace-normal sm:overflow-visible sm:max-w-[60ch]">
                           {service.description}
                         </p>
                       ) : (
-                        <div className="text-gray-700 dark:text-gray-300">
+                        <div className="text-gray-700 ">
                           {service.id === 'github' && service.connection?.service_data?.repo_url ? (
                             <div className="flex items-center gap-2">
                               <span className="shrink-0">Repository:</span>
                               <a 
                                 href={service.connection.service_data.repo_url}
                                 target="_blank" rel="noopener noreferrer"
-                                className="truncate font-mono text-blue-600 dark:text-blue-400 hover:underline"
+                                className="truncate font-mono text-blue-600 hover:underline"
                               >
                                 {service.connection.service_data.repo_name || service.connection.service_data.repo_url}
                               </a>
@@ -284,7 +284,7 @@ export function ServiceSettings({ projectId, onOpenGlobalSettings }: ServiceSett
                               <a 
                                 href={service.connection.service_data.project_url}
                                 target="_blank" rel="noopener noreferrer"
-                                className="truncate font-mono text-blue-600 dark:text-blue-400 hover:underline"
+                                className="truncate font-mono text-blue-600 hover:underline"
                               >
                                 {service.connection.service_data.project_name || service.connection.service_data.project_url}
                               </a>
@@ -295,7 +295,7 @@ export function ServiceSettings({ projectId, onOpenGlobalSettings }: ServiceSett
                               <a 
                                 href={service.connection.service_data.project_url}
                                 target="_blank" rel="noopener noreferrer"
-                                className="truncate font-mono text-blue-600 dark:text-blue-400 hover:underline"
+                                className="truncate font-mono text-blue-600 hover:underline"
                               >
                                 {service.connection.service_data.project_name || service.connection.service_data.project_id}
                               </a>
@@ -312,7 +312,7 @@ export function ServiceSettings({ projectId, onOpenGlobalSettings }: ServiceSett
                     {service.connected ? (
                       <button
                         onClick={() => handleDisconnect(service.id)}
-                        className="px-4 py-2 text-sm rounded-xl text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 border border-transparent hover:border-red-200 dark:hover:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 transition whitespace-nowrap w-full sm:w-auto"
+                        className="px-4 py-2 text-sm rounded-xl text-red-600 hover:text-red-700 border border-transparent hover:border-red-200 hover:bg-red-50 transition whitespace-nowrap w-full sm:w-auto"
                         disabled={isLoading}
                       >
                         Disconnect
