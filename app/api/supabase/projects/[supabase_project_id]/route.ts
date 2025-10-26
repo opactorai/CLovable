@@ -5,9 +5,9 @@ interface RouteContext {
   params: Promise<{ supabase_project_id: string }>;
 }
 
-export async function GET(request: Request, context: RouteContext) {
+export async function GET(_request: Request, { params }: RouteContext) {
   try {
-    const { supabase_project_id } = await context.params;
+    const { supabase_project_id } = await params;
     const project = await getSupabaseProject(supabase_project_id);
     return NextResponse.json({ success: true, project });
   } catch (error) {
