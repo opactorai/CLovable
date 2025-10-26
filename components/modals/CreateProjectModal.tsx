@@ -3,26 +3,19 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence } from 'framer-motion';
 import { MotionDiv, MotionP } from '@/lib/motion';
-import { CLAUDE_MODEL_DEFINITIONS, CLAUDE_DEFAULT_MODEL, normalizeClaudeModelId } from '@/lib/constants/claudeModels';
+import { getModelDefinitionsForCli, getDefaultModelForCli, normalizeModelId } from '@/lib/constants/cliModels';
+import { fetchCliStatusSnapshot, createCliStatusFallback } from '@/hooks/useCLI';
+import type { CLIStatus } from '@/types/cli';
+
+import type { CreateProjectCLIOption, GlobalSettings } from '@/types/client';
+
+type CLIOption = CreateProjectCLIOption;
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 
-interface CLIOption {
-  id: string;
-  name: string;
-  icon: string;
-  description: string;
-  models: { id: string; name: string; description?: string; supportsImages?: boolean }[];
-  color: string;
-  features: string[];
-  downloadUrl?: string;
-  installCommand?: string;
-  enabled?: boolean;
-}
+const DEFAULT_MODEL_ID = getDefaultModelForCli('claude');
 
-const DEFAULT_MODEL_ID = CLAUDE_DEFAULT_MODEL;
-
-const sanitizeModel = (model?: string | null) => normalizeClaudeModelId(model);
+const sanitizeModel = (cli: string, model?: string | null) => normalizeModelId(cli, model);
 
 const CLI_OPTIONS: CLIOption[] = [
   {
@@ -33,14 +26,78 @@ const CLI_OPTIONS: CLIOption[] = [
     color: 'from-orange-500 to-red-600',
     downloadUrl: 'https://github.com/anthropics/claude-code',
     installCommand: 'npm install -g @anthropic-ai/claude-code',
-    models: CLAUDE_MODEL_DEFINITIONS.map(({ id, name, description, supportsImages }) => ({
+    models: getModelDefinitionsForCli('claude').map(({ id, name, description, supportsImages }) => ({
       id,
       name,
       description,
       supportsImages,
     })),
-    features: ['Advanced reasoning', 'Code generation', '1M context window']
-  }
+    features: ['Advanced reasoning', 'Code generation', '1M context window'],
+  },
+  {
+    id: 'codex',
+    name: 'Codex CLI',
+    icon: '🧠',
+    description: 'OpenAI Codex agent with GPT-5 support',
+    color: 'from-slate-900 to-gray-700',
+    downloadUrl: 'https://github.com/openai/codex',
+    installCommand: 'npm install -g @openai/codex',
+    models: getModelDefinitionsForCli('codex').map(({ id, name, description, supportsImages }) => ({
+      id,
+      name,
+      description,
+      supportsImages,
+    })),
+    features: ['Autonomous apply_patch', 'OpenAI GPT-5 access', 'Web search integration'],
+  },
+  {
+    id: 'cursor',
+    name: 'Cursor Agent',
+    icon: '🖱️',
+    description: 'Cursor CLI with multi-model routing and session resume',
+    color: 'from-slate-500 to-gray-600',
+    downloadUrl: 'https://docs.cursor.com/en/cli/overview',
+    installCommand: 'curl https://cursor.com/install -fsS | bash',
+    models: getModelDefinitionsForCli('cursor').map(({ id, name, description, supportsImages }) => ({
+      id,
+      name,
+      description,
+      supportsImages,
+    })),
+    features: ['Autonomous workflow', 'Multi-model router', 'Session resume support'],
+  },
+  {
+    id: 'qwen',
+    name: 'Qwen Coder',
+    icon: '🛠️',
+    description: 'Alibaba Qwen Code CLI with sandboxed tooling',
+    color: 'from-emerald-500 to-teal-600',
+    downloadUrl: 'https://github.com/QwenLM/qwen-code',
+    installCommand: 'npm install -g @qwen-code/qwen-code',
+    models: getModelDefinitionsForCli('qwen').map(({ id, name, description, supportsImages }) => ({
+      id,
+      name,
+      description,
+      supportsImages,
+    })),
+    features: ['Edit/write tools', 'Sandbox approval modes', 'Great for open-source workflows'],
+  },
+  {
+    id: 'glm',
+    name: 'GLM CLI',
+    icon: '🌐',
+    description: 'Zhipu GLM agent running via Claude Code runtime',
+    color: 'from-blue-500 to-indigo-600',
+    downloadUrl: 'https://docs.z.ai/devpack/tool/claude',
+    installCommand: 'zai devpack install claude',
+    models: getModelDefinitionsForCli('glm').map(({ id, name, description, supportsImages }) => ({
+      id,
+      name,
+      description,
+      supportsImages,
+    })),
+    features: ['Claude-compatible runtime', 'GLM 4.6 reasoning', 'Text-only mode'],
+  },
 ];
 
 function generateUUID() {
@@ -70,9 +127,9 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
   const [initializationStep, setInitializationStep] = useState('');
   const [showInitialization, setShowInitialization] = useState(false);
   const [initializingProjectId, setInitializingProjectId] = useState<string | null>(null);
-  const [globalSettings, setGlobalSettings] = useState<any>(null);
+  const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
   const [enabledCLIs, setEnabledCLIs] = useState<CLIOption[]>([]);
-  const [cliStatus, setCLIStatus] = useState<any>(null);
+  const [cliStatus, setCLIStatus] = useState<CLIStatus>(() => createCliStatusFallback());
   const [imageUrl, setImageUrl] = useState('');
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [imageError, setImageError] = useState('');
@@ -84,91 +141,74 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
 
   const loadGlobalSettings = useCallback(async () => {
     try {
-      // Load both global settings and CLI status in parallel
-      const [settingsResponse, statusResponse] = await Promise.all([
+      const [settingsResponse, cliStatuses] = await Promise.all([
         fetch(`${API_BASE}/api/settings/global`),
-        fetch(`${API_BASE}/api/settings/cli-status`)
+        fetchCliStatusSnapshot(),
       ]);
 
-      let settings = null;
-      let cliStatusData = null;
+      setCLIStatus(cliStatuses);
 
+      let settings: GlobalSettings | null = null;
       if (settingsResponse.ok) {
         settings = await settingsResponse.json();
+        if (settings?.cli_settings) {
+          for (const [cli, config] of Object.entries(settings.cli_settings)) {
+            if (config && typeof config === 'object' && 'model' in config && config.model) {
+              config.model = sanitizeModel(cli, config.model as string);
+            }
+          }
+        }
         setGlobalSettings(settings);
       }
 
-      if (statusResponse.ok) {
-        cliStatusData = await statusResponse.json();
-        setCLIStatus(cliStatusData);
-      }
-
       if (settings) {
-        // Filter CLIs that are both enabled and installed
-        const enabled = CLI_OPTIONS.filter(cli => {
+        const enabled = CLI_OPTIONS.filter((cli) => {
           const isEnabled = settings.cli_settings?.[cli.id]?.enabled !== false;
-          const isInstalled = cliStatusData?.[cli.id]?.installed !== false; // Allow if no status data
-          const isAvailable = cli.enabled !== false; // Check CLI-level enabled flag
+          const isInstalled = cliStatuses[cli.id]?.installed !== false;
+          const isAvailable = cli.enabled !== false;
           return isEnabled && isInstalled && isAvailable;
         });
-        
-        setEnabledCLIs(enabled.length > 0 ? enabled : CLI_OPTIONS);
-        
-        // Apply global defaults
+
+        const effectiveCLIs = enabled.length > 0 ? enabled : CLI_OPTIONS.filter((cli) => cli.enabled !== false);
+        setEnabledCLIs(effectiveCLIs);
+
         const defaultCLI = settings.default_cli || 'claude';
-        const availableDefaultCLI = enabled.find(cli => cli.id === defaultCLI);
-        
-        // Use default CLI if it's available, otherwise use first available CLI
-        if (availableDefaultCLI) {
-          setSelectedCLI(defaultCLI);
-        } else if (enabled.length > 0) {
-          setSelectedCLI(enabled[0].id);
-        } else {
-          setSelectedCLI('claude');
-        }
-        
+        const preferredCLI =
+          effectiveCLIs.find((cli) => cli.id === defaultCLI)?.id ?? effectiveCLIs[0]?.id ?? 'claude';
+        setSelectedCLI(preferredCLI);
         setFallbackEnabled(settings.fallback_enabled ?? true);
-        
-        // Set default model for the selected CLI
-        const selectedCLIId = availableDefaultCLI ? defaultCLI : (enabled[0]?.id || 'claude');
-        const cliSettings = settings.cli_settings?.[selectedCLIId];
-        if (cliSettings?.model) {
-          const normalized = sanitizeModel(cliSettings.model as string);
-          setSelectedModel(normalized);
-          console.log('Using global settings model:', cliSettings.model, '->', normalized, 'for CLI:', selectedCLIId);
+
+        const preferredModelSetting = settings.cli_settings?.[preferredCLI]?.model;
+        if (preferredModelSetting) {
+          setSelectedModel(sanitizeModel(preferredCLI, preferredModelSetting as string));
         } else {
-          // Set first available model
-        const selectedCLIObj = enabled.find(cli => cli.id === selectedCLIId) || enabled[0];
-        if (selectedCLIObj?.models.length) {
-          setSelectedModel(selectedCLIObj.models[0].id);
-          console.log('Using first available model:', selectedCLIObj.models[0].id, 'for CLI:', selectedCLIId);
-          }
+          const fallbackModel =
+            effectiveCLIs.find((cli) => cli.id === preferredCLI)?.models[0]?.id ?? DEFAULT_MODEL_ID;
+          setSelectedModel(sanitizeModel(preferredCLI, fallbackModel));
         }
       } else {
-        console.error('Failed to load global settings:', settingsResponse.statusText);
-        // Use available CLIs as fallback, filter by installation status and enabled flag
-        const available = cliStatusData ? CLI_OPTIONS.filter(cli => 
-          cliStatusData[cli.id]?.installed !== false && cli.enabled !== false
-        ) : CLI_OPTIONS.filter(cli => cli.enabled !== false);
-        
-        setEnabledCLIs(available);
-        const firstCLI = available[0]?.id || 'claude';
-        setSelectedCLI(firstCLI);
-        const firstModel = available[0]?.models[0]?.id || DEFAULT_MODEL_ID;
-        setSelectedModel(firstModel);
+        const available = CLI_OPTIONS.filter(
+          (cli) => cliStatuses[cli.id]?.installed !== false && cli.enabled !== false
+        );
+        const effectiveCLIs = available.length > 0 ? available : CLI_OPTIONS.filter((cli) => cli.enabled !== false);
+        setEnabledCLIs(effectiveCLIs);
+
+        const fallbackCLI = effectiveCLIs[0]?.id ?? 'claude';
+        setSelectedCLI(fallbackCLI);
+        const fallbackModel = effectiveCLIs[0]?.models[0]?.id ?? DEFAULT_MODEL_ID;
+        setSelectedModel(sanitizeModel(fallbackCLI, fallbackModel));
         setFallbackEnabled(true);
-        console.log('Fallback: Selected CLI:', firstCLI, 'Model:', firstModel);
       }
     } catch (error) {
       console.error('Failed to load global settings:', error);
-      // Use available CLIs as fallback
-      setEnabledCLIs(CLI_OPTIONS.filter(cli => cli.enabled !== false));
-      const fallbackCLI = 'claude';
-      const fallbackModel = DEFAULT_MODEL_ID;
+      setCLIStatus(createCliStatusFallback());
+      const available = CLI_OPTIONS.filter((cli) => cli.enabled !== false);
+      setEnabledCLIs(available);
+      const fallbackCLI = available[0]?.id ?? 'claude';
       setSelectedCLI(fallbackCLI);
-      setSelectedModel(fallbackModel);
+      const fallbackModel = available[0]?.models[0]?.id ?? DEFAULT_MODEL_ID;
+      setSelectedModel(sanitizeModel(fallbackCLI, fallbackModel));
       setFallbackEnabled(true);
-      console.log('Error fallback: Selected CLI:', fallbackCLI, 'Model:', fallbackModel);
     }
   }, []);
 
@@ -297,7 +337,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
       setSelectedCLI(globalSettings.default_cli || 'claude');
       setFallbackEnabled(globalSettings.fallback_enabled ?? true);
       const cliSettings = globalSettings.cli_settings?.[globalSettings.default_cli || 'claude'];
-      setSelectedModel(sanitizeModel(cliSettings?.model));
+      setSelectedModel(sanitizeModel(globalSettings.default_cli || 'claude', cliSettings?.model));
     } else {
       setSelectedCLI('claude');
       setSelectedModel(DEFAULT_MODEL_ID);
@@ -326,17 +366,19 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
   }, [imageUrl, selectedModelOption]);
 
   const handleCLIChange = (cliId: string) => {
+    setUseDefaultSettings(false);
     setSelectedCLI(cliId);
     // Auto-select first model for the selected CLI
     const cli = enabledCLIs.find(c => c.id === cliId);
     if (cli?.models.length) {
-      setSelectedModel(cli.models[0].id);
+      setSelectedModel(sanitizeModel(cliId, cli.models[0].id));
     }
     setShowCLIDropdown(false);
   };
 
   const handleModelChange = (modelId: string) => {
-    setSelectedModel(modelId);
+    setUseDefaultSettings(false);
+    setSelectedModel(sanitizeModel(selectedCLI, modelId));
     setShowModelDropdown(false);
   };
 
@@ -350,7 +392,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
     if (useDefaultSettings && globalSettings) {
       finalCLI = globalSettings.default_cli || 'claude';
       const cliSettings = globalSettings.cli_settings?.[finalCLI];
-      finalModel = sanitizeModel(cliSettings?.model || selectedModel || DEFAULT_MODEL_ID);
+      finalModel = sanitizeModel(finalCLI, cliSettings?.model || selectedModel || DEFAULT_MODEL_ID);
     }
     
     if (!finalCLI || !finalModel) {
@@ -497,27 +539,27 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onKeyDown={handleKeyDown}>
       {/* Backdrop */}
       <div 
-        className="absolute inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
       
       {/* Modal Content */}
       <div 
-        className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl mx-auto max-h-[90vh] overflow-y-auto"
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-auto max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 ">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Create New Project</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            <h1 className="text-2xl font-bold text-gray-900 ">Create New Project</h1>
+            <p className="text-sm text-gray-500 mt-1">
               Describe your project and configure your AI assistant
             </p>
           </div>
           
           <button
             onClick={onClose}
-            className="p-2 transition-colors text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
+            className="p-2 transition-colors text-gray-400 hover:text-gray-600 "
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -530,7 +572,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
           <div className="space-y-4 mb-6">
             {/* Project Name */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Project Name <span className="text-red-500">*</span>
               </label>
               <input
@@ -538,7 +580,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
                 placeholder="My awesome project"
-                className="w-full px-4 py-3 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-200 rounded-lg bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 maxLength={100}
               />
             </div>
@@ -548,34 +590,34 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
           {/* Project Description */}
           <div className="text-center mb-6">
             <div className="text-4xl mb-3">✨</div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+            <h2 className="text-xl font-bold text-gray-900 mb-2">
               What would you like to build?
             </h2>
-            <p className="text-gray-600 dark:text-gray-400">
+            <p className="text-gray-600 ">
               Describe your project idea in detail
             </p>
           </div>
 
-          <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 border border-gray-200 dark:border-gray-600 mb-4">
+          <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 mb-4">
             <textarea 
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="I want to build a social media app with user profiles, posts, and real-time chat..."
-              className="w-full h-32 border-none outline-none resize-none bg-transparent text-gray-700 dark:text-gray-200 placeholder-gray-500 dark:placeholder-gray-400 leading-relaxed"
+              className="w-full h-32 border-none outline-none resize-none bg-transparent text-gray-700 placeholder-gray-500 leading-relaxed"
               autoFocus
               maxLength={1000}
             />
             
             {/* Input Actions Row */}
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-200 ">
               <div className="flex items-center gap-2">
                 {/* Image Upload Button */}
                 <button
                   onClick={() => setShowImageInput(!showImageInput)}
                   className={`p-2 rounded-lg transition-colors ${
                     showImageInput || imageUrl
-                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                      : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
+                      ? 'bg-blue-100 text-blue-600 '
+                      : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100 '
                   }`}
                   title="Add reference image"
                 >
@@ -591,8 +633,8 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
                   onClick={() => setShowWebsiteInput(!showWebsiteInput)}
                   className={`p-2 rounded-lg transition-colors ${
                     showWebsiteInput || websiteUrl
-                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                      : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
+                      ? 'bg-blue-100 text-blue-600 '
+                      : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100 '
                   }`}
                   title="Add reference website"
                 >
@@ -604,7 +646,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
                 </button>
               </div>
 
-              <span className="text-xs text-gray-500 dark:text-gray-400">
+              <span className="text-xs text-gray-500 ">
                 {prompt.length}/1000 characters
               </span>
             </div>
@@ -619,8 +661,8 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
                 exit={{ opacity: 0, height: 0 }}
                 className="mb-4"
               >
-                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                  <label className="block text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <label className="block text-sm font-medium text-blue-800 mb-2">
                     🖼️ Reference Image URL
                   </label>
                   <input
@@ -628,11 +670,11 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
                     value={imageUrl}
                     onChange={(e) => setImageUrl(e.target.value)}
                     placeholder="https://example.com/image.jpg"
-                    className="w-full px-3 py-2 border border-blue-200 dark:border-blue-700 rounded-lg bg-white dark:bg-blue-900/30 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-blue-200 rounded-lg bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   {imageError && (
-                    <div className="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                      <p className="text-sm text-red-600 dark:text-red-400">{imageError}</p>
+                    <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-sm text-red-600 ">{imageError}</p>
                     </div>
                   )}
                 </div>
@@ -646,8 +688,8 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
                 exit={{ opacity: 0, height: 0 }}
                 className="mb-4"
               >
-                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-                  <label className="block text-sm font-medium text-green-800 dark:text-green-200 mb-2">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <label className="block text-sm font-medium text-green-800 mb-2">
                     🌐 Reference Website URL
                   </label>
                   <input
@@ -655,7 +697,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
                     value={websiteUrl}
                     onChange={(e) => setWebsiteUrl(e.target.value)}
                     placeholder="https://example.com"
-                    className="w-full px-3 py-2 border border-green-200 dark:border-green-700 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    className="w-full px-3 py-2 border border-green-200 rounded-lg bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500"
                   />
                 </div>
               </MotionDiv>
@@ -672,11 +714,11 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
               >
                 <div className={`w-5 h-5 border-2 rounded transition-colors ${
                   useDefaultSettings 
-                    ? 'bg-gray-900 dark:bg-white border-gray-900 dark:border-white' 
-                    : 'border-gray-300 dark:border-gray-600'
+                    ? 'bg-gray-900 border-gray-900 ' 
+                    : 'border-gray-300 '
                 }`}>
                   {useDefaultSettings && (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-white dark:text-gray-900">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-white ">
                       <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   )}
@@ -685,18 +727,18 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
               <div className="flex-1">
                 <label 
                   onClick={() => setUseDefaultSettings(!useDefaultSettings)}
-                  className="text-sm font-medium text-gray-900 dark:text-white cursor-pointer"
+                  className="text-sm font-medium text-gray-900 cursor-pointer"
                 >
                   Use default AI settings
                 </label>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p className="text-xs text-gray-500 mt-1">
                   {globalSettings ? (
                     <>Use {enabledCLIs.find(cli => cli.id === globalSettings.default_cli)?.name || 'default'} AI with your preferred model. Change this in <button 
                       onClick={() => {
                         onClose();
                         onOpenGlobalSettings?.();
                       }}
-                      className="text-gray-900 dark:text-white hover:underline"
+                      className="text-gray-900 hover:underline"
                     >Global Settings</button>.</>
                   ) : (
                     <>Quick start with Claude AI. Customize AI preferences in <button 
@@ -704,7 +746,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
                         onClose();
                         onOpenGlobalSettings?.();
                       }}
-                      className="text-gray-900 dark:text-white hover:underline"
+                      className="text-gray-900 hover:underline"
                     >Global Settings</button>.</>
                   )}
                 </p>
@@ -716,19 +758,19 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* CLI Selection Dropdown */}
                 <div className="relative">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     AI Assistant
                   </label>
                   <div className="relative">
                     <button
                       onClick={() => setShowCLIDropdown(!showCLIDropdown)}
-                      className="w-full p-3 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-left flex items-center justify-between hover:border-gray-300 dark:hover:border-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-3 bg-white border border-gray-200 rounded-lg text-left flex items-center justify-between hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <div className="flex items-center gap-3">
                         <span className="text-lg">{selectedCLIOption?.icon}</span>
                         <div>
-                          <div className="font-medium text-gray-900 dark:text-white">{selectedCLIOption?.name}</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">{selectedCLIOption?.description}</div>
+                          <div className="font-medium text-gray-900 ">{selectedCLIOption?.name}</div>
+                          <div className="text-xs text-gray-500 ">{selectedCLIOption?.description}</div>
                         </div>
                       </div>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={`transition-transform ${showCLIDropdown ? 'rotate-180' : ''}`}>
@@ -742,7 +784,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
                           initial={{ opacity: 0, y: -10 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -10 }}
-                          className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto"
+                          className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto"
                         >
                           {enabledCLIs.map((cli) => {
                             const cliStatusInfo = cliStatus?.[cli.id];
@@ -752,23 +794,23 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
                               <button
                                 key={cli.id}
                                 onClick={() => handleCLIChange(cli.id)}
-                                className="w-full p-3 text-left hover:bg-gray-50 dark:hover:bg-gray-600 flex items-center gap-3 border-b border-gray-100 dark:border-gray-600 last:border-b-0"
+                                className="w-full p-3 text-left hover:bg-gray-50 flex items-center gap-3 border-b border-gray-100 last:border-b-0"
                               >
                                 <span className="text-lg">{cli.icon}</span>
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2">
-                                    <div className="font-medium text-gray-900 dark:text-white">{cli.name}</div>
+                                    <div className="font-medium text-gray-900 ">{cli.name}</div>
                                     {isInstalled ? (
-                                      <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 px-2 py-1 rounded-full">
+                                      <span className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full">
                                         ✓
                                       </span>
                                     ) : (
-                                      <span className="text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 px-2 py-1 rounded-full">
+                                      <span className="text-xs bg-yellow-100 text-yellow-600 px-2 py-1 rounded-full">
                                         !
                                       </span>
                                     )}
                                   </div>
-                                  <div className="text-xs text-gray-500 dark:text-gray-400">{cli.description}</div>
+                                  <div className="text-xs text-gray-500 ">{cli.description}</div>
                                 </div>
                               </button>
                             );
@@ -781,24 +823,24 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
 
                 {/* Model Selection Dropdown */}
                 <div className="relative">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Model
                   </label>
                   <div className="relative">
                     <button
                       onClick={() => setShowModelDropdown(!showModelDropdown)}
-                      className="w-full p-3 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-left flex items-center justify-between hover:border-gray-300 dark:hover:border-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-3 bg-white border border-gray-200 rounded-lg text-left flex items-center justify-between hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <div>
                         <div className="flex items-center gap-2">
-                          <div className="font-medium text-gray-900 dark:text-white">{selectedModelOption?.name}</div>
+                          <div className="font-medium text-gray-900 ">{selectedModelOption?.name}</div>
                           {selectedModelOption?.supportsImages && (
-                            <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 px-2 py-1 rounded-full">
+                            <span className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full">
                               📷
                             </span>
                           )}
                         </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">{selectedModelOption?.description}</div>
+                        <div className="text-xs text-gray-500 ">{selectedModelOption?.description}</div>
                       </div>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={`transition-transform ${showModelDropdown ? 'rotate-180' : ''}`}>
                         <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -811,23 +853,23 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
                           initial={{ opacity: 0, y: -10 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -10 }}
-                          className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto"
+                          className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto"
                         >
                           {selectedCLIOption.models.map((model) => (
                             <button
                               key={model.id}
                               onClick={() => handleModelChange(model.id)}
-                              className="w-full p-3 text-left hover:bg-gray-50 dark:hover:bg-gray-600 border-b border-gray-100 dark:border-gray-600 last:border-b-0"
+                              className="w-full p-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
                             >
                               <div className="flex items-center gap-2 mb-1">
-                                <div className="font-medium text-gray-900 dark:text-white">{model.name}</div>
+                                <div className="font-medium text-gray-900 ">{model.name}</div>
                                 {model.supportsImages && (
-                                  <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 px-2 py-1 rounded-full">
+                                  <span className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full">
                                     📷
                                   </span>
                                 )}
                               </div>
-                              <div className="text-xs text-gray-500 dark:text-gray-400">{model.description}</div>
+                              <div className="text-xs text-gray-500 ">{model.description}</div>
                             </button>
                           ))}
                         </MotionDiv>
@@ -841,9 +883,9 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
           </div>
 
           {/* Footer */}
-          <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex justify-end pt-4 border-t border-gray-200 ">
             <button 
-              className="bg-gray-900 dark:bg-white hover:bg-gray-800 dark:hover:bg-gray-100 text-white dark:text-gray-900 px-8 py-3 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-gray-900 hover:bg-gray-800 text-white px-8 py-3 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={submit}
               disabled={loading || !projectName.trim() || !prompt.trim() || !!imageError}
             >
