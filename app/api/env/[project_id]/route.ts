@@ -5,9 +5,9 @@ interface RouteContext {
   params: Promise<{ project_id: string }>;
 }
 
-export async function GET(request: NextRequest, context: RouteContext) {
+export async function GET(_request: NextRequest, { params }: RouteContext) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     const envVars = await listEnvVars(project_id);
     return NextResponse.json(envVars);
   } catch (error) {
@@ -23,9 +23,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 }
 
-export async function POST(request: NextRequest, context: RouteContext) {
+export async function POST(request: NextRequest, { params }: RouteContext) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     const body = await request.json();
     if (!body?.key || typeof body.key !== 'string') {
       return NextResponse.json(

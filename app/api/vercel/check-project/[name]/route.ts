@@ -5,10 +5,15 @@ interface RouteContext {
   params: Promise<{ name: string }>;
 }
 
-export async function GET(request: Request, context: RouteContext) {
+export async function GET(request: Request, { params }: RouteContext) {
   try {
-    const { name } = await context.params;
-    const result = await checkVercelProjectAvailability(name);
+    const { name } = await params;
+    const url = new URL(request.url);
+    const teamId =
+      url.searchParams.get('teamId') ??
+      url.searchParams.get('team_id') ??
+      undefined;
+    const result = await checkVercelProjectAvailability(name, { teamId });
     return NextResponse.json(result);
   } catch (error) {
     console.error('[API] Failed to check Vercel project availability:', error);
