@@ -8,10 +8,13 @@ interface RouteContext {
 }
 
 const PROJECTS_DIR = process.env.PROJECTS_DIR || './data/projects';
+const PROJECTS_DIR_ABSOLUTE = path.isAbsolute(PROJECTS_DIR)
+  ? PROJECTS_DIR
+  : path.resolve(process.cwd(), PROJECTS_DIR);
 
-export async function POST(request: Request, context: RouteContext) {
+export async function POST(request: Request, { params }: RouteContext) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     const project = await getProjectById(project_id);
     if (!project) {
       return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
@@ -24,7 +27,7 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     const buffer = Buffer.from(b64, 'base64');
-    const assetsPath = path.join(PROJECTS_DIR, project_id, 'assets');
+    const assetsPath = path.join(PROJECTS_DIR_ABSOLUTE, project_id, 'assets');
     await fs.mkdir(assetsPath, { recursive: true });
     const logoPath = path.join(assetsPath, 'logo.png');
     await fs.writeFile(logoPath, buffer);

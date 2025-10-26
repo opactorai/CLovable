@@ -10,8 +10,12 @@ import {
   updateProjectActivity,
 } from '@/lib/services/project';
 import { createMessage } from '@/lib/services/message';
-import { initializeNextJsProject, applyChanges } from '@/lib/services/cli/claude';
-import { CLAUDE_DEFAULT_MODEL, normalizeClaudeModelId } from '@/lib/constants/claudeModels';
+import { initializeNextJsProject as initializeClaudeProject, applyChanges as applyClaudeChanges } from '@/lib/services/cli/claude';
+import { initializeNextJsProject as initializeCodexProject, applyChanges as applyCodexChanges } from '@/lib/services/cli/codex';
+import { initializeNextJsProject as initializeCursorProject, applyChanges as applyCursorChanges } from '@/lib/services/cli/cursor';
+import { initializeNextJsProject as initializeQwenProject, applyChanges as applyQwenChanges } from '@/lib/services/cli/qwen';
+import { initializeNextJsProject as initializeGLMProject, applyChanges as applyGLMChanges } from '@/lib/services/cli/glm';
+import { getDefaultModelForCli, normalizeModelId } from '@/lib/constants/cliModels';
 import { streamManager } from '@/lib/services/stream';
 import type { ChatActRequest } from '@/types/backend';
 import { generateProjectId } from '@/lib/utils';
@@ -20,6 +24,10 @@ import path from 'path';
 import fs from 'fs/promises';
 import { randomUUID } from 'crypto';
 import { serializeMessage } from '@/lib/serializers/chat';
+import {
+  upsertUserRequest,
+  markUserRequestAsProcessing,
+} from '@/lib/services/user-requests';
 
 interface RouteContext {
   params: Promise<{ project_id: string }>;
@@ -32,23 +40,32 @@ function coerceString(value: unknown): string | null {
 }
 
 const PROJECTS_DIR = process.env.PROJECTS_DIR || './data/projects';
+const PROJECTS_DIR_ABSOLUTE = path.isAbsolute(PROJECTS_DIR)
+  ? PROJECTS_DIR
+  : path.resolve(process.cwd(), PROJECTS_DIR);
 
 function resolveAssetsPath(projectId: string): string {
-  return path.join(PROJECTS_DIR, projectId, 'assets');
+  return path.join(PROJECTS_DIR_ABSOLUTE, projectId, 'assets');
 }
 
 function ensureAbsoluteAssetPath(projectId: string, inputPath: string): string {
-  if (path.isAbsolute(inputPath)) {
-    return inputPath;
+  const normalized = path.normalize(inputPath);
+  if (path.isAbsolute(normalized)) {
+    return normalized;
   }
-  return path.join(PROJECTS_DIR, projectId, inputPath);
+  const resolvedFromCwd = path.resolve(process.cwd(), normalized);
+  if (resolvedFromCwd.startsWith(PROJECTS_DIR_ABSOLUTE)) {
+    return resolvedFromCwd;
+  }
+  const projectBase = path.join(PROJECTS_DIR_ABSOLUTE, projectId);
+  return path.resolve(projectBase, normalized);
 }
 
 function resolveProjectRoot(projectId: string, repoPath?: string | null): string {
   if (repoPath) {
     return path.isAbsolute(repoPath) ? repoPath : path.resolve(process.cwd(), repoPath);
   }
-  return path.resolve(process.cwd(), PROJECTS_DIR, projectId);
+  return path.join(PROJECTS_DIR_ABSOLUTE, projectId);
 }
 
 async function mirrorAssetToPublic(
@@ -56,6 +73,23 @@ async function mirrorAssetToPublic(
   filename: string,
   sourcePath: string,
 ): Promise<{ publicPath: string | null; publicUrl: string | null }> {
+  const resolvedSourcePath = path.isAbsolute(sourcePath) ? sourcePath : path.resolve(process.cwd(), sourcePath);
+  const hostUploadsDir = path.join(process.cwd(), 'public', 'uploads');
+  let hostPublicPath: string | null = null;
+
+  try {
+    await fs.mkdir(hostUploadsDir, { recursive: true });
+    const destinationPath = path.join(hostUploadsDir, filename);
+    try {
+      await fs.access(destinationPath);
+    } catch {
+      await fs.copyFile(resolvedSourcePath, destinationPath);
+    }
+    hostPublicPath = destinationPath;
+  } catch (error) {
+    console.warn('[API] Failed to mirror asset into application public/uploads:', error);
+  }
+
   try {
     const uploadsDir = path.join(projectRoot, 'public', 'uploads');
     await fs.mkdir(uploadsDir, { recursive: true });
@@ -63,11 +97,17 @@ async function mirrorAssetToPublic(
     try {
       await fs.access(destinationPath);
     } catch {
-      await fs.copyFile(sourcePath, destinationPath);
+      await fs.copyFile(resolvedSourcePath, destinationPath);
     }
-    return { publicPath: destinationPath, publicUrl: `/uploads/${filename}` };
+    return {
+      publicPath: hostPublicPath ?? destinationPath,
+      publicUrl: hostPublicPath ? `/uploads/${filename}` : null,
+    };
   } catch (error) {
-    console.warn('[API] Failed to mirror asset into public/uploads:', error);
+    console.warn('[API] Failed to mirror asset into project public/uploads:', error);
+    if (hostPublicPath) {
+      return { publicPath: hostPublicPath, publicUrl: `/uploads/${filename}` };
+    }
     return { publicPath: null, publicUrl: null };
   }
 }
@@ -188,9 +228,9 @@ async function normalizeImageAttachment(
  * POST /api/chat/[project_id]/act
  * Execute AI command
  */
-export async function POST(request: NextRequest, context: RouteContext) {
+export async function POST(request: NextRequest, { params }: RouteContext) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     const rawBody = await request.json().catch(() => ({}));
     const body = (rawBody && typeof rawBody === 'object' ? rawBody : {}) as ChatActRequest &
       Record<string, unknown>;
@@ -246,8 +286,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       coerceString(body.selectedModel) ??
       coerceString(legacyBody['selected_model']) ??
       project.selectedModel ??
-      CLAUDE_DEFAULT_MODEL;
-    const selectedModel = normalizeClaudeModelId(selectedModelRaw);
+      getDefaultModelForCli(cliPreference);
+    const selectedModel = normalizeModelId(cliPreference, selectedModelRaw);
 
     const conversationId =
       coerceString(body.conversationId) ?? coerceString(legacyBody['conversation_id']);
@@ -274,6 +314,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
           }
         : undefined;
 
+    console.log('📸 Creating message with attachments:', {
+      projectId: project_id,
+      hasAttachments: processedImages.length > 0,
+      attachmentsCount: processedImages.length,
+      metadataKeys: metadata ? Object.keys(metadata) : [],
+      metadataString: JSON.stringify(metadata, null, 2)
+    });
+
     const userMessage = await createMessage({
       projectId: project_id,
       role: 'user',
@@ -282,7 +330,36 @@ export async function POST(request: NextRequest, context: RouteContext) {
       conversationId: conversationId ?? undefined,
       cliSource: cliPreference,
       metadata,
+      requestId: requestId,
     });
+
+    console.log('📸 Message created successfully:', {
+      messageId: userMessage.id,
+      hasMetadata: Boolean(metadata),
+      metadataType: metadata ? typeof metadata : 'undefined',
+      metadataKeys: metadata ? Object.keys(metadata) : [],
+      metadataString: metadata ? JSON.stringify(metadata, null, 2) : undefined,
+      metadataJsonLength: userMessage.metadataJson ? userMessage.metadataJson.length : 0,
+    });
+
+    if (requestId) {
+      try {
+        const storedInstruction =
+          rawInstruction && rawInstruction.trim().length > 0
+            ? rawInstruction.trim()
+            : instructionWithoutLegacyPaths || finalInstruction;
+
+        await upsertUserRequest({
+          id: requestId,
+          projectId: project_id,
+          instruction: storedInstruction || finalInstruction,
+          cliPreference,
+        });
+        await markUserRequestAsProcessing(requestId);
+      } catch (error) {
+        console.error('[API] Failed to record user request metadata:', error);
+      }
+    }
 
     streamManager.publish(project_id, {
       type: 'message',
@@ -293,9 +370,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const projectPath = project.repoPath || path.join(process.cwd(), 'projects', project_id);
 
-    const existingSelected = project.selectedModel
-      ? normalizeClaudeModelId(project.selectedModel)
-      : null;
+    const existingSelected = normalizeModelId(project.preferredCli ?? 'claude', project.selectedModel ?? undefined);
 
     if (
       project.preferredCli !== cliPreference ||
@@ -323,7 +398,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     if (isInitialPrompt) {
-      initializeNextJsProject(
+      const executor =
+        cliPreference === 'codex'
+          ? initializeCodexProject
+          : cliPreference === 'cursor'
+          ? initializeCursorProject
+          : cliPreference === 'qwen'
+          ? initializeQwenProject
+          : cliPreference === 'glm'
+          ? initializeGLMProject
+          : initializeClaudeProject;
+
+      executor(
         project_id,
         projectPath,
         finalInstruction,
@@ -333,15 +419,33 @@ export async function POST(request: NextRequest, context: RouteContext) {
         console.error('[API] Failed to initialize project:', error);
       });
     } else {
-      applyChanges(
+      const executor =
+        cliPreference === 'codex'
+          ? applyCodexChanges
+          : cliPreference === 'cursor'
+          ? applyCursorChanges
+          : cliPreference === 'qwen'
+          ? applyQwenChanges
+          : cliPreference === 'glm'
+          ? applyGLMChanges
+          : applyClaudeChanges;
+
+      const sessionId =
+        cliPreference === 'claude'
+          ? project.activeClaudeSessionId || undefined
+          : cliPreference === 'cursor'
+          ? project.activeCursorSessionId || undefined
+          : undefined;
+
+      executor(
         project_id,
         projectPath,
         finalInstruction,
         selectedModel,
-        project.activeClaudeSessionId || undefined,
+        sessionId,
         requestId,
       ).catch((error) => {
-        console.error('[API] Failed to execute Claude:', error);
+        console.error('[API] Failed to execute AI:', error);
       });
     }
 
