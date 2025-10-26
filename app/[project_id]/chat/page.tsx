@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo, type ChangeEvent, type KeyboardEvent, type UIEvent } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { MotionDiv, MotionH3, MotionP, MotionButton } from '@/lib/motion';
 import { useRouter, useSearchParams, useParams } from 'next/navigation';
@@ -10,34 +10,46 @@ import { VscJson } from 'react-icons/vsc';
 import ChatLog from '@/components/chat/ChatLog';
 import { ProjectSettings } from '@/components/settings/ProjectSettings';
 import ChatInput from '@/components/chat/ChatInput';
+import { ChatErrorBoundary } from '@/components/ErrorBoundary';
 import { useUserRequests } from '@/hooks/useUserRequests';
 import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
-import { CLAUDE_MODEL_DEFINITIONS, CLAUDE_DEFAULT_MODEL, normalizeClaudeModelId, getClaudeModelDisplayName } from '@/lib/constants/claudeModels';
+import { getDefaultModelForCli, getModelDisplayName } from '@/lib/constants/cliModels';
+import {
+  ACTIVE_CLI_BRAND_COLORS,
+  ACTIVE_CLI_IDS,
+  ACTIVE_CLI_MODEL_OPTIONS,
+  ACTIVE_CLI_NAME_MAP,
+  DEFAULT_ACTIVE_CLI,
+  buildActiveModelOptions,
+  normalizeModelForCli,
+  sanitizeActiveCli,
+  type ActiveCliId,
+  type ActiveModelOption,
+} from '@/lib/utils/cliOptions';
 
 // No longer loading ProjectSettings (managed by global settings on main page)
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 
-// Define assistant brand colors
-const assistantBrandColors: { [key: string]: string } = {
-  claude: '#DE7356'
-};
+const assistantBrandColors = ACTIVE_CLI_BRAND_COLORS;
 
-const CLI_LABELS: Record<string, string> = {
-  claude: 'Claude Code'
-};
+const CLI_LABELS = ACTIVE_CLI_NAME_MAP;
 
-const CLI_ORDER = ['claude'] as const;
+const CLI_ORDER = ACTIVE_CLI_IDS;
 
-const sanitizeCli = (cli?: string | null) => (cli && cli.toLowerCase() === 'claude' ? 'claude' : 'claude');
-const sanitizeModel = (model?: string | null) => normalizeClaudeModelId(model);
+const sanitizeCli = (cli?: string | null) => sanitizeActiveCli(cli, DEFAULT_ACTIVE_CLI);
+
+const sanitizeModel = (cli: string, model?: string | null) => normalizeModelForCli(cli, model, DEFAULT_ACTIVE_CLI);
 
 // Function to convert hex to CSS filter for tinting white images
 // Since the original image is white (#FFFFFF), we can apply filters more accurately
 const hexToFilter = (hex: string): string => {
   // For white source images, we need to invert and adjust
   const filters: { [key: string]: string } = {
-    '#DE7356': 'brightness(0) saturate(100%) invert(52%) sepia(73%) saturate(562%) hue-rotate(336deg) brightness(95%) contrast(91%)'
+    '#DE7356': 'brightness(0) saturate(100%) invert(52%) sepia(73%) saturate(562%) hue-rotate(336deg) brightness(95%) contrast(91%)',
+    '#000000': 'brightness(0) saturate(100%)',
+    '#11A97D': 'brightness(0) saturate(100%) invert(57%) sepia(30%) saturate(747%) hue-rotate(109deg) brightness(90%) contrast(92%)',
+    '#1677FF': 'brightness(0) saturate(100%) invert(40%) sepia(86%) saturate(1806%) hue-rotate(201deg) brightness(98%) contrast(98%)',
   };
   return filters[hex] || filters['#DE7356'];
 };
@@ -51,38 +63,13 @@ type CliStatusSnapshot = {
   models?: string[];
 };
 
-type ModelOption = {
-  id: string;
-  name: string;
-  cli: string;
-  cliName: string;
-  available: boolean;
-};
+type ModelOption = Omit<ActiveModelOption, 'cli'> & { cli: string };
 
-const buildModelOptions = (statuses: Record<string, CliStatusSnapshot>): ModelOption[] => {
-  const options: ModelOption[] = [];
-
-  CLI_ORDER.forEach(cli => {
-    const status = statuses?.[cli];
-    const availableModels = new Set((status?.models ?? []).map(normalizeClaudeModelId));
-    const baseAvailability = Boolean(status?.available ?? true) && Boolean(status?.configured ?? true);
-
-    CLAUDE_MODEL_DEFINITIONS.forEach(definition => {
-      const normalizedId = definition.id;
-      const isAvailable = baseAvailability && (availableModels.size === 0 || availableModels.has(normalizedId));
-
-      options.push({
-        id: normalizedId,
-        name: definition.name,
-        cli,
-        cliName: CLI_LABELS[cli] || cli,
-        available: isAvailable,
-      });
-    });
-  });
-
-  return options;
-};
+const buildModelOptions = (statuses: Record<string, CliStatusSnapshot>): ModelOption[] =>
+  buildActiveModelOptions(statuses).map(option => ({
+    ...option,
+    cli: option.cli,
+  }));
 
 // TreeView component for VSCode-style file explorer
 interface TreeViewProps {
@@ -135,8 +122,8 @@ function TreeView({ entries, selectedFile, expandedFolders, folderContents, onTo
             <div
               className={`group flex items-center h-[22px] px-2 cursor-pointer ${
                 selectedFile === fullPath 
-                  ? 'bg-blue-100 dark:bg-[#094771]' 
-                  : 'hover:bg-gray-100 dark:hover:bg-[#1a1a1a]'
+                  ? 'bg-blue-100 ' 
+                  : 'hover:bg-gray-100 '
               }`}
               style={{ paddingLeft: `${8 + indent}px` }}
               onClick={async () => {
@@ -155,8 +142,8 @@ function TreeView({ entries, selectedFile, expandedFolders, folderContents, onTo
               <div className="w-4 flex items-center justify-center mr-0.5">
                 {entry.type === 'dir' && (
                   isExpanded ? 
-                    <span className="w-2.5 h-2.5 text-gray-600 dark:text-[#8b8b8b] flex items-center justify-center"><FaChevronDown size={10} /></span> : 
-                    <span className="w-2.5 h-2.5 text-gray-600 dark:text-[#8b8b8b] flex items-center justify-center"><FaChevronRight size={10} /></span>
+                    <span className="w-2.5 h-2.5 text-gray-600 flex items-center justify-center"><FaChevronDown size={10} /></span> : 
+                    <span className="w-2.5 h-2.5 text-gray-600 flex items-center justify-center"><FaChevronRight size={10} /></span>
                 )}
               </div>
               
@@ -164,8 +151,8 @@ function TreeView({ entries, selectedFile, expandedFolders, folderContents, onTo
               <span className="w-4 h-4 flex items-center justify-center mr-1.5">
                 {entry.type === 'dir' ? (
                   isExpanded ? 
-                    <span className="text-amber-600 dark:text-[#c09553] w-4 h-4 flex items-center justify-center"><FaFolderOpen size={16} /></span> : 
-                    <span className="text-amber-600 dark:text-[#c09553] w-4 h-4 flex items-center justify-center"><FaFolder size={16} /></span>
+                    <span className="text-amber-600 w-4 h-4 flex items-center justify-center"><FaFolderOpen size={16} /></span> : 
+                    <span className="text-amber-600 w-4 h-4 flex items-center justify-center"><FaFolder size={16} /></span>
                 ) : (
                   getFileIcon(entry)
                 )}
@@ -173,7 +160,7 @@ function TreeView({ entries, selectedFile, expandedFolders, folderContents, onTo
               
               {/* File/Folder name */}
               <span className={`text-[13px] leading-[22px] ${
-                selectedFile === fullPath ? 'text-blue-700 dark:text-white' : 'text-gray-700 dark:text-[#cccccc]'
+                selectedFile === fullPath ? 'text-blue-700 ' : 'text-gray-700 '
               }`} style={{ fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
                 {level === 0 ? (entry.path.split('/').pop() || entry.path) : (entry.path.split('/').pop() || entry.path)}
               </span>
@@ -218,15 +205,40 @@ export default function ChatPage() {
   const [projectName, setProjectName] = useState<string>('');
   const [projectDescription, setProjectDescription] = useState<string>('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
   const [tree, setTree] = useState<Entry[]>([]);
   const [content, setContent] = useState<string>('');
+  const [editedContent, setEditedContent] = useState<string>('');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isSavingFile, setIsSavingFile] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState<'idle' | 'success' | 'error'>('idle');
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string>('');
   const [currentPath, setCurrentPath] = useState<string>('.');
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['']));
   const [folderContents, setFolderContents] = useState<Map<string, Entry[]>>(new Map());
   const [prompt, setPrompt] = useState('');
+
+  // Ref to store add/remove message handlers from ChatLog
+  const messageHandlersRef = useRef<{
+    add: (message: any) => void;
+    remove: (messageId: string) => void;
+  } | null>(null);
+
+  // Ref to track pending requests for deduplication
+  const pendingRequestsRef = useRef<Set<string>>(new Set());
+
+  // Stable message handlers to prevent reassignment issues
+  const stableMessageHandlers = useRef<{
+    add: (message: any) => void;
+    remove: (messageId: string) => void;
+  } | null>(null);
+
+  // Track active optimistic messages by requestId
+  const optimisticMessagesRef = useRef<Map<string, any>>(new Map());
   const [mode, setMode] = useState<'act' | 'chat'>('act');
   const [isRunning, setIsRunning] = useState(false);
+  const [isSseFallbackActive, setIsSseFallbackActive] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
   const [deviceMode, setDeviceMode] = useState<'desktop'|'mobile'>('desktop');
   const [showGlobalSettings, setShowGlobalSettings] = useState(false);
@@ -256,14 +268,20 @@ export default function ChatPage() {
     }
     return '';
   });
-  const [preferredCli, setPreferredCli] = useState<string>('claude');
-  const [selectedModel, setSelectedModel] = useState<string>(CLAUDE_DEFAULT_MODEL);
+  const [preferredCli, setPreferredCli] = useState<ActiveCliId>(DEFAULT_ACTIVE_CLI);
+  const [selectedModel, setSelectedModel] = useState<string>(getDefaultModelForCli(DEFAULT_ACTIVE_CLI));
   const [usingGlobalDefaults, setUsingGlobalDefaults] = useState<boolean>(true);
   const [thinkingMode, setThinkingMode] = useState<boolean>(false);
   const [isUpdatingModel, setIsUpdatingModel] = useState<boolean>(false);
   const [currentRoute, setCurrentRoute] = useState<string>('/');
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const highlightRef = useRef<HTMLPreElement>(null);
+  const lineNumberRef = useRef<HTMLDivElement>(null);
+  const editedContentRef = useRef<string>('');
   const [isFileUpdating, setIsFileUpdating] = useState(false);
+  const activeBrandColor =
+    assistantBrandColors[preferredCli] || assistantBrandColors[DEFAULT_ACTIVE_CLI];
   const modelOptions = useMemo(() => buildModelOptions(cliStatuses), [cliStatuses]);
   const cliOptions = useMemo(
     () => CLI_ORDER.map(cli => ({
@@ -282,13 +300,18 @@ export default function ChatPage() {
     }
   }, []);
 
-  const updateSelectedModel = useCallback((model: string) => {
-    const sanitized = sanitizeModel(model);
+  const updateSelectedModel = useCallback((model: string, cliOverride?: string) => {
+    const effectiveCli = cliOverride ? sanitizeCli(cliOverride) : preferredCli;
+    const sanitized = sanitizeModel(effectiveCli, model);
     setSelectedModel(sanitized);
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('selectedModel', sanitized);
     }
-  }, []);
+  }, [preferredCli]);
+
+  useEffect(() => {
+    previewUrlRef.current = previewUrl;
+  }, [previewUrl]);
 
   const sendInitialPrompt = useCallback(async (initialPrompt: string) => {
     if (initialPromptSent) {
@@ -378,10 +401,13 @@ export default function ChatPage() {
     const cliFromUrl = searchParams?.get('cli');
     const modelFromUrl = searchParams?.get('model');
     if (cliFromUrl) {
-      sessionStorage.setItem('selectedAssistant', sanitizeCli(cliFromUrl));
-    }
-    if (modelFromUrl) {
-      sessionStorage.setItem('selectedModel', sanitizeModel(modelFromUrl));
+      const sanitizedCli = sanitizeCli(cliFromUrl);
+      sessionStorage.setItem('selectedAssistant', sanitizedCli);
+      if (modelFromUrl) {
+        sessionStorage.setItem('selectedModel', sanitizeModel(sanitizedCli, modelFromUrl));
+      }
+    } else if (modelFromUrl) {
+      sessionStorage.setItem('selectedModel', sanitizeModel(preferredCli, modelFromUrl));
     }
     
     // Don't show the initial prompt in the input field
@@ -389,15 +415,16 @@ export default function ChatPage() {
     setTimeout(() => {
       sendInitialPrompt(initialPromptFromUrl);
     }, 300);
-  }, [searchParams, sendInitialPrompt]);
+  }, [searchParams, sendInitialPrompt, preferredCli]);
 
 const loadCliStatuses = useCallback(() => {
   const snapshot: Record<string, CliStatusSnapshot> = {};
-  CLI_ORDER.forEach(cli => {
-    snapshot[cli] = {
+  ACTIVE_CLI_IDS.forEach(id => {
+    const models = ACTIVE_CLI_MODEL_OPTIONS[id]?.map(model => model.id) ?? [];
+    snapshot[id] = {
       available: true,
       configured: true,
-      models: CLAUDE_MODEL_DEFINITIONS.map(model => model.id),
+      models,
     };
   });
   setCliStatuses(snapshot);
@@ -408,11 +435,13 @@ const persistProjectPreferences = useCallback(
     if (!projectId) return;
     const payload: Record<string, unknown> = {};
     if (changes.preferredCli) {
-      payload.preferredCli = changes.preferredCli;
-      payload.preferred_cli = changes.preferredCli;
+      const sanitizedPreferredCli = sanitizeCli(changes.preferredCli);
+      payload.preferredCli = sanitizedPreferredCli;
+      payload.preferred_cli = sanitizedPreferredCli;
     }
     if (changes.selectedModel) {
-      const normalized = normalizeClaudeModelId(changes.selectedModel);
+      const targetCli = sanitizeCli(changes.preferredCli ?? preferredCli);
+      const normalized = sanitizeModel(targetCli, changes.selectedModel);
       payload.selectedModel = normalized;
       payload.selected_model = normalized;
     }
@@ -432,7 +461,7 @@ const persistProjectPreferences = useCallback(
     const result = await response.json().catch(() => null);
     return result?.data ?? result;
   },
-  [projectId]
+  [projectId, preferredCli]
 );
 
   const handleModelChange = useCallback(
@@ -441,24 +470,24 @@ const persistProjectPreferences = useCallback(
 
       const { skipCliUpdate = false, overrideCli } = opts || {};
       const targetCli = sanitizeCli(overrideCli ?? option.cli);
-      const newModelId = sanitizeModel(option.id);
+      const sanitizedModelId = sanitizeModel(targetCli, option.id);
 
       const previousCli = preferredCli;
       const previousModel = selectedModel;
 
-      if (targetCli === previousCli && newModelId === previousModel) {
+      if (targetCli === previousCli && sanitizedModelId === previousModel) {
         return;
       }
 
       setUsingGlobalDefaults(false);
       updatePreferredCli(targetCli);
-      updateSelectedModel(newModelId);
+      updateSelectedModel(option.id, targetCli);
 
       setIsUpdatingModel(true);
 
       try {
         const preferenceChanges: { preferredCli?: string; selectedModel?: string } = {
-          selectedModel: newModelId,
+          selectedModel: sanitizedModelId,
         };
         if (!skipCliUpdate && targetCli !== previousCli) {
           preferenceChanges.preferredCli = targetCli;
@@ -467,7 +496,7 @@ const persistProjectPreferences = useCallback(
         await persistProjectPreferences(preferenceChanges);
 
         const cliLabel = CLI_LABELS[targetCli] || targetCli;
-        const modelLabel = getClaudeModelDisplayName(newModelId);
+        const modelLabel = getModelDisplayName(targetCli, sanitizedModelId);
         try {
           await fetch(`${API_BASE}/api/chat/${projectId}/messages`, {
             method: 'POST',
@@ -488,7 +517,7 @@ const persistProjectPreferences = useCallback(
       } catch (error) {
         console.error('Failed to update model preference:', error);
         updatePreferredCli(previousCli);
-        updateSelectedModel(previousModel);
+        updateSelectedModel(previousModel, previousCli);
         alert('Failed to update model. Please try again.');
       } finally {
         setIsUpdatingModel(false);
@@ -525,13 +554,14 @@ const persistProjectPreferences = useCallback(
 
       try {
         updatePreferredCli(cliId);
-        updateSelectedModel(CLAUDE_DEFAULT_MODEL);
-        await persistProjectPreferences({ preferredCli: cliId, selectedModel: CLAUDE_DEFAULT_MODEL });
+        const defaultModel = getDefaultModelForCli(cliId);
+        updateSelectedModel(defaultModel, cliId);
+        await persistProjectPreferences({ preferredCli: cliId, selectedModel: defaultModel });
         loadCliStatuses();
       } catch (error) {
         console.error('Failed to update CLI preference:', error);
         updatePreferredCli(previousCli);
-        updateSelectedModel(previousModel);
+        updateSelectedModel(previousModel, previousCli);
         alert('Failed to update CLI. Please try again.');
       } finally {
         setIsUpdatingModel(false);
@@ -777,6 +807,25 @@ const persistProjectPreferences = useCallback(
     }
   };
 
+  const refreshPreview = useCallback(() => {
+    if (!previewUrl || !iframeRef.current) {
+      return;
+    }
+
+    try {
+      const normalizedRoute =
+        currentRoute && currentRoute.startsWith('/')
+          ? currentRoute
+          : `/${currentRoute || ''}`;
+      const baseUrl = previewUrl.split('?')[0] || previewUrl;
+      const url = new URL(baseUrl + normalizedRoute);
+      url.searchParams.set('_ts', Date.now().toString());
+      iframeRef.current.src = url.toString();
+    } catch (error) {
+      console.warn('Failed to refresh preview iframe:', error);
+    }
+  }, [previewUrl, currentRoute]);
+
 
   const stop = useCallback(async () => {
     try {
@@ -903,28 +952,68 @@ const persistProjectPreferences = useCallback(
 
   const openFile = useCallback(async (path: string) => {
     try {
+      if (hasUnsavedChanges && path !== selectedFile) {
+        const shouldDiscard =
+          typeof window !== 'undefined'
+            ? window.confirm('You have unsaved changes. Discard them and open the new file?')
+            : true;
+        if (!shouldDiscard) {
+          return;
+        }
+      }
+
+      setSaveFeedback('idle');
+      setSaveError(null);
+
       const r = await fetch(`${API_BASE}/api/repo/${projectId}/file?path=${encodeURIComponent(path)}`);
       
       if (!r.ok) {
         console.error('Failed to load file:', r.status, r.statusText);
-        setContent('// Failed to load file content');
+        const fallback = '// Failed to load file content';
+        setContent(fallback);
+        setEditedContent(fallback);
+        editedContentRef.current = fallback;
+        setHasUnsavedChanges(false);
         setSelectedFile(path);
         return;
       }
       
       const data = await r.json();
-      setContent(data.content || '');
+      const fileContent = typeof data?.content === 'string' ? data.content : '';
+      setContent(fileContent);
+      setEditedContent(fileContent);
+      editedContentRef.current = fileContent;
+      setHasUnsavedChanges(false);
       setSelectedFile(path);
+      setIsFileUpdating(false);
+
+      requestAnimationFrame(() => {
+        if (editorRef.current) {
+          editorRef.current.scrollTop = 0;
+          editorRef.current.scrollLeft = 0;
+        }
+        if (highlightRef.current) {
+          highlightRef.current.scrollTop = 0;
+          highlightRef.current.scrollLeft = 0;
+        }
+        if (lineNumberRef.current) {
+          lineNumberRef.current.scrollTop = 0;
+        }
+      });
     } catch (error) {
       console.error('Error opening file:', error);
-      setContent('// Error loading file');
+      const fallback = '// Error loading file';
+      setContent(fallback);
+      setEditedContent(fallback);
+      editedContentRef.current = fallback;
+      setHasUnsavedChanges(false);
       setSelectedFile(path);
     }
-  }, [projectId]);
+  }, [projectId, hasUnsavedChanges, selectedFile]);
 
   // Reload currently selected file
   const reloadCurrentFile = useCallback(async () => {
-    if (selectedFile && !showPreview) {
+    if (selectedFile && !showPreview && !hasUnsavedChanges) {
       try {
         const r = await fetch(`${API_BASE}/api/repo/${projectId}/file?path=${encodeURIComponent(selectedFile)}`);
         if (r.ok) {
@@ -933,6 +1022,11 @@ const persistProjectPreferences = useCallback(
           if (newContent !== content) {
             setIsFileUpdating(true);
             setContent(newContent);
+            setEditedContent(newContent);
+            editedContentRef.current = newContent;
+            setHasUnsavedChanges(false);
+            setSaveFeedback('idle');
+            setSaveError(null);
             setTimeout(() => setIsFileUpdating(false), 500);
           }
         }
@@ -940,7 +1034,7 @@ const persistProjectPreferences = useCallback(
         // Silently fail - this is a background refresh
       }
     }
-  }, [projectId, selectedFile, showPreview, content]);
+  }, [projectId, selectedFile, showPreview, hasUnsavedChanges, content]);
 
   // Lazy load highlight.js only when needed
   const [hljs, setHljs] = useState<any>(null);
@@ -957,6 +1051,161 @@ const persistProjectPreferences = useCallback(
       });
     }
   }, [selectedFile, hljs]);
+
+  const highlightedCode = useMemo(() => {
+    const code = editedContent ?? '';
+    if (!code) {
+      return '&nbsp;';
+    }
+
+    if (!hljs) {
+      return escapeHtml(code);
+    }
+
+    const language = getFileLanguage(selectedFile);
+    try {
+      if (!language || language === 'plaintext') {
+        return escapeHtml(code);
+      }
+      return hljs.highlight(code, { language }).value;
+    } catch {
+      try {
+        return hljs.highlightAuto(code).value;
+      } catch {
+        return escapeHtml(code);
+      }
+    }
+  }, [hljs, editedContent, selectedFile]);
+
+  const onEditorChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
+    const value = event.target.value;
+    setEditedContent(value);
+    editedContentRef.current = value;
+    setHasUnsavedChanges(value !== content);
+    setSaveFeedback('idle');
+    setSaveError(null);
+    if (isFileUpdating) {
+      setIsFileUpdating(false);
+    }
+  }, [content, isFileUpdating]);
+
+  const handleEditorScroll = useCallback((event: UIEvent<HTMLTextAreaElement>) => {
+    const { scrollTop, scrollLeft } = event.currentTarget;
+    if (highlightRef.current) {
+      highlightRef.current.scrollTop = scrollTop;
+      highlightRef.current.scrollLeft = scrollLeft;
+    }
+    if (lineNumberRef.current) {
+      lineNumberRef.current.scrollTop = scrollTop;
+    }
+  }, []);
+
+  const handleSaveFile = useCallback(async () => {
+    if (!selectedFile || isSavingFile || !hasUnsavedChanges) {
+      return;
+    }
+
+    const contentToSave = editedContentRef.current;
+    setIsSavingFile(true);
+    setSaveFeedback('idle');
+    setSaveError(null);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/repo/${projectId}/file`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: selectedFile, content: contentToSave }),
+      });
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to save file';
+        try {
+          const data = await response.clone().json();
+          errorMessage = data?.error || data?.message || errorMessage;
+        } catch {
+          const text = await response.text().catch(() => '');
+          if (text) {
+            errorMessage = text;
+          }
+        }
+        throw new Error(errorMessage);
+      }
+
+      setContent(contentToSave);
+      setSaveFeedback('success');
+
+      if (editedContentRef.current === contentToSave) {
+        setHasUnsavedChanges(false);
+        setIsFileUpdating(true);
+        setTimeout(() => setIsFileUpdating(false), 800);
+      }
+
+      refreshPreview();
+    } catch (error) {
+      console.error('Failed to save file:', error);
+      setSaveFeedback('error');
+      setSaveError(error instanceof Error ? error.message : 'Failed to save file');
+    } finally {
+      setIsSavingFile(false);
+    }
+  }, [selectedFile, isSavingFile, hasUnsavedChanges, projectId, refreshPreview]);
+
+  const handleEditorKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+      event.preventDefault();
+      handleSaveFile();
+      return;
+    }
+
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      const el = event.currentTarget;
+      const start = el.selectionStart ?? 0;
+      const end = el.selectionEnd ?? 0;
+      const indent = '  ';
+      const value = editedContent;
+      const newValue = value.slice(0, start) + indent + value.slice(end);
+
+      setEditedContent(newValue);
+      editedContentRef.current = newValue;
+      setHasUnsavedChanges(newValue !== content);
+      setSaveFeedback('idle');
+      setSaveError(null);
+      if (isFileUpdating) {
+        setIsFileUpdating(false);
+      }
+
+      requestAnimationFrame(() => {
+        const position = start + indent.length;
+        el.selectionStart = position;
+        el.selectionEnd = position;
+        if (highlightRef.current) {
+          highlightRef.current.scrollTop = el.scrollTop;
+          highlightRef.current.scrollLeft = el.scrollLeft;
+        }
+        if (lineNumberRef.current) {
+          lineNumberRef.current.scrollTop = el.scrollTop;
+        }
+      });
+    }
+  }, [handleSaveFile, editedContent, content, isFileUpdating]);
+
+  useEffect(() => {
+    if (saveFeedback === 'success') {
+      const timer = setTimeout(() => setSaveFeedback('idle'), 1800);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [saveFeedback]);
+
+  useEffect(() => {
+    if (editorRef.current && highlightRef.current && lineNumberRef.current) {
+      const { scrollTop, scrollLeft } = editorRef.current;
+      highlightRef.current.scrollTop = scrollTop;
+      highlightRef.current.scrollLeft = scrollLeft;
+      lineNumberRef.current.scrollTop = scrollTop;
+    }
+  }, [editedContent]);
 
   // Get file extension for syntax highlighting
   function getFileLanguage(path: string): string {
@@ -1026,6 +1275,15 @@ const persistProjectPreferences = useCallback(
       default:
         return 'plaintext';
     }
+  }
+
+  function escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   // Get file icon based on type
@@ -1161,17 +1419,20 @@ const persistProjectPreferences = useCallback(
           if (!hasModelSet) {
             const cliSettings = globalSettings.cli_settings?.[cliToUse] || globalSettings.cliSettings?.[cliToUse];
             if (cliSettings?.model) {
-              updateSelectedModel(cliSettings.model);
+              updateSelectedModel(cliSettings.model, cliToUse);
             } else {
-              updateSelectedModel(CLAUDE_DEFAULT_MODEL);
+              updateSelectedModel(getDefaultModelForCli(cliToUse), cliToUse);
             }
           }
         } else {
           const response = await fetch(`${API_BASE}/api/settings`);
           if (response.ok) {
             const settings = await response.json();
-            if (!hasCliSet) updatePreferredCli(settings.preferred_cli || settings.default_cli || 'claude');
-            if (!hasModelSet) updateSelectedModel(CLAUDE_DEFAULT_MODEL);
+            if (!hasCliSet) updatePreferredCli(settings.preferred_cli || settings.default_cli || DEFAULT_ACTIVE_CLI);
+            if (!hasModelSet) {
+              const cli = sanitizeCli(settings.preferred_cli || settings.default_cli || preferredCli || DEFAULT_ACTIVE_CLI);
+              updateSelectedModel(getDefaultModelForCli(cli), cli);
+            }
           }
         }
       }
@@ -1179,12 +1440,12 @@ const persistProjectPreferences = useCallback(
       console.error('Failed to load settings:', error);
       const hasCliSet = projectSettings?.cli || preferredCli;
       const hasModelSet = projectSettings?.model || selectedModel;
-      if (!hasCliSet) updatePreferredCli('claude');
-      if (!hasModelSet) updateSelectedModel(CLAUDE_DEFAULT_MODEL);
+      if (!hasCliSet) updatePreferredCli(DEFAULT_ACTIVE_CLI);
+      if (!hasModelSet) updateSelectedModel(getDefaultModelForCli(DEFAULT_ACTIVE_CLI), DEFAULT_ACTIVE_CLI);
     }
   }, [preferredCli, selectedModel, updatePreferredCli, updateSelectedModel]);
 
-  const loadProjectInfo = useCallback(async () => {
+  const loadProjectInfo = useCallback(async (): Promise<{ cli?: string; model?: string; status?: ProjectStatus }> => {
     try {
       const r = await fetch(`${API_BASE}/api/projects/${projectId}`);
       if (!r.ok) {
@@ -1200,23 +1461,37 @@ const persistProjectPreferences = useCallback(
 
       const payload = await r.json();
       const project = payload?.data ?? payload;
+      const rawPreferredCli =
+        typeof project?.preferredCli === 'string'
+          ? project.preferredCli
+          : typeof project?.preferred_cli === 'string'
+          ? project.preferred_cli
+          : undefined;
+      const rawSelectedModel =
+        typeof project?.selectedModel === 'string'
+          ? project.selectedModel
+          : typeof project?.selected_model === 'string'
+          ? project.selected_model
+          : undefined;
+
       console.log('📋 Loading project info:', {
-        preferred_cli: project.preferred_cli,
-        selected_model: project.selected_model,
+        preferredCli: rawPreferredCli,
+        selectedModel: rawSelectedModel,
       });
 
       setProjectName(project.name || `Project ${projectId.slice(0, 8)}`);
 
-      if (project.preferred_cli) {
-        updatePreferredCli(project.preferred_cli);
+      const projectCli = sanitizeCli(rawPreferredCli || preferredCli);
+      if (rawPreferredCli) {
+        updatePreferredCli(projectCli);
       }
-      if (project.selected_model) {
-        updateSelectedModel(normalizeClaudeModelId(project.selected_model));
+      if (rawSelectedModel) {
+        updateSelectedModel(rawSelectedModel, projectCli);
       } else {
-        updateSelectedModel(CLAUDE_DEFAULT_MODEL);
+        updateSelectedModel(getDefaultModelForCli(projectCli), projectCli);
       }
 
-      const followGlobal = !project.preferred_cli && !project.selected_model;
+      const followGlobal = !rawPreferredCli && !rawSelectedModel;
       setUsingGlobalDefaults(followGlobal);
       setProjectDescription(project.description || '');
 
@@ -1238,11 +1513,14 @@ const persistProjectPreferences = useCallback(
         triggerInitialPromptIfNeeded();
       }
 
-      await loadTree('.');
+      const normalizedModel = rawSelectedModel
+        ? sanitizeModel(projectCli, rawSelectedModel)
+        : getDefaultModelForCli(projectCli);
 
       return {
-        cli: project.preferred_cli,
-        model: project.selected_model ? normalizeClaudeModelId(project.selected_model) : CLAUDE_DEFAULT_MODEL,
+        cli: rawPreferredCli ? projectCli : undefined,
+        model: normalizedModel,
+        status: project.status as ProjectStatus | undefined,
       };
     } catch (error) {
       console.error('Failed to load project info:', error);
@@ -1257,12 +1535,114 @@ const persistProjectPreferences = useCallback(
     }
   }, [
     projectId,
-    loadTree,
     startDependencyInstallation,
     triggerInitialPromptIfNeeded,
     updatePreferredCli,
     updateSelectedModel,
+    preferredCli,
   ]);
+
+  const loadProjectInfoRef = useRef(loadProjectInfo);
+  useEffect(() => {
+    loadProjectInfoRef.current = loadProjectInfo;
+  }, [loadProjectInfo]);
+
+  useEffect(() => {
+    if (!searchParams) return;
+    const cliParam = searchParams.get('cli');
+    const modelParam = searchParams.get('model');
+    if (!cliParam && !modelParam) {
+      return;
+    }
+    const sanitizedCli = cliParam ? sanitizeCli(cliParam) : preferredCli;
+    if (cliParam) {
+      setUsingGlobalDefaults(false);
+      updatePreferredCli(sanitizedCli);
+    }
+    if (modelParam) {
+      setUsingGlobalDefaults(false);
+      updateSelectedModel(modelParam, sanitizedCli);
+    }
+  }, [searchParams, preferredCli, updatePreferredCli, updateSelectedModel, setUsingGlobalDefaults]);
+
+  const loadSettingsRef = useRef(loadSettings);
+  useEffect(() => {
+    loadSettingsRef.current = loadSettings;
+  }, [loadSettings]);
+
+  const loadTreeRef = useRef(loadTree);
+  useEffect(() => {
+    loadTreeRef.current = loadTree;
+  }, [loadTree]);
+
+  const loadDeployStatusRef = useRef(loadDeployStatus);
+  useEffect(() => {
+    loadDeployStatusRef.current = loadDeployStatus;
+  }, [loadDeployStatus]);
+
+  const checkCurrentDeploymentRef = useRef(checkCurrentDeployment);
+  useEffect(() => {
+    checkCurrentDeploymentRef.current = checkCurrentDeployment;
+  }, [checkCurrentDeployment]);
+
+  // Stable message handlers with useCallback to prevent reassignment
+  const createStableMessageHandlers = useCallback(() => {
+    const addMessage = (message: any) => {
+      console.log('🔄 [StableHandler] Adding message via stable handler:', {
+        messageId: message.id,
+        role: message.role,
+        isOptimistic: message.isOptimistic,
+        requestId: message.requestId
+      });
+
+      // Track optimistic messages by requestId
+      if (message.isOptimistic && message.requestId) {
+        optimisticMessagesRef.current.set(message.requestId, message);
+        console.log('🔄 [StableHandler] Tracking optimistic message:', {
+          requestId: message.requestId,
+          tempId: message.id
+        });
+      }
+
+      // Also call the current handlers if they exist
+      if (messageHandlersRef.current) {
+        messageHandlersRef.current.add(message);
+      }
+    };
+
+    const removeMessage = (messageId: string) => {
+      console.log('🔄 [StableHandler] Removing message via stable handler:', messageId);
+
+      // Remove from optimistic messages tracking if it's an optimistic message
+      const optimisticMessage = Array.from(optimisticMessagesRef.current.values())
+        .find(msg => msg.id === messageId);
+      if (optimisticMessage && optimisticMessage.requestId) {
+        optimisticMessagesRef.current.delete(optimisticMessage.requestId);
+        console.log('🔄 [StableHandler] Removed optimistic message tracking:', {
+          requestId: optimisticMessage.requestId,
+          tempId: messageId
+        });
+      }
+
+      // Also call the current handlers if they exist
+      if (messageHandlersRef.current) {
+        messageHandlersRef.current.remove(messageId);
+      }
+    };
+
+    return { add: addMessage, remove: removeMessage };
+  }, []);
+
+  // Initialize stable handlers once
+  useEffect(() => {
+    stableMessageHandlers.current = createStableMessageHandlers();
+    const optimisticMessages = optimisticMessagesRef.current;
+
+    return () => {
+      stableMessageHandlers.current = null;
+      optimisticMessages.clear();
+    };
+  }, [createStableMessageHandlers]);
 
   // Handle image upload with base64 conversion
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1301,28 +1681,39 @@ const persistProjectPreferences = useCallback(
   async function runAct(messageOverride?: string, externalImages?: any[]) {
     let finalMessage = messageOverride || prompt;
     const imagesToUse = externalImages || uploadedImages;
+
     if (!finalMessage.trim() && imagesToUse.length === 0) {
       alert('Please enter a task description or upload an image.');
       return;
     }
-    
+
     // Add additional instructions in Chat Mode
     if (mode === 'chat') {
       finalMessage = finalMessage + "\n\nDo not modify code, only answer to the user's request.";
     }
-    
-    // If this is not an initial prompt and user is running a new task, 
-    // ensure the preview button is not blocked
-    if (!hasInitialPrompt || agentWorkComplete) {
-      // This is a subsequent task, not the initial one
-      // Don't block the preview button for subsequent tasks
+
+    // Create request fingerprint for deduplication
+    const requestFingerprint = JSON.stringify({
+      message: finalMessage.trim(),
+      imageCount: imagesToUse.length,
+      cliPreference: preferredCli,
+      model: selectedModel,
+      mode
+    });
+
+    // Check for duplicate pending requests
+    if (pendingRequestsRef.current.has(requestFingerprint)) {
+      console.log('🔄 [DEBUG] Duplicate request detected, skipping:', requestFingerprint);
+      return;
     }
-    
+
     setIsRunning(true);
-    
-    // Generate request id for client-side tracking
     const requestId = crypto.randomUUID();
-    
+    let tempUserMessageId: string | null = null;
+
+    // Add to pending requests
+    pendingRequestsRef.current.add(requestFingerprint);
+
     try {
       const uploadImageFromBase64 = async (img: { base64: string; name?: string }) => {
         const base64String = img.base64;
@@ -1373,21 +1764,35 @@ const persistProjectPreferences = useCallback(
         };
       };
 
+      console.log('🖼️ Processing images in runAct:', {
+          imageCount: imagesToUse.length,
+          cli: preferredCli,
+          requestId
+        });
       const processedImages: { name: string; path: string; url?: string; public_url?: string; publicUrl?: string }[] = [];
 
       for (let i = 0; i < imagesToUse.length; i += 1) {
         const image = imagesToUse[i];
+        console.log(`🖼️ Processing image ${i}:`, {
+          id: image.id,
+          filename: image.filename,
+          hasPath: !!image.path,
+          hasPublicUrl: !!image.publicUrl,
+          hasAssetUrl: !!image.assetUrl
+        });
         if (image?.path) {
           const name = image.filename || image.name || `Image ${i + 1}`;
           const candidateUrl = typeof image.assetUrl === 'string' ? image.assetUrl : undefined;
           const candidatePublicUrl = typeof image.publicUrl === 'string' ? image.publicUrl : undefined;
-          processedImages.push({
+          const processedImage = {
             name,
             path: image.path,
             url: candidateUrl && candidateUrl.startsWith('/') ? candidateUrl : undefined,
             public_url: candidatePublicUrl,
             publicUrl: candidatePublicUrl,
-          });
+          };
+          console.log(`🖼️ Created processed image ${i}:`, processedImage);
+          processedImages.push(processedImage);
           continue;
         }
 
@@ -1399,6 +1804,8 @@ const persistProjectPreferences = useCallback(
             console.error('Image upload failed:', uploadError);
             alert('Failed to upload image. Please try again.');
             setIsRunning(false);
+            // Remove from pending requests
+            pendingRequestsRef.current.delete(requestFingerprint);
             return;
           }
         }
@@ -1414,20 +1821,121 @@ const persistProjectPreferences = useCallback(
         selectedModel,
       };
 
-      const r = await fetch(`${API_BASE}/api/chat/${projectId}/act`, {
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(requestBody) 
+      console.log('📸 Sending request to act API:', {
+        messageLength: finalMessage.length,
+        imageCount: processedImages.length,
+        cli: preferredCli,
+        requestId,
+        images: processedImages.map(img => ({
+          name: img.name,
+          hasPath: !!img.path,
+          hasUrl: !!img.url,
+          hasPublicUrl: !!img.publicUrl
+        }))
       });
 
-      if (!r.ok) {
-        const errorText = await r.text();
-        console.error('❌ API Error:', errorText);
-        alert(`Error: ${errorText}`);
-        return;
+      // Optimistically add user message to UI BEFORE API call for instant feedback
+      tempUserMessageId = requestId + '-user-temp';
+      if (messageHandlersRef.current) {
+        const optimisticUserMessage = {
+          id: tempUserMessageId,
+          projectId: projectId,
+          role: 'user' as const,
+          messageType: 'chat' as const,
+          content: finalMessage,
+          conversationId: conversationId || null,
+          requestId: requestId,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          isStreaming: false,
+          isFinal: false,
+          isOptimistic: true,
+          metadata:
+            processedImages.length > 0
+              ? {
+                  attachments: processedImages.map((img) => ({
+                    name: img.name,
+                    path: img.path,
+                    url: img.url,
+                    publicUrl: img.publicUrl ?? img.public_url,
+                  })),
+                }
+              : undefined,
+        };
+        console.log('🔄 [Optimistic] Adding optimistic user message via stable handler:', {
+          tempId: tempUserMessageId,
+          requestId,
+          content: finalMessage.substring(0, 50) + '...'
+        });
+
+        // Use stable handlers instead of direct messageHandlersRef to prevent reassignment issues
+        if (stableMessageHandlers.current) {
+          stableMessageHandlers.current.add(optimisticUserMessage);
+        } else if (messageHandlersRef.current) {
+          // Fallback to direct handlers if stable handlers aren't ready yet
+          messageHandlersRef.current.add(optimisticUserMessage);
+        }
       }
-      
+
+      // Add timeout to prevent indefinite waiting
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+      let r: Response;
+      try {
+        r = await fetch(`${API_BASE}/api/chat/${projectId}/act`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!r.ok) {
+          const errorText = await r.text();
+          console.error('API Error:', errorText);
+
+          if (tempUserMessageId) {
+            console.log('🔄 [Optimistic] Removing optimistic user message due to API error via stable handler:', tempUserMessageId);
+            if (stableMessageHandlers.current) {
+              stableMessageHandlers.current.remove(tempUserMessageId);
+            } else if (messageHandlersRef.current) {
+              messageHandlersRef.current.remove(tempUserMessageId);
+            }
+          }
+
+          alert(`Failed to send message: ${r.status} ${r.statusText}\n${errorText}`);
+          return;
+        }
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        if (fetchError.name === 'AbortError') {
+          if (tempUserMessageId) {
+            console.log('🔄 [Optimistic] Removing optimistic user message due to timeout via stable handler:', tempUserMessageId);
+            if (stableMessageHandlers.current) {
+              stableMessageHandlers.current.remove(tempUserMessageId);
+            } else if (messageHandlersRef.current) {
+              messageHandlersRef.current.remove(tempUserMessageId);
+            }
+          }
+
+          alert('Request timed out after 60 seconds. Please check your connection and try again.');
+          return;
+        }
+        throw fetchError;
+      }
+
       const result = await r.json();
+
+      console.log('📸 Act API response received:', {
+        success: result.success,
+        userMessageId: result.userMessageId,
+        conversationId: result.conversationId,
+        requestId: result.requestId,
+        hasAttachments: processedImages.length > 0
+      });
+
       const returnedConversationId =
         typeof result?.conversationId === 'string'
           ? result.conversationId
@@ -1466,11 +1974,24 @@ const persistProjectPreferences = useCallback(
         setUploadedImages([]);
       }
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Act execution error:', error);
-      alert(`An error occurred during execution: ${error}`);
+
+      if (tempUserMessageId) {
+        console.log('🔄 [Optimistic] Removing optimistic user message due to execution error via stable handler:', tempUserMessageId);
+        if (stableMessageHandlers.current) {
+          stableMessageHandlers.current.remove(tempUserMessageId);
+        } else if (messageHandlersRef.current) {
+          messageHandlersRef.current.remove(tempUserMessageId);
+        }
+      }
+
+      const errorMessage = error?.message || String(error);
+      alert(`Failed to send message: ${errorMessage}\n\nPlease try again. If the problem persists, check the console for details.`);
     } finally {
       setIsRunning(false);
+      // Remove from pending requests
+      pendingRequestsRef.current.delete(requestFingerprint);
     }
   }
 
@@ -1498,6 +2019,7 @@ const persistProjectPreferences = useCallback(
 
         // Start dependency installation
         startDependencyInstallation();
+        loadTreeRef.current?.('.');
       }
       
       // Initial prompt: trigger once with shared guard (handles active-via-WS case)
@@ -1561,82 +2083,75 @@ const persistProjectPreferences = useCallback(
 
   // Poll for file changes in code view
   useEffect(() => {
-    if (!showPreview && selectedFile) {
+    if (!showPreview && selectedFile && !hasUnsavedChanges) {
       const interval = setInterval(() => {
         reloadCurrentFile();
       }, 2000); // Check every 2 seconds
 
       return () => clearInterval(interval);
     }
-  }, [showPreview, selectedFile, reloadCurrentFile]);
+  }, [showPreview, selectedFile, hasUnsavedChanges, reloadCurrentFile]);
 
 
-  useEffect(() => { 
-    let mounted = true;
-    let timer: NodeJS.Timeout | null = null;
-    
+  useEffect(() => {
+    if (!projectId) {
+      return;
+    }
+
+    let canceled = false;
+
     const initializeChat = async () => {
-      if (!mounted) return;
-      
-      // Load project info first to get project-specific settings
-      const projectSettings = await loadProjectInfo();
-      
-      // Then load global settings as fallback, passing project settings
-      await loadSettings(projectSettings);
-      
-      // Always load the file tree regardless of project status
-      await loadTree('.');
-      
-      // Only set initializing to false if project is active
-      if (projectStatus === 'active') {
-        setIsInitializing(false);
+      try {
+        const projectSettings = await loadProjectInfoRef.current?.();
+        if (canceled) return;
+
+        await loadSettingsRef.current?.(projectSettings);
+        if (canceled) return;
+
+        await loadTreeRef.current?.('.');
+        if (canceled) return;
+
+        await loadDeployStatusRef.current?.();
+        if (canceled) return;
+
+        checkCurrentDeploymentRef.current?.();
+      } catch (error) {
+        console.error('Failed to initialize chat view:', error);
       }
     };
-    
+
     initializeChat();
-    loadDeployStatus().then(() => {
-      // Check current deployment after loading deployment status
-      checkCurrentDeployment();
-    });
-    
-    // Listen for service updates from Settings
+
     const handleServicesUpdate = () => {
-      loadDeployStatus();
+      loadDeployStatusRef.current?.();
     };
-    
-    // Cleanup function to stop preview server when page is unloaded
+
     const handleBeforeUnload = () => {
-      // Send a request to stop the preview server
       navigator.sendBeacon(`${API_BASE}/api/projects/${projectId}/preview/stop`);
     };
-    
+
     window.addEventListener('beforeunload', handleBeforeUnload);
     window.addEventListener('services-updated', handleServicesUpdate);
-    
+
     return () => {
-      mounted = false;
-      if (timer) clearTimeout(timer);
-      
-      // Clean up event listeners
+      canceled = true;
       window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('services-updated', handleServicesUpdate);
-      
-      // Stop preview server when component unmounts
-      if (previewUrl) {
-        fetch(`${API_BASE}/api/projects/${projectId}/preview/stop`, { method: 'POST' })
-          .catch(() => {});
+
+      const currentPreview = previewUrlRef.current;
+      if (currentPreview) {
+        fetch(`${API_BASE}/api/projects/${projectId}/preview/stop`, { method: 'POST' }).catch(() => {});
       }
     };
-  }, [
-    projectId,
-    previewUrl,
-    projectStatus,
-    loadProjectInfo,
-    loadSettings,
-    loadTree,
-    loadDeployStatus,
-    checkCurrentDeployment,
-  ]);
+  }, [projectId]);
+
+  // Cleanup pending requests on unmount
+  useEffect(() => {
+    const pendingRequests = pendingRequestsRef.current;
+    return () => {
+      pendingRequests.clear();
+    };
+  }, []);
 
   // React to global settings changes when using global defaults
   const { settings: globalSettings } = useGlobalSettings();
@@ -1649,9 +2164,9 @@ const persistProjectPreferences = useCallback(
 
     const modelFromGlobal = globalSettings.cli_settings?.[cli]?.model;
     if (modelFromGlobal) {
-      updateSelectedModel(modelFromGlobal);
+      updateSelectedModel(modelFromGlobal, cli);
     } else {
-      updateSelectedModel(CLAUDE_DEFAULT_MODEL);
+      updateSelectedModel(getDefaultModelForCli(cli), cli);
     }
   }, [globalSettings, usingGlobalDefaults, updatePreferredCli, updateSelectedModel]);
 
@@ -1718,64 +2233,21 @@ const persistProjectPreferences = useCallback(
           padding: 0 1px;
         }
         
-        /* Dark mode overrides */
-        .dark .hljs {
-          background: #374151 !important;
-          color: #f9fafb !important;
-        }
-        
-        .dark .hljs-punctuation,
-        .dark .hljs-bracket,
-        .dark .hljs-operator {
-          color: #f9fafb !important;
-        }
-        
-        .dark .hljs-built_in,
-        .dark .hljs-keyword {
-          color: #a78bfa !important;
-        }
-        
-        .dark .hljs-string {
-          color: #34d399 !important;
-        }
-        
-        .dark .hljs-number {
-          color: #f87171 !important;
-        }
-        
-        .dark .hljs-comment {
-          color: #9ca3af !important;
-        }
-        
-        .dark .hljs-function,
-        .dark .hljs-title {
-          color: #60a5fa !important;
-        }
-        
-        .dark .hljs-variable,
-        .dark .hljs-attr {
-          color: #f87171 !important;
-        }
-        
-        .dark .hljs-tag,
-        .dark .hljs-name {
-          color: #34d399 !important;
-        }
       `}</style>
 
-      <div className="h-screen bg-white dark:bg-black flex relative overflow-hidden">
+      <div className="h-screen bg-white flex relative overflow-hidden">
         <div className="h-full w-full flex">
           {/* Left: Chat window */}
           <div
             style={{ width: '30%' }}
-            className="h-full border-r border-gray-200 dark:border-gray-800 flex flex-col"
+            className="h-full border-r border-gray-200 flex flex-col"
           >
             {/* Chat header */}
-            <div className="bg-white dark:bg-black border-b border-gray-200 dark:border-gray-800 p-4 h-[73px] flex items-center">
+            <div className="bg-white border-b border-gray-200 p-4 h-[73px] flex items-center">
               <div className="flex items-center gap-3">
                 <button 
                   onClick={() => router.push('/')}
-                  className="flex items-center justify-center w-8 h-8 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+                  className="flex items-center justify-center w-8 h-8 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
                   title="Back to home"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1783,9 +2255,9 @@ const persistProjectPreferences = useCallback(
                   </svg>
                 </button>
                 <div>
-                  <h1 className="text-lg font-semibold text-gray-900 dark:text-white">{projectName || 'Loading...'}</h1>
+                  <h1 className="text-lg font-semibold text-gray-900 ">{projectName || 'Loading...'}</h1>
                   {projectDescription && (
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                    <p className="text-sm text-gray-500 ">
                       {projectDescription}
                     </p>
                   )}
@@ -1795,9 +2267,21 @@ const persistProjectPreferences = useCallback(
             
             {/* Chat log area */}
             <div className="flex-1 min-h-0">
-              <ChatLog
-                projectId={projectId}
-                onSessionStatusChange={(isRunningValue) => {
+              <ChatErrorBoundary>
+                <ChatLog
+                  projectId={projectId}
+                  onAddUserMessage={(handlers) => {
+                    console.log('🔄 [HandlerSetup] ChatLog provided new handlers, updating references');
+                    messageHandlersRef.current = handlers;
+
+                    // Also update stable handlers if they exist
+                    if (stableMessageHandlers.current) {
+                      console.log('🔄 [HandlerSetup] Updating stable handlers reference');
+                      // Note: stableMessageHandlers.current already has its own add/remove logic
+                      // We don't replace it completely, just keep the reference to handlers
+                    }
+                  }}
+                  onSessionStatusChange={(isRunningValue) => {
                   console.log('🔍 [DEBUG] Session status change:', isRunningValue);
                   setIsRunning(isRunningValue);
                   // Track agent task completion and auto-start preview
@@ -1809,15 +2293,20 @@ const persistProjectPreferences = useCallback(
                     start();
                   }
                 }}
+                onSseFallbackActive={(active) => {
+                  console.log('🔄 [SSE] Fallback status:', active);
+                  setIsSseFallbackActive(active);
+                }}
                 onProjectStatusUpdate={handleProjectStatusUpdate}
                 startRequest={startRequest}
                 completeRequest={completeRequest}
               />
+              </ChatErrorBoundary>
             </div>
             
             {/* Simple input area */}
             <div className="p-4 rounded-bl-2xl">
-              <ChatInput 
+              <ChatInput
                 onSendMessage={(message, images) => {
                   // Pass images to runAct
                   runAct(message, images);
@@ -1846,15 +2335,15 @@ const persistProjectPreferences = useCallback(
             {/* Content area */}
             <div className="flex-1 min-h-0 flex flex-col">
               {/* Controls Bar */}
-              <div className="bg-white dark:bg-black border-b border-gray-200 dark:border-gray-800 px-4 h-[73px] flex items-center justify-between">
+              <div className="bg-white border-b border-gray-200 px-4 h-[73px] flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   {/* Toggle switch */}
-                  <div className="flex items-center bg-gray-100 dark:bg-gray-900 rounded-lg p-1">
+                  <div className="flex items-center bg-gray-100 rounded-lg p-1">
                     <button
                       className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                         showPreview 
-                          ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white' 
-                          : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                          ? 'bg-white text-gray-900 ' 
+                          : 'text-gray-600 hover:text-gray-900 '
                       }`}
                       onClick={() => setShowPreview(true)}
                     >
@@ -1863,8 +2352,8 @@ const persistProjectPreferences = useCallback(
                     <button
                       className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                         !showPreview 
-                          ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white' 
-                          : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                          ? 'bg-white text-gray-900 ' 
+                          : 'text-gray-600 hover:text-gray-900 '
                       }`}
                       onClick={() => setShowPreview(false)}
                     >
@@ -1876,11 +2365,11 @@ const persistProjectPreferences = useCallback(
                   {showPreview && previewUrl && (
                     <div className="flex items-center gap-3">
                       {/* Route Navigation */}
-                      <div className="h-9 flex items-center bg-gray-100 dark:bg-gray-900 rounded-lg px-3 border border-gray-200 dark:border-gray-700">
-                        <span className="text-gray-400 dark:text-gray-500 mr-2">
+                      <div className="h-9 flex items-center bg-gray-100 rounded-lg px-3 border border-gray-200 ">
+                        <span className="text-gray-400 mr-2">
                           <FaHome size={12} />
                         </span>
-                        <span className="text-sm text-gray-500 dark:text-gray-400 mr-1">/</span>
+                        <span className="text-sm text-gray-500 mr-1">/</span>
                         <input
                           type="text"
                           value={currentRoute.startsWith('/') ? currentRoute.slice(1) : currentRoute}
@@ -1893,12 +2382,12 @@ const persistProjectPreferences = useCallback(
                               navigateToRoute(currentRoute);
                             }
                           }}
-                          className="bg-transparent text-sm text-gray-700 dark:text-gray-300 outline-none w-40"
+                          className="bg-transparent text-sm text-gray-700 outline-none w-40"
                           placeholder="route"
                         />
                         <button
                           onClick={() => navigateToRoute(currentRoute)}
-                          className="ml-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                          className="ml-2 text-gray-500 hover:text-gray-700 "
                         >
                           <FaArrowRight size={12} />
                         </button>
@@ -1907,7 +2396,7 @@ const persistProjectPreferences = useCallback(
                       {/* Action Buttons Group */}
                       <div className="flex items-center gap-1.5">
                         <button 
-                          className="h-9 w-9 flex items-center justify-center bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                          className="h-9 w-9 flex items-center justify-center bg-gray-100 text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition-colors"
                           onClick={() => {
                             const iframe = document.querySelector('iframe');
                             if (iframe) {
@@ -1920,13 +2409,13 @@ const persistProjectPreferences = useCallback(
                         </button>
                         
                         {/* Device Mode Toggle */}
-                        <div className="h-9 flex items-center gap-1 bg-gray-100 dark:bg-gray-900 rounded-lg px-1 border border-gray-200 dark:border-gray-700">
+                        <div className="h-9 flex items-center gap-1 bg-gray-100 rounded-lg px-1 border border-gray-200 ">
                           <button
                             aria-label="Desktop preview"
                             className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
                               deviceMode === 'desktop' 
-                                ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30' 
-                                : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
+                                ? 'text-blue-600 bg-blue-50 ' 
+                                : 'text-gray-400 hover:text-gray-600 '
                             }`}
                             onClick={() => setDeviceMode('desktop')}
                           >
@@ -1936,8 +2425,8 @@ const persistProjectPreferences = useCallback(
                             aria-label="Mobile preview"
                             className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
                               deviceMode === 'mobile' 
-                                ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30' 
-                                : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
+                                ? 'text-blue-600 bg-blue-50 ' 
+                                : 'text-gray-400 hover:text-gray-600 '
                             }`}
                             onClick={() => setDeviceMode('mobile')}
                           >
@@ -1953,7 +2442,7 @@ const persistProjectPreferences = useCallback(
                   {/* Settings Button */}
                   <button 
                     onClick={() => setShowGlobalSettings(true)}
-                    className="h-9 w-9 flex items-center justify-center bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                    className="h-9 w-9 flex items-center justify-center bg-gray-100 text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition-colors"
                     title="Settings"
                   >
                     <FaCog size={16} />
@@ -1974,7 +2463,7 @@ const persistProjectPreferences = useCallback(
                   {showPreview && previewUrl && (
                     <div className="relative">
                     <button
-                      className="h-9 flex items-center gap-2 px-3 bg-black text-white rounded-lg text-sm font-medium transition-colors hover:bg-gray-900 border border-black/10 dark:border-white/10 shadow-sm"
+                      className="h-9 flex items-center gap-2 px-3 bg-black text-white rounded-lg text-sm font-medium transition-colors hover:bg-gray-900 border border-black/10 shadow-sm"
                       onClick={() => setShowPublishPanel(true)}
                     >
                       <FaRocket size={14} />
@@ -1987,28 +2476,28 @@ const persistProjectPreferences = useCallback(
                       )}
                     </button>
                     {false && showPublishPanel && (
-                      <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-50 p-5">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Publish Project</h3>
+                      <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-200 z-50 p-5">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Publish Project</h3>
                         
                         {/* Deployment Status Display */}
                         {deploymentStatus === 'deploying' && (
-                          <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                          <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200 ">
                             <div className="flex items-center gap-2 mb-2">
                               <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                              <p className="text-sm font-medium text-blue-700 dark:text-blue-400">Deployment in progress...</p>
+                              <p className="text-sm font-medium text-blue-700 ">Deployment in progress...</p>
                             </div>
-                            <p className="text-xs text-blue-600 dark:text-blue-300">Building and deploying your project. This may take a few minutes.</p>
+                            <p className="text-xs text-blue-600 ">Building and deploying your project. This may take a few minutes.</p>
                           </div>
                         )}
                         
                         {deploymentStatus === 'ready' && publishedUrl && (
-                          <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                            <p className="text-sm font-medium text-green-700 dark:text-green-400 mb-2">Currently published at:</p>
+                          <div className="mb-4 p-4 bg-green-50 rounded-lg border border-green-200 ">
+                            <p className="text-sm font-medium text-green-700 mb-2">Currently published at:</p>
                             <a 
                               href={publishedUrl ?? undefined} 
                               target="_blank" 
                               rel="noopener noreferrer" 
-                              className="text-sm text-green-600 dark:text-green-300 font-mono hover:underline break-all"
+                              className="text-sm text-green-600 font-mono hover:underline break-all"
                             >
                               {publishedUrl}
                             </a>
@@ -2016,19 +2505,19 @@ const persistProjectPreferences = useCallback(
                         )}
                         
                         {deploymentStatus === 'error' && (
-                          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
-                            <p className="text-sm font-medium text-red-700 dark:text-red-400 mb-2">Deployment failed</p>
-                            <p className="text-xs text-red-600 dark:text-red-300">There was an error during deployment. Please try again.</p>
+                          <div className="mb-4 p-4 bg-red-50 rounded-lg border border-red-200 ">
+                            <p className="text-sm font-medium text-red-700 mb-2">Deployment failed</p>
+                            <p className="text-xs text-red-600 ">There was an error during deployment. Please try again.</p>
                           </div>
                         )}
                         
                         <div className="space-y-4">
                           {!githubConnected || !vercelConnected ? (
-                            <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
-                              <p className="text-sm font-medium text-gray-900 dark:text-white mb-3">To publish, connect the following services:</p>
+                            <div className="p-4 bg-amber-50 rounded-lg border border-amber-200 ">
+                              <p className="text-sm font-medium text-gray-900 mb-3">To publish, connect the following services:</p>
                               <div className="space-y-2">
                                 {!githubConnected && (
-                                  <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                                  <div className="flex items-center gap-2 text-amber-700 ">
                                     <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                       <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                                     </svg>
@@ -2036,7 +2525,7 @@ const persistProjectPreferences = useCallback(
                                   </div>
                                 )}
                                 {!vercelConnected && (
-                                  <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                                  <div className="flex items-center gap-2 text-amber-700 ">
                                     <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                       <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                                     </svg>
@@ -2044,14 +2533,14 @@ const persistProjectPreferences = useCallback(
                                   </div>
                                 )}
                               </div>
-                              <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
+                              <p className="mt-3 text-sm text-gray-600 ">
                                 Go to 
                                 <button
                                   onClick={() => {
                                     setShowPublishPanel(false);
                                     setShowGlobalSettings(true);
                                   }}
-                                  className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 underline font-medium mx-1"
+                                  className="text-indigo-600 hover:text-indigo-500 underline font-medium mx-1"
                                 >
                                   Settings → Service Integrations
                                 </button>
@@ -2127,8 +2616,8 @@ const persistProjectPreferences = useCallback(
                             }}
                             className={`w-full px-4 py-3 rounded-lg font-medium text-white transition-colors ${
                               publishLoading || deploymentStatus === 'deploying' || !githubConnected || !vercelConnected 
-                                ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed' 
-                                : 'bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600'
+                                ? 'bg-gray-400 cursor-not-allowed' 
+                                : 'bg-indigo-600 hover:bg-indigo-700 '
                             }`}
                           >
                             {publishLoading 
@@ -2150,7 +2639,7 @@ const persistProjectPreferences = useCallback(
               
               {/* Content Area */}
               <div className="flex-1 relative bg-black overflow-hidden">
-                <AnimatePresence mode="wait">
+                <AnimatePresence initial={false}>
                   {showPreview ? (
                   <MotionDiv
                     key="preview"
@@ -2160,9 +2649,9 @@ const persistProjectPreferences = useCallback(
                     style={{ height: '100%' }}
                   >
                 {previewUrl ? (
-                  <div className="relative w-full h-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                  <div className="relative w-full h-full bg-gray-100 flex items-center justify-center">
                     <div 
-                      className={`bg-white dark:bg-gray-900 ${
+                      className={`bg-white ${
                         deviceMode === 'mobile' 
                           ? 'w-[375px] h-[667px] rounded-[25px] border-8 border-gray-800 shadow-2xl' 
                           : 'w-full h-full'
@@ -2170,7 +2659,7 @@ const persistProjectPreferences = useCallback(
                     >
                       <iframe 
                         ref={iframeRef}
-                        className="w-full h-full border-none bg-white dark:bg-gray-800"
+                        className="w-full h-full border-none bg-white "
                         src={previewUrl}
                         onError={() => {
                           // Show error overlay
@@ -2187,15 +2676,15 @@ const persistProjectPreferences = useCallback(
                       {/* Error overlay */}
                     <div 
                       id="iframe-error-overlay"
-                      className="absolute inset-0 bg-gray-50 dark:bg-gray-900 flex items-center justify-center z-10"
+                      className="absolute inset-0 bg-gray-50 flex items-center justify-center z-10"
                       style={{ display: 'none' }}
                     >
                       <div className="text-center max-w-md mx-auto p-6">
                         <div className="text-4xl mb-4">🔄</div>
-                        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">
+                        <h3 className="text-lg font-semibold text-gray-800 mb-2">
                           Connection Issue
                         </h3>
-                        <p className="text-gray-600 dark:text-gray-400 mb-4">
+                        <p className="text-gray-600 mb-4">
                           The preview couldn&apos;t load properly. Try clicking the refresh button to reload the page.
                         </p>
                         <button
@@ -2220,27 +2709,27 @@ const persistProjectPreferences = useCallback(
                     </div>
                   </div>
                 ) : (
-                  <div className="h-full w-full flex items-center justify-center bg-gray-50 dark:bg-black relative">
+                  <div className="h-full w-full flex items-center justify-center bg-gray-50 relative">
                     {/* Gradient background similar to main page */}
                     <div className="absolute inset-0">
-                      <div className="absolute inset-0 bg-white dark:bg-black" />
+                      <div className="absolute inset-0 bg-white " />
                       <div 
-                        className="absolute inset-0 dark:block hidden transition-all duration-1000 ease-in-out"
+                        className="absolute inset-0 hidden transition-all duration-1000 ease-in-out"
                         style={{
                           background: `radial-gradient(circle at 50% 100%, 
-                            ${assistantBrandColors[preferredCli] || assistantBrandColors.claude}66 0%, 
-                            ${assistantBrandColors[preferredCli] || assistantBrandColors.claude}4D 25%, 
-                            ${assistantBrandColors[preferredCli] || assistantBrandColors.claude}33 50%, 
+                            ${activeBrandColor}66 0%, 
+                            ${activeBrandColor}4D 25%, 
+                            ${activeBrandColor}33 50%, 
                             transparent 70%)`
                         }}
                       />
                       {/* Light mode gradient - subtle */}
                       <div 
-                        className="absolute inset-0 block dark:hidden transition-all duration-1000 ease-in-out"
+                        className="absolute inset-0 block transition-all duration-1000 ease-in-out"
                         style={{
                           background: `radial-gradient(circle at 50% 100%, 
-                            ${assistantBrandColors[preferredCli] || assistantBrandColors.claude}40 0%, 
-                            ${assistantBrandColors[preferredCli] || assistantBrandColors.claude}26 25%, 
+                            ${activeBrandColor}40 0%, 
+                            ${activeBrandColor}26 25%, 
                             transparent 50%)`
                         }}
                       />
@@ -2259,7 +2748,7 @@ const persistProjectPreferences = useCallback(
                           <div 
                             className="w-full h-full"
                             style={{
-                              backgroundColor: assistantBrandColors[preferredCli] || assistantBrandColors.claude,
+                              backgroundColor: activeBrandColor,
                               mask: 'url(/Symbol_white.png) no-repeat center/contain',
                               WebkitMask: 'url(/Symbol_white.png) no-repeat center/contain',
                               opacity: 0.9
@@ -2269,21 +2758,23 @@ const persistProjectPreferences = useCallback(
                           {/* Loading spinner in center */}
                           <div className="absolute inset-0 flex items-center justify-center">
                             <div 
-                              className="w-14 h-14 border-4 border-t-transparent rounded-full animate-spin"
+                              className="w-14 h-14 border-4 rounded-full animate-spin"
                               style={{
-                                borderColor: assistantBrandColors[preferredCli] || assistantBrandColors.claude,
-                                borderTopColor: 'transparent'
+                                borderTopColor: 'transparent',
+                                borderRightColor: activeBrandColor,
+                                borderBottomColor: activeBrandColor,
+                                borderLeftColor: activeBrandColor,
                               }}
                             />
                           </div>
                         </div>
                         
                         {/* Content */}
-                        <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+                        <h3 className="text-xl font-semibold text-gray-900 mb-3">
                           Starting Preview Server
                         </h3>
                         
-                        <div className="flex items-center justify-center gap-1 text-gray-600 dark:text-gray-400">
+                        <div className="flex items-center justify-center gap-1 text-gray-600 ">
                           <span>{previewInitializationMessage}</span>
                           <MotionDiv
                             className="flex gap-1 ml-2"
@@ -2293,17 +2784,17 @@ const persistProjectPreferences = useCallback(
                             <MotionDiv
                               animate={{ opacity: [0, 1, 0] }}
                               transition={{ duration: 1.5, repeat: Infinity, delay: 0 }}
-                              className="w-1 h-1 bg-gray-600 dark:bg-gray-400 rounded-full"
+                              className="w-1 h-1 bg-gray-600 rounded-full"
                             />
                             <MotionDiv
                               animate={{ opacity: [0, 1, 0] }}
                               transition={{ duration: 1.5, repeat: Infinity, delay: 0.3 }}
-                              className="w-1 h-1 bg-gray-600 dark:bg-gray-400 rounded-full"
+                              className="w-1 h-1 bg-gray-600 rounded-full"
                             />
                             <MotionDiv
                               animate={{ opacity: [0, 1, 0] }}
                               transition={{ duration: 1.5, repeat: Infinity, delay: 0.6 }}
-                              className="w-1 h-1 bg-gray-600 dark:bg-gray-400 rounded-full"
+                              className="w-1 h-1 bg-gray-600 rounded-full"
                             />
                           </MotionDiv>
                         </div>
@@ -2325,15 +2816,15 @@ const persistProjectPreferences = useCallback(
                                 style={{ transformOrigin: "center center" }}
                                 className="w-full h-full"
                               >
-                                <div 
-                                  className="w-full h-full"
-                                  style={{
-                                    backgroundColor: assistantBrandColors[preferredCli] || assistantBrandColors.claude,
-                                    mask: 'url(/Symbol_white.png) no-repeat center/contain',
-                                    WebkitMask: 'url(/Symbol_white.png) no-repeat center/contain',
-                                    opacity: 0.9
-                                  }}
-                                />
+                          <div 
+                            className="w-full h-full"
+                            style={{
+                              backgroundColor: activeBrandColor,
+                              mask: 'url(/Symbol_white.png) no-repeat center/contain',
+                              WebkitMask: 'url(/Symbol_white.png) no-repeat center/contain',
+                              opacity: 0.9
+                            }}
+                          />
                               </MotionDiv>
                             </div>
                             
@@ -2383,7 +2874,7 @@ const persistProjectPreferences = useCallback(
                                 <div 
                                   className="w-full h-full"
                                   style={{
-                                    backgroundColor: assistantBrandColors[preferredCli] || assistantBrandColors.claude,
+                                    backgroundColor: activeBrandColor,
                                     mask: 'url(/Symbol_white.png) no-repeat center/contain',
                                     WebkitMask: 'url(/Symbol_white.png) no-repeat center/contain',
                                     opacity: 0.9
@@ -2395,10 +2886,12 @@ const persistProjectPreferences = useCallback(
                               <div className="absolute inset-0 flex items-center justify-center">
                                 {isStartingPreview ? (
                                   <div 
-                                    className="w-14 h-14 border-4 border-t-transparent rounded-full animate-spin"
+                                    className="w-14 h-14 border-4 rounded-full animate-spin"
                                     style={{
-                                      borderColor: assistantBrandColors[preferredCli] || assistantBrandColors.claude,
-                                      borderTopColor: 'transparent'
+                                      borderTopColor: 'transparent',
+                                      borderRightColor: activeBrandColor,
+                                      borderBottomColor: activeBrandColor,
+                                      borderLeftColor: activeBrandColor,
                                     }}
                                   />
                                 ) : (
@@ -2415,11 +2908,11 @@ const persistProjectPreferences = useCallback(
                               </div>
                             </div>
                             
-                            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
+                            <h3 className="text-2xl font-bold text-gray-900 mb-3">
                               Preview Not Running
                             </h3>
                             
-                            <p className="text-gray-600 dark:text-gray-400 max-w-lg mx-auto">
+                            <p className="text-gray-600 max-w-lg mx-auto">
                               Start your development server to see live changes
                             </p>
                           </>
@@ -2437,14 +2930,14 @@ const persistProjectPreferences = useCallback(
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="h-full flex bg-white dark:bg-gray-950"
+                className="h-full flex bg-white "
               >
                 {/* Left Sidebar - File Explorer (VS Code style) */}
-                <div className="w-64 flex-shrink-0 bg-gray-50 dark:bg-[#0a0a0a] border-r border-gray-200 dark:border-[#1a1a1a] flex flex-col">
+                <div className="w-64 flex-shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col">
                   {/* File Tree */}
-                  <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-[#0a0a0a] custom-scrollbar">
+                  <div className="flex-1 overflow-y-auto bg-gray-50 custom-scrollbar">
                     {!tree || tree.length === 0 ? (
-                      <div className="px-3 py-8 text-center text-[11px] text-gray-600 dark:text-[#6a6a6a] select-none">
+                      <div className="px-3 py-8 text-center text-[11px] text-gray-600 select-none">
                         No files found
                       </div>
                     ) : (
@@ -2465,29 +2958,72 @@ const persistProjectPreferences = useCallback(
                 </div>
 
                 {/* Right Editor Area */}
-                <div className="flex-1 flex flex-col bg-white dark:bg-[#0d0d0d] min-w-0">
+                <div className="flex-1 flex flex-col bg-white min-w-0">
                   {selectedFile ? (
                     <>
                       {/* File Tab */}
-                      <div className="flex-shrink-0 bg-gray-100 dark:bg-[#1a1a1a]">
-                        <div className="flex items-center">
-                          <div className="flex items-center gap-2 bg-white dark:bg-[#0d0d0d] px-3 py-1.5 border-t-2 border-t-blue-500 dark:border-t-[#007acc]">
+                      <div className="flex-shrink-0 bg-gray-100 ">
+                        <div className="flex items-center gap-3 bg-white px-3 py-1.5 border-t-2 border-t-blue-500 ">
+                          <div className="flex items-center gap-2 min-w-0">
                             <span className="w-4 h-4 flex items-center justify-center">
                               {getFileIcon(tree.find(e => e.path === selectedFile) || { path: selectedFile, type: 'file' })}
                             </span>
-                            <span className="text-[13px] text-gray-700 dark:text-[#cccccc]" style={{ fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
+                            <span className="truncate text-[13px] text-gray-700 " style={{ fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
                               {selectedFile.split('/').pop()}
                             </span>
-                            {isFileUpdating && (
-                              <span className="text-[11px] text-green-600 dark:text-green-400 ml-auto mr-2">
-                                Updated
-                              </span>
-                            )}
-                            <button 
-                              className="text-gray-700 dark:text-[#cccccc] hover:bg-gray-200 dark:hover:bg-[#383838] ml-2 px-1 rounded"
+                          </div>
+                          {hasUnsavedChanges && (
+                            <span className="text-[11px] text-amber-600 ">
+                              • Unsaved changes
+                            </span>
+                          )}
+                          {!hasUnsavedChanges && saveFeedback === 'success' && (
+                            <span className="text-[11px] text-green-600 ">
+                              Saved
+                            </span>
+                          )}
+                          {saveFeedback === 'error' && (
+                            <span
+                              className="text-[11px] text-red-600 truncate max-w-[160px]"
+                              title={saveError ?? 'Failed to save file'}
+                            >
+                              Save error
+                            </span>
+                          )}
+                          {!hasUnsavedChanges && saveFeedback !== 'success' && isFileUpdating && (
+                            <span className="text-[11px] text-green-600 ">
+                              Updated
+                            </span>
+                          )}
+                          <div className="ml-auto flex items-center gap-2">
+                            <button
+                              className="px-3 py-1 text-xs font-medium rounded bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed "
+                              onClick={handleSaveFile}
+                              disabled={!hasUnsavedChanges || isSavingFile}
+                              title="Save (Ctrl+S)"
+                            >
+                              {isSavingFile ? 'Saving…' : 'Save'}
+                            </button>
+                            <button
+                              className="text-gray-700 hover:bg-gray-200 px-1 rounded"
                               onClick={() => {
+                                if (hasUnsavedChanges) {
+                                  const confirmClose =
+                                    typeof window !== 'undefined'
+                                      ? window.confirm('You have unsaved changes. Close without saving?')
+                                      : true;
+                                  if (!confirmClose) {
+                                    return;
+                                  }
+                                }
                                 setSelectedFile('');
                                 setContent('');
+                                setEditedContent('');
+                                editedContentRef.current = '';
+                                setHasUnsavedChanges(false);
+                                setSaveFeedback('idle');
+                                setSaveError(null);
+                                setIsFileUpdating(false);
                               }}
                             >
                               ×
@@ -2498,11 +3034,15 @@ const persistProjectPreferences = useCallback(
 
                       {/* Code Editor */}
                       <div className="flex-1 overflow-hidden">
-                        <div className="w-full h-full flex bg-white dark:bg-[#0d0d0d] overflow-hidden">
+                        <div className="w-full h-full flex bg-white overflow-hidden">
                           {/* Line Numbers */}
-                          <div className="bg-gray-50 dark:bg-[#0d0d0d] px-3 py-4 select-none flex-shrink-0 overflow-y-auto overflow-x-hidden custom-scrollbar">
-                            <div className="text-[13px] font-mono text-gray-500 dark:text-[#858585] leading-[19px]">
-                              {(content || '').split('\n').map((_, index) => (
+                          <div
+                            ref={lineNumberRef}
+                            className="bg-gray-50 px-3 py-4 select-none flex-shrink-0 overflow-y-auto overflow-x-hidden custom-scrollbar pointer-events-none"
+                            aria-hidden="true"
+                          >
+                            <div className="text-[13px] font-mono text-gray-500 leading-[19px]">
+                              {(editedContent || '').split('\n').map((_, index) => (
                                 <div key={index} className="text-right pr-2">
                                   {index + 1}
                                 </div>
@@ -2510,28 +3050,47 @@ const persistProjectPreferences = useCallback(
                             </div>
                           </div>
                           {/* Code Content */}
-                          <div className="flex-1 overflow-auto custom-scrollbar">
-                            <pre className="p-4 text-[13px] leading-[19px] font-mono text-gray-800 dark:text-[#d4d4d4] whitespace-pre" style={{ fontFamily: "'Fira Code', 'Consolas', 'Monaco', monospace" }}>
-                              <code 
+                          <div className="relative flex-1">
+                            <pre
+                              ref={highlightRef}
+                              aria-hidden="true"
+                              className="absolute inset-0 m-0 p-4 overflow-hidden text-[13px] leading-[19px] font-mono text-gray-800 whitespace-pre pointer-events-none"
+                              style={{ fontFamily: "'Fira Code', 'Consolas', 'Monaco', monospace" }}
+                            >
+                              <code
                                 className={`language-${getFileLanguage(selectedFile)}`}
-                                dangerouslySetInnerHTML={{
-                                  __html: hljs && content ? hljs.highlight(content, { language: getFileLanguage(selectedFile) }).value : (content || '')
-                                }}
+                                dangerouslySetInnerHTML={{ __html: highlightedCode }}
                               />
+                              <span className="block h-full min-h-[1px]" />
                             </pre>
+                            <textarea
+                              ref={editorRef}
+                              value={editedContent}
+                              onChange={onEditorChange}
+                              onScroll={handleEditorScroll}
+                              onKeyDown={handleEditorKeyDown}
+                              spellCheck={false}
+                              autoCorrect="off"
+                              autoCapitalize="none"
+                              autoComplete="off"
+                              wrap="off"
+                              aria-label="Code editor"
+                              className="absolute inset-0 w-full h-full resize-none bg-transparent text-transparent caret-gray-800 outline-none font-mono text-[13px] leading-[19px] p-4 whitespace-pre overflow-auto custom-scrollbar"
+                              style={{ fontFamily: "'Fira Code', 'Consolas', 'Monaco', monospace" }}
+                            />
                           </div>
                         </div>
                       </div>
                     </>
                   ) : (
                     /* Welcome Screen */
-                    <div className="flex-1 flex items-center justify-center bg-white dark:bg-[#0d0d0d]">
+                    <div className="flex-1 flex items-center justify-center bg-white ">
                       <div className="text-center">
-                        <span className="w-16 h-16 mb-4 opacity-10 text-gray-400 dark:text-[#3c3c3c] mx-auto flex items-center justify-center"><FaCode size={64} /></span>
-                        <h3 className="text-lg font-medium text-gray-700 dark:text-[#cccccc] mb-2">
+                        <span className="w-16 h-16 mb-4 opacity-10 text-gray-400 mx-auto flex items-center justify-center"><FaCode size={64} /></span>
+                        <h3 className="text-lg font-medium text-gray-700 mb-2">
                           Welcome to Code Editor
                         </h3>
-                        <p className="text-sm text-gray-500 dark:text-[#858585]">
+                        <p className="text-sm text-gray-500 ">
                           Select a file from the explorer to start viewing code
                         </p>
                       </div>
@@ -2552,43 +3111,43 @@ const persistProjectPreferences = useCallback(
       {showPublishPanel && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowPublishPanel(false)} />
-          <div className="relative w-full max-w-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50/60 dark:bg-white/5">
+          <div className="relative w-full max-w-lg bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gray-50/60 ">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white bg-black border border-black/10 dark:border-white/10">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white bg-black border border-black/10 ">
                   <FaRocket size={14} />
                 </div>
                 <div>
-                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">Publish Project</h3>
-                  <p className="text-xs text-gray-600 dark:text-gray-400">Deploy with Vercel, linked to your GitHub repo</p>
+                  <h3 className="text-base font-semibold text-gray-900 ">Publish Project</h3>
+                  <p className="text-xs text-gray-600 ">Deploy with Vercel, linked to your GitHub repo</p>
                 </div>
               </div>
-              <button onClick={() => setShowPublishPanel(false)} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
+              <button onClick={() => setShowPublishPanel(false)} className="text-gray-400 hover:text-gray-600 ">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
               </button>
             </div>
 
             <div className="p-6 space-y-4">
               {deploymentStatus === 'deploying' && (
-                <div className="p-4 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20">
+                <div className="p-4 rounded-xl border border-blue-200 bg-blue-50 ">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                    <p className="text-sm font-medium text-blue-700 dark:text-blue-400">Deployment in progress…</p>
+                    <p className="text-sm font-medium text-blue-700 ">Deployment in progress…</p>
                   </div>
-                  <p className="text-xs text-blue-700/80 dark:text-blue-300/80">Building and deploying your project. This may take a few minutes.</p>
+                  <p className="text-xs text-blue-700/80 ">Building and deploying your project. This may take a few minutes.</p>
                 </div>
               )}
 
               {deploymentStatus === 'ready' && publishedUrl && (
-                <div className="p-4 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20">
-                  <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400 mb-2">Published successfully</p>
+                <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50 ">
+                  <p className="text-sm font-medium text-emerald-700 mb-2">Published successfully</p>
                   <div className="flex items-center gap-2">
-                    <a href={publishedUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-mono text-emerald-700 dark:text-emerald-300 underline break-all flex-1">
+                    <a href={publishedUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-mono text-emerald-700 underline break-all flex-1">
                       {publishedUrl}
                     </a>
                     <button
                       onClick={() => navigator.clipboard?.writeText(publishedUrl)}
-                      className="px-2 py-1 text-xs rounded-lg border border-emerald-300/80 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/30"
+                      className="px-2 py-1 text-xs rounded-lg border border-emerald-300/80 text-emerald-700 hover:bg-emerald-100 "
                     >
                       Copy
                     </button>
@@ -2597,20 +3156,20 @@ const persistProjectPreferences = useCallback(
               )}
 
               {deploymentStatus === 'error' && (
-                <div className="p-4 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
-                  <p className="text-sm font-medium text-red-700 dark:text-red-400">Deployment failed. Please try again.</p>
+                <div className="p-4 rounded-xl border border-red-200 bg-red-50 ">
+                  <p className="text-sm font-medium text-red-700 ">Deployment failed. Please try again.</p>
                 </div>
               )}
 
               {!githubConnected || !vercelConnected ? (
-                <div className="p-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">Connect the following services:</p>
-                  <div className="space-y-1 text-amber-700 dark:text-amber-400 text-sm">
+                <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 ">
+                  <p className="text-sm font-medium text-gray-900 mb-2">Connect the following services:</p>
+                  <div className="space-y-1 text-amber-700 text-sm">
                     {!githubConnected && (<div className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"/>GitHub repository not connected</div>)}
                     {!vercelConnected && (<div className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"/>Vercel project not connected</div>)}
                   </div>
                   <button
-                    className="mt-3 w-full px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                    className="mt-3 w-full px-4 py-2 rounded-xl border border-gray-200 text-gray-800 hover:bg-gray-50 "
                     onClick={() => { setShowPublishPanel(false); setShowGlobalSettings(true); }}
                   >
                     Open Settings → Services
@@ -2672,7 +3231,7 @@ const persistProjectPreferences = useCallback(
                 }}
                 className={`w-full px-4 py-3 rounded-xl font-medium text-white transition ${
                   publishLoading || deploymentStatus === 'deploying' || !githubConnected || !vercelConnected
-                    ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed'
+                    ? 'bg-gray-400 cursor-not-allowed'
                     : 'bg-black hover:bg-gray-900'
                 }`}
               >
@@ -2689,7 +3248,12 @@ const persistProjectPreferences = useCallback(
         onClose={() => setShowGlobalSettings(false)}
         projectId={projectId}
         projectName={projectName}
+        projectDescription={projectDescription}
         initialTab="services"
+        onProjectUpdated={({ name, description }) => {
+          setProjectName(name);
+          setProjectDescription(description ?? '');
+        }}
       />
     </>
   );
