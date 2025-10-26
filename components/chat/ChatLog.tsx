@@ -579,7 +579,37 @@ const mergeMetadataObjects = (
     ? (incoming as any).attachments
     : undefined;
 
-  const merged = { ...existing, ...incoming };
+  const merged: Record<string, unknown> = { ...existing };
+
+  Object.entries(incoming).forEach(([key, value]) => {
+    const existingValue = merged[key];
+
+    if (value === undefined) {
+      return;
+    }
+
+    if (value === null) {
+      if (existingValue !== undefined) {
+        return;
+      }
+      merged[key] = value;
+      return;
+    }
+
+    if (typeof value === 'string') {
+      if (value.trim().length === 0 && typeof existingValue === 'string' && existingValue.trim().length > 0) {
+        return;
+      }
+      merged[key] = value;
+      return;
+    }
+
+    if (Array.isArray(value) && value.length === 0 && Array.isArray(existingValue) && existingValue.length > 0) {
+      return;
+    }
+
+    merged[key] = value;
+  });
 
   if (incomingAttachments && incomingAttachments.length > 0) {
     (merged as any).attachments = incomingAttachments;
@@ -742,6 +772,7 @@ const ToolMessage = ({
   onToggle?: (nextExpanded: boolean) => void;
 }) => {
   const metadataInfo = deriveToolInfoFromMetadata(metadata);
+  const lastStableValuesRef = useRef<{ action?: ToolAction; label?: string; content?: string }>({});
 
   const processToolContent = (rawContent: unknown) => {
     let action: ToolAction = metadataInfo.action ?? 'Executed';
@@ -895,12 +926,40 @@ const ToolMessage = ({
     fallbackLabel === 'Tool action' && (toolName ?? metadataInfo.toolName)
       ? `Tool: ${toolName ?? metadataInfo.toolName}`
       : fallbackLabel;
+  const metadataContentCandidate =
+    metadataInfo.cleanContent &&
+    metadataInfo.cleanContent !== finalLabel &&
+    metadataInfo.cleanContent.trim().length > 0
+      ? metadataInfo.cleanContent
+      : undefined;
+
+  if (finalAction) {
+    lastStableValuesRef.current.action = finalAction;
+  }
+  if (finalLabel && finalLabel !== 'Tool action' && finalLabel.trim().length > 0) {
+    lastStableValuesRef.current.label = finalLabel;
+  }
+  if (cleanedContent && cleanedContent.trim().length > 0) {
+    lastStableValuesRef.current.content = cleanedContent;
+  } else if (metadataContentCandidate) {
+    lastStableValuesRef.current.content = metadataContentCandidate;
+  }
+
+  const persistedAction = lastStableValuesRef.current.action ?? finalAction ?? 'Executed';
+  const persistedLabel =
+    finalLabel && finalLabel !== 'Tool action'
+      ? finalLabel
+      : lastStableValuesRef.current.label ?? finalLabel ?? 'Tool action';
+  const persistedContent =
+    (cleanedContent && cleanedContent.trim().length > 0
+      ? cleanedContent
+      : metadataContentCandidate) ?? lastStableValuesRef.current.content;
   
   return (
     <ToolResultItem
-      action={finalAction}
-      filePath={finalLabel}
-      content={cleanedContent}
+      action={persistedAction}
+      filePath={persistedLabel}
+      content={persistedContent}
       isExpanded={isExpanded}
       onToggle={onToggle}
     />
@@ -959,6 +1018,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
   const [failedImageUrls, setFailedImageUrls] = useState<Set<string>>(new Set());
   const [expandedToolMessages, setExpandedToolMessages] = useState<Record<string, ToolExpansionState>>({});
   const fallbackMessageIdRef = useRef<Map<string, string>>(new Map());
+  const visibleToolMessageIdsRef = useRef<Set<string>>(new Set());
 
   const ensureStableMessageId = useCallback((message: ChatMessage): string => {
     if (message.id) {
@@ -986,32 +1046,9 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
         ? (message.metadata as Record<string, unknown>)
         : null;
     if (metadata) {
-      const metadataKeys = [
-        'toolCallId',
-        'tool_call_id',
-        'toolName',
-        'tool_name',
-        'filePath',
-        'file_path',
-        'path',
-        'target',
-        'targetPath',
-        'target_path',
-        'action',
-        'operation',
-      ];
-
-      metadataKeys.forEach((key) => addPart(key, metadata[key]));
-
-      const nestedToolCall = (metadata.tool_call ?? metadata.toolCall) as
-        | Record<string, unknown>
-        | undefined;
-      if (nestedToolCall && typeof nestedToolCall === 'object') {
-        addPart('tool_call.id', nestedToolCall.id);
-        addPart(
-          'tool_call.name',
-          nestedToolCall.name ?? nestedToolCall.tool_name ?? nestedToolCall.toolName
-        );
+      const toolCallId = extractToolCallId(metadata);
+      if (toolCallId) {
+        addPart('tool_call', toolCallId);
       }
     }
 
@@ -1029,18 +1066,6 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
     fallbackMessageIdRef.current.set(fingerprint, newId);
     return newId;
   }, []);
-
-  const computeToolMessageKey = useCallback(
-    (message: ChatMessage, metadataOverride?: Record<string, unknown> | null) =>
-      buildToolMessageKey(
-        message,
-        metadataOverride ??
-          (message.metadata && typeof message.metadata === 'object'
-            ? (message.metadata as Record<string, unknown>)
-            : null)
-      ),
-    []
-  );
 
   const handleToolMessageToggle = useCallback(
     (message: ChatMessage, key: string, nextExpanded?: boolean) => {
@@ -1719,19 +1744,17 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
   useEffect(() => {
     setExpandedToolMessages((prev) => {
       const prevKeys = Object.keys(prev);
-      if (prevKeys.length === 0) {
-        return prev;
-      }
 
       const validKeys = new Set<string>();
-<<<<<<< Updated upstream
       const requestToKey = new Map<string, string>();
       const toolCallToKey = new Map<string, string>();
+      const keyToMessage = new Map<string, ChatMessage>();
 
       messages.forEach((msg) => {
         if (msg.messageType === 'tool_result' || isToolUsageMessage(msg)) {
           const key = ensureStableMessageId(msg);
           validKeys.add(key);
+          keyToMessage.set(key, msg);
 
           if (msg.requestId) {
             requestToKey.set(msg.requestId, key);
@@ -1744,49 +1767,52 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
           const toolCallId = extractToolCallId(metadata);
           if (toolCallId) {
             toolCallToKey.set(toolCallId, key);
-=======
-      messages.forEach((msg) => {
-        if (msg.messageType === 'tool_result' || isToolUsageMessage(msg)) {
-          const key = ensureStableMessageId(msg);
-          if (key) {
-            validKeys.add(key);
->>>>>>> Stashed changes
           }
         }
       });
 
-<<<<<<< Updated upstream
+      if (validKeys.size === 0) {
+        return prev;
+      }
+
       let changed = false;
       const next: Record<string, ToolExpansionState> = {};
 
       validKeys.forEach((key) => {
-        if (prev[key]) {
-=======
-      let requiresCleanup = false;
-      for (const key of prevKeys) {
-        if (!validKeys.has(key)) {
-          requiresCleanup = true;
-          break;
+        const messageForKey = keyToMessage.get(key);
+        if (!messageForKey) {
+          return;
         }
-      }
 
-      if (!requiresCleanup) {
-        return prev;
-      }
+        const metadata =
+          messageForKey.metadata && typeof messageForKey.metadata === 'object'
+            ? (messageForKey.metadata as Record<string, unknown>)
+            : null;
+        const updatedRequestId = messageForKey.requestId ?? null;
+        const updatedToolCallId = extractToolCallId(metadata);
 
-      const next: Record<string, boolean> = {};
-      validKeys.forEach((key) => {
-        if (Object.prototype.hasOwnProperty.call(prev, key)) {
->>>>>>> Stashed changes
-          next[key] = prev[key];
+        const prevState = prev[key];
+        const expanded = prevState?.expanded ?? false;
+
+        if (
+          prevState?.requestId !== updatedRequestId ||
+          prevState?.toolCallId !== updatedToolCallId
+        ) {
+          changed = true;
         }
+
+        next[key] = {
+          expanded,
+          requestId: updatedRequestId,
+          toolCallId: updatedToolCallId,
+        };
       });
 
-<<<<<<< Updated upstream
       prevKeys.forEach((oldKey) => {
         if (validKeys.has(oldKey)) {
           return;
         }
+
         const previousState = prev[oldKey];
         if (!previousState) {
           return;
@@ -1797,10 +1823,19 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
           (previousState.requestId ? requestToKey.get(previousState.requestId) : undefined);
 
         if (transferKey && !next[transferKey]) {
+          const targetMessage = keyToMessage.get(transferKey);
+          const targetMetadata =
+            targetMessage && targetMessage.metadata && typeof targetMessage.metadata === 'object'
+              ? (targetMessage.metadata as Record<string, unknown>)
+              : null;
+          const targetRequestId = targetMessage?.requestId ?? previousState.requestId ?? null;
+          const targetToolCallId =
+            extractToolCallId(targetMetadata) ?? previousState.toolCallId ?? null;
+
           next[transferKey] = {
             expanded: previousState.expanded,
-            requestId: previousState.requestId ?? null,
-            toolCallId: previousState.toolCallId ?? null,
+            requestId: targetRequestId,
+            toolCallId: targetToolCallId,
           };
           changed = true;
         } else if (!transferKey) {
@@ -1812,12 +1847,29 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
         return prev;
       }
 
-      return changed ? next : prev;
-=======
       return next;
->>>>>>> Stashed changes
     });
   }, [messages, ensureStableMessageId, isToolUsageMessage]);
+
+  useEffect(() => {
+    const validIds = new Set<string>();
+
+    messages.forEach((msg) => {
+      if (msg.messageType === 'tool_result') {
+        const id = msg.id ?? ensureStableMessageId(msg);
+        if (id) {
+          validIds.add(id);
+        }
+      }
+    });
+
+    const visibleSet = visibleToolMessageIdsRef.current;
+    Array.from(visibleSet).forEach((id) => {
+      if (!validIds.has(id)) {
+        visibleSet.delete(id);
+      }
+    });
+  }, [messages, ensureStableMessageId]);
 
   // Load chat history
   const loadChatHistory = useCallback(
@@ -2110,6 +2162,7 @@ export default function ChatLog({ projectId, onSessionStatusChange, onProjectSta
     setLogs([]);
     setExpandedToolMessages({});
     fallbackMessageIdRef.current.clear();
+    visibleToolMessageIdsRef.current.clear();
   }, [projectId]);
 
   // Handle log entries from other WebSocket data
@@ -2409,11 +2462,13 @@ const ToolResultMessage = ({
     }
 
     if (message.messageType === 'tool_result') {
+      const messageId = message.id ?? ensureStableMessageId(message);
+      const visibleSet = visibleToolMessageIdsRef.current;
+
       const hasContent = contentText.trim().length > 0;
-      if (hasContent) {
-        return true;
-      }
-      if (metadata) {
+      let shouldShow = hasContent;
+
+      if (!shouldShow && metadata) {
         const meta = metadata as Record<string, unknown>;
         const summary =
           pickFirstString(meta.summary) ??
@@ -2428,13 +2483,24 @@ const ToolResultMessage = ({
           pickFirstString(meta.diff_info) ??
           pickFirstString(meta.toolOutput) ??
           pickFirstString(meta.tool_output);
-        // Check for tool name to identify Executed operations even without visible content
         const toolName =
           pickFirstString(meta.tool_name) ??
           pickFirstString(meta.toolName) ??
           pickFirstString(meta.action);
-        return Boolean(summary ?? diff ?? toolName);
+        shouldShow = Boolean(summary ?? diff ?? toolName);
       }
+
+      if (shouldShow) {
+        if (messageId) {
+          visibleSet.add(messageId);
+        }
+        return true;
+      }
+
+      if (messageId && visibleSet.has(messageId)) {
+        return true;
+      }
+
       return false;
     }
 

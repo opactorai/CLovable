@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useId, useState } from 'react';
+import { motion } from 'framer-motion';
 import { toRelativePath } from '@/lib/utils/path';
 
 interface ToolResultItemProps {
@@ -18,11 +18,13 @@ const ToolResultItem: React.FC<ToolResultItemProps> = ({
   onToggle,
 }) => {
   const [uncontrolledExpanded, setUncontrolledExpanded] = useState(false);
+  const contentId = useId();
   const isControlled = typeof controlledExpanded === 'boolean';
   const isExpanded = isControlled ? controlledExpanded : uncontrolledExpanded;
+  const hasContent = Boolean(content);
 
   const handleToggle = () => {
-    if (!content) return;
+    if (!hasContent) return;
     const nextExpanded = !isExpanded;
     if (!isControlled) {
       setUncontrolledExpanded(nextExpanded);
@@ -78,9 +80,19 @@ const ToolResultItem: React.FC<ToolResultItemProps> = ({
 
   return (
     <div className="mb-2">
-      <div 
+      <div
         className="flex h-6 items-center gap-1.5 whitespace-nowrap text-base font-medium md:text-sm cursor-pointer group"
         onClick={handleToggle}
+        role={hasContent ? 'button' : undefined}
+        aria-expanded={hasContent ? Boolean(isExpanded) : undefined}
+        aria-controls={hasContent ? contentId : undefined}
+        tabIndex={hasContent ? 0 : -1}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            handleToggle();
+          }
+        }}
       >
         <div className="mb-px mr-1 flex shrink-0 items-center">
           {getIcon()}
@@ -96,16 +108,16 @@ const ToolResultItem: React.FC<ToolResultItemProps> = ({
             {displayPath}
           </span>
         </span>
-        {content && (
-          <svg 
-            xmlns="http://www.w3.org/2000/svg" 
-            width="16" 
-            height="16" 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="currentColor" 
-            strokeWidth="2" 
-            strokeLinecap="round" 
+        {hasContent && (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
             strokeLinejoin="round"
             className={`ml-1 text-gray-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
           >
@@ -113,24 +125,24 @@ const ToolResultItem: React.FC<ToolResultItemProps> = ({
           </svg>
         )}
       </div>
-      
-      <AnimatePresence>
-        {isExpanded && content && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            style={{ overflow: 'hidden' }}
-          >
-            <div className="mt-2 ml-6 p-3 bg-gray-50 rounded-lg">
-              <pre className="text-xs text-gray-700 font-mono whitespace-pre-wrap break-words">
-                {content}
-              </pre>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
+      {hasContent && (
+        <motion.div
+          key={contentId}
+          initial={false}
+          animate={isExpanded ? { height: 'auto', opacity: 1 } : { height: 0, opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          style={{ overflow: 'hidden', pointerEvents: isExpanded ? 'auto' : 'none' }}
+          aria-hidden={!isExpanded}
+          id={contentId}
+        >
+          <div className="mt-2 ml-6 p-3 bg-gray-50 rounded-lg">
+            <pre className="text-xs text-gray-700 font-mono whitespace-pre-wrap break-words">
+              {content}
+            </pre>
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 };
