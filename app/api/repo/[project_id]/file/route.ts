@@ -14,9 +14,9 @@ interface RouteContext {
   params: Promise<{ project_id: string }>;
 }
 
-export async function GET(request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, { params }: RouteContext) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     const { searchParams } = new URL(request.url);
     const path = searchParams.get('path');
 
@@ -47,9 +47,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 }
 
-export async function PUT(request: NextRequest, context: RouteContext) {
+export async function PUT(request: NextRequest, { params }: RouteContext) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     const body = await request.json();
     const path = body?.path;
     const content = body?.content;

@@ -16,9 +16,9 @@ interface RouteContext {
  */
 export async function GET(
   request: NextRequest,
-  context: RouteContext
+  { params }: RouteContext
 ) {
-  const { project_id } = await context.params;
+  const { project_id } = await params;
 
   // Create ReadableStream
   const stream = new ReadableStream({

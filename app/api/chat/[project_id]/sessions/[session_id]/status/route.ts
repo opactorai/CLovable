@@ -5,9 +5,9 @@ interface RouteContext {
   params: Promise<{ project_id: string; session_id: string }>;
 }
 
-export async function GET(request: Request, context: RouteContext) {
+export async function GET(_request: Request, { params }: RouteContext) {
   try {
-    const { project_id, session_id } = await context.params;
+    const { project_id, session_id } = await params;
     const session = await getSessionById(project_id, session_id);
     if (!session) {
       return NextResponse.json({ success: false, error: 'Session not found' }, { status: 404 });

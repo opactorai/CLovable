@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getMessagesByProjectId, createMessage, deleteMessagesByProjectId } from '@/lib/services/message';
+import { getMessagesByProjectId, createMessage, deleteMessagesByProjectId, getMessagesCountByProjectId } from '@/lib/services/message';
 import type { CreateMessageInput } from '@/types/backend';
 import { serializeMessages, serializeMessage } from '@/lib/serializers/chat';
 
@@ -18,24 +18,29 @@ interface RouteContext {
  */
 export async function GET(
   request: NextRequest,
-  context: RouteContext
+  { params }: RouteContext
 ) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    const messages = await getMessagesByProjectId(project_id, limit, offset);
+    const [messages, totalCount] = await Promise.all([
+      getMessagesByProjectId(project_id, limit, offset),
+      getMessagesCountByProjectId(project_id),
+    ]);
     const serialized = serializeMessages(messages);
 
     const res = NextResponse.json({
       success: true,
       data: serialized,
+      totalCount,
       pagination: {
         limit,
         offset,
         count: serialized.length,
+        hasMore: offset + serialized.length < totalCount,
       },
     });
     res.headers.set('Cache-Control', 'no-store');
@@ -59,10 +64,10 @@ export async function GET(
  */
 export async function POST(
   request: NextRequest,
-  context: RouteContext
+  { params }: RouteContext
 ) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     const payload = await request.json();
 
     const content =
@@ -140,10 +145,10 @@ export async function POST(
  */
 export async function DELETE(
   request: NextRequest,
-  context: RouteContext
+  { params }: RouteContext
 ) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     const { searchParams } = new URL(request.url);
     const conversationId =
       searchParams.get('conversationId') ?? searchParams.get('conversation_id') ?? undefined;

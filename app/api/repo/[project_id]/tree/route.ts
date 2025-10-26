@@ -10,9 +10,9 @@ interface RouteContext {
   params: Promise<{ project_id: string }>;
 }
 
-export async function GET(request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, { params }: RouteContext) {
   try {
-    const { project_id } = await context.params;
+    const { project_id } = await params;
     const { searchParams } = new URL(request.url);
     const dir = searchParams.get('dir') ?? '.';
 
