@@ -2647,16 +2647,14 @@ const ToolResultMessage = ({
           const messageText = normalizeChatContent(message.content);
           const isToolMessage = message.messageType === 'tool_result' || isToolUsageMessage(message);
           const toolMessageKey = isToolMessage
-            ? message.id ||
-              computeToolMessageKey(message, messageMetadata) ||
-              `tool-${message.messageType}-${message.createdAt ?? index}`
+            ? ensureStableMessageId(message)
             : null;
           const reactKey = message.id ?? toolMessageKey ?? `message-${index}`;
           const toolExpanded =
-            toolMessageKey != null ? Boolean(expandedToolMessages[toolMessageKey]) : undefined;
+            toolMessageKey != null ? expandedToolMessages[toolMessageKey]?.expanded : undefined;
           const onToggleTool =
             toolMessageKey != null
-              ? (nextExpanded: boolean) => handleToolMessageToggle(toolMessageKey, nextExpanded)
+              ? (nextExpanded: boolean) => handleToolMessageToggle(message, toolMessageKey, nextExpanded)
               : undefined;
 
           return (
