@@ -82,6 +82,7 @@
     "appId": "com.claudable.desktop",
     "productName": "Claudable",
     "files": [
+      "index.js",
       "electron/**/*",
       ".next/standalone/**/*",
       ".next/static/**/*",

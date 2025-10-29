@@ -83,13 +83,30 @@ async function findAvailablePort(startPort = 3000, maxAttempts = 50) {
 }
 
 function ensureStandaloneArtifacts() {
-  const serverPath = path.join(standaloneDir, 'server.js');
-  if (!fs.existsSync(serverPath)) {
-    throw new Error(
-      'The Next.js standalone server file is missing. Run `npm run build` and try again.'
-    );
+  // Support both classic and nested standalone layouts (Next 13–15)
+  const directServer = path.join(standaloneDir, 'server.js');
+  if (fs.existsSync(directServer)) {
+    return directServer;
   }
-  return serverPath;
+
+  // Try common nested layout: .next/standalone/<projectName>/server.js
+  try {
+    const entries = fs.readdirSync(standaloneDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const candidate = path.join(standaloneDir, entry.name, 'server.js');
+        if (fs.existsSync(candidate)) {
+          return candidate;
+        }
+      }
+    }
+  } catch (_) {
+    // fallthrough to error below
+  }
+
+  throw new Error(
+    'The Next.js standalone server file is missing. Run `npm run build` and try again.'
+  );
 }
 
 async function startProductionServer() {
@@ -111,7 +128,7 @@ async function startProductionServer() {
   };
 
   nextServerProcess = spawn(process.execPath, [serverPath], {
-    cwd: standaloneDir,
+    cwd: path.dirname(serverPath),
     env,
     stdio: 'inherit',
     windowsHide: true,
