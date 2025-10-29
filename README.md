@@ -35,7 +35,6 @@ How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and 
 </div>
 
 ## Features
-<img src="https://storage.googleapis.com/claudable-assets/gif/Claudable_v2_cc_4_1080p.gif" alt="Claudable Demo" style="width: 100%; max-width: 800px;">
 
 - **Powerful Agent Performance**: Leverage the full power of Claude Code and Cursor CLI Agent capabilities
 - **Natural Language to Code**: Simply describe what you want to build, and Claudable generates production-ready Next.js code
@@ -45,14 +44,7 @@ How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and 
 - **Deploy to Vercel**: Push your app live with a single click, no configuration needed
 - **GitHub Integration**: Automatic version control and continuous deployment setup
 - **Supabase Database**: Connect production PostgreSQL with authentication ready to use
-
-## Demo Examples
-
-### Codex CLI Example
-<img src="https://storage.googleapis.com/claudable-assets/gif/Claudable_v2_codex_1_1080p.gif" alt="Codex CLI Demo" style="width: 100%; max-width: 800px;">
-
-### Qwen Code Example
-<img src="https://storage.googleapis.com/claudable-assets/gif/Claudable_v2_qwen_1_1080p.gif" alt="Qwen Code Demo" style="width: 100%; max-width: 800px;">
+- **Desktop App**: Available as Electron desktop application for Mac, Windows, and Linux
 
 ## Supported AI Coding Agents
 
@@ -157,6 +149,23 @@ The `npm install` command automatically handles the complete setup:
 1. **Port Configuration**: Detects available ports and creates `.env` files
 2. **Dependencies**: Installs all required Node.js packages
 3. **Database Setup**: SQLite database auto-creates at `data/cc.db` on first run
+
+### Desktop App (Electron)
+
+Build and run Claudable as a desktop application:
+
+```bash
+# Development mode
+npm run dev:desktop
+
+# Build desktop app
+npm run build:desktop
+
+# Package for specific platforms
+npm run package:mac      # macOS
+npm run package:win      # Windows
+npm run package:linux    # Linux
+```
 
 ### Additional Commands
 ```bash
