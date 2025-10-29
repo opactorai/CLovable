@@ -3,6 +3,10 @@ import fs from 'fs/promises';
 import path from 'path';
 import { getProjectById } from '@/lib/services/project';
 
+interface RouteContext {
+  params: Promise<{ project_id: string; filename: string }>;
+}
+
 const PROJECTS_DIR = process.env.PROJECTS_DIR || './data/projects';
 const PROJECTS_DIR_ABSOLUTE = path.isAbsolute(PROJECTS_DIR)
   ? PROJECTS_DIR
@@ -27,7 +31,7 @@ function inferContentType(filename: string): string {
   }
 }
 
-export async function GET(_request: Request, { params }: { params: Promise<{ project_id: string; filename: string }> }) {
+export async function GET(_request: Request, { params }: RouteContext) {
   const { project_id, filename } = await params;
 
   try {
