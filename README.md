@@ -1,6 +1,6 @@
 # Claudable
 
-<img src="./assets/Claudable.png" alt="Claudable" style="width: 100%;" />
+<img src="https://storage.googleapis.com/claudable-assets/Claudable.png" alt="Claudable" style="width: 100%;" />
 <div align="center">
 <h3>Connect CLI Agent • Build what you want • Deploy instantly</h3>
 
@@ -29,15 +29,15 @@ How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and 
 ## Try Clink - Web Service
 <div align="center">
 <a href="https://clink.new">
-<img src="./assets/clink.png" alt="Clink - Link, Click, Ship" style="width: 100%; max-width: 800px;">
+<img src="https://storage.googleapis.com/claudable-assets/clink.png" alt="Clink - Link, Click, Ship" style="width: 100%; max-width: 800px;">
 </a>
 <p>Don't want to set up locally? Try <a href="https://clink.new"><strong>Clink</strong></a> - the web-based version with instant access!</p>
 </div>
 
 ## Features
-<img src="./assets/gif/Claudable_v2_cc_4_1080p.gif" alt="Claudable Demo" style="width: 100%; max-width: 800px;">
+<img src="https://storage.googleapis.com/claudable-assets/gif/Claudable_v2_cc_4_1080p.gif" alt="Claudable Demo" style="width: 100%; max-width: 800px;">
 
-- **Powerful Agent Performance**: Leverage the full power of Claude Code and Cursor CLI Agent capabilities with native MCP support
+- **Powerful Agent Performance**: Leverage the full power of Claude Code and Cursor CLI Agent capabilities
 - **Natural Language to Code**: Simply describe what you want to build, and Claudable generates production-ready Next.js code
 - **Instant Preview**: See your changes immediately with hot-reload as AI builds your app
 - **Zero Setup, Instant Launch**: No complex sandboxes, no API key, no database headaches - just start building immediately
@@ -45,15 +45,14 @@ How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and 
 - **Deploy to Vercel**: Push your app live with a single click, no configuration needed
 - **GitHub Integration**: Automatic version control and continuous deployment setup
 - **Supabase Database**: Connect production PostgreSQL with authentication ready to use
-- **Automated Error Detection**: Detect errors in your app and fix them automatically
 
 ## Demo Examples
 
 ### Codex CLI Example
-<img src="./assets/gif/Claudable_v2_codex_1_1080p.gif" alt="Codex CLI Demo" style="width: 100%; max-width: 800px;">
+<img src="https://storage.googleapis.com/claudable-assets/gif/Claudable_v2_codex_1_1080p.gif" alt="Codex CLI Demo" style="width: 100%; max-width: 800px;">
 
 ### Qwen Code Example
-<img src="./assets/gif/Claudable_v2_qwen_1_1080p.gif" alt="Qwen Code Demo" style="width: 100%; max-width: 800px;">
+<img src="https://storage.googleapis.com/claudable-assets/gif/Claudable_v2_qwen_1_1080p.gif" alt="Qwen Code Demo" style="width: 100%; max-width: 800px;">
 
 ## Supported AI Coding Agents
 
@@ -62,14 +61,14 @@ Claudable supports multiple AI coding agents, giving you the flexibility to choo
 - **Claude Code** - Anthropic's advanced AI coding agent
 - **Codex CLI** - OpenAI's lightweight coding agent
 - **Cursor CLI** - Powerful multi-model AI agent
-- **Gemini CLI** - Google's open-source AI agent
 - **Qwen Code** - Alibaba's open-source coding CLI
+- **Z.AI GLM-4.6** - Zhipu AI's coding agent
 
 ### Claude Code (Recommended)
 **[Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup)** - Anthropic's advanced AI coding agent with Claude Opus 4.1
-- **Features**: Deep codebase awareness, MCP support, Unix philosophy, direct terminal integration
-- **Context**: Native 256K tokens
-- **Pricing**: Included with ChatGPT Plus/Pro/Team/Edu/Enterprise plans
+- **Features**: Deep codebase awareness, Unix philosophy, direct terminal integration
+- **Context**: Native 200k tokens
+- **Pricing**: Requires Anthropic API key or Claude subscription
 - **Installation**:
   ```bash
   npm install -g @anthropic-ai/claude-code
@@ -89,24 +88,13 @@ Claudable supports multiple AI coding agents, giving you the flexibility to choo
 
 ### Cursor CLI
 **[Cursor CLI](https://cursor.com/en/cli)** - Powerful AI agent with access to cutting-edge models
-- **Features**: Multi-model support (Anthropic, OpenAI, Gemini), MCP integration, AGENTS.md support
+- **Features**: Multi-model support (Anthropic, OpenAI), AGENTS.md support
 - **Context**: Model dependent
-- **Pricing**: Free tier available, Pro plans for advanced features
+- **Pricing**: Starting from $20/month Pro plan
 - **Installation**:
   ```bash
   curl https://cursor.com/install -fsS | bash
   cursor-agent login
-  ```
-
-### Gemini CLI
-**[Gemini CLI](https://developers.google.com/gemini-code-assist/docs/gemini-cli)** - Google's open-source AI agent with Gemini 2.5 Pro
-- **Features**: 1M token context window, Google Search grounding, MCP support, extensible architecture
-- **Context**: 1M tokens (with free tier: 60 req/min, 1000 req/day)
-- **Pricing**: Free with Google account, paid tiers for higher limits
-- **Installation**:
-  ```bash
-  npm install -g @google/gemini-cli
-  gemini  # follow authentication flow
   ```
 
 ### Qwen Code
@@ -120,6 +108,13 @@ Claudable supports multiple AI coding agents, giving you the flexibility to choo
   qwen --version
   ```
 
+### Z.AI GLM-4.6
+**[Z.AI GLM-4.6](https://z.ai/subscribe)** - Zhipu AI's coding agent powered by GLM-4.6
+- **Features**: Strong reasoning capabilities and cost-efficient, code generation and understanding
+- **Context**: 200K tokens
+- **Pricing**: Starting from $3/month (GLM Coding Lite) to $30/month (GLM Coding Max), with 50% off first month
+- **Installation**: See [Quick Start Guide](https://docs.z.ai/devpack/quick-start)
+
 ## Technology Stack
 
 **Database & Deployment:**
@@ -132,7 +127,6 @@ Claudable supports multiple AI coding agents, giving you the flexibility to choo
 
 Before you begin, ensure you have the following installed:
 - Node.js 18+
-- Python 3.10+
 - Claude Code or Cursor CLI (already logged in)
 - Git
 
@@ -145,43 +139,24 @@ Get Claudable running on your local machine in minutes:
 git clone https://github.com/opactorai/Claudable.git
 cd Claudable
 
-# Install all dependencies (Node.js and Python)
+# Install all dependencies
 npm install
 
-# Start development servers
+# Start development server
 npm run dev
 ```
 
-Your application will be available at:
-- Frontend: http://localhost:3000
-- API Server: http://localhost:8080
-- API Documentation: http://localhost:8080/docs
+Your application will be available at http://localhost:3000
 
-**Note**: Ports are automatically detected. If the default ports are in use, the next available ports will be assigned.
+**Note**: Ports are automatically detected. If the default port is in use, the next available port will be assigned.
 
 ## Setup
-
-### Manual Setup
-You can also manually setup the project.
-```bash
-# Frontend setup
-cd apps/web
-npm install
-
-# Backend setup
-cd ../api
-python3 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-```
 
 The `npm install` command automatically handles the complete setup:
 
 1. **Port Configuration**: Detects available ports and creates `.env` files
-2. **Node.js Dependencies**: Installs packages including workspace dependencies
-3. **Python Environment**: Creates virtual environment in `apps/api/.venv`
-4. **Python Dependencies**: Installs packages using `uv` (if available) or `pip`
-5. **Database Setup**: SQLite database auto-creates at `data/cc.db` on first run
+2. **Dependencies**: Installs all required Node.js packages
+3. **Database Setup**: SQLite database auto-creates at `data/cc.db` on first run
 
 ### Additional Commands
 ```bash
@@ -193,9 +168,9 @@ npm run db:reset    # Reset database to initial state
                     # Use when: Need fresh start or corrupted data
                     # Warning: This will delete all your data!
 
-npm run clean       # Remove all dependencies and virtual environments
+npm run clean       # Remove all dependencies
                     # Use when: Dependencies conflict or need fresh install
-                    # Removes: node_modules/, apps/api/.venv/, package-lock.json
+                    # Removes: node_modules/, package-lock.json
                     # After running: npm install to reinstall everything
 ```
 
@@ -209,13 +184,9 @@ npm run clean       # Remove all dependencies and virtual environments
 4. **Live Preview**: See changes instantly with hot reload functionality
 5. **Deploy**: Push to production with Vercel integration
 
-### API Development
-
-Access the interactive API documentation at http://localhost:8080/docs to explore available endpoints and test API functionality.
-
 ### Database Operations
 
-Claudable uses SQLite for local development and can be configured for PostgreSQL in production. The database automatically initializes on first run.
+Claudable uses SQLite for local development. The database automatically initializes on first run.
 
 ## Troubleshooting
 
@@ -229,16 +200,6 @@ The application automatically finds available ports. Check the `.env` file to se
 # Clean all dependencies and retry
 npm run clean
 npm install
-```
-
-### Permission Errors (macOS/Linux)
-
-If you encounter permission errors:
-```bash
-cd apps/api
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
 ```
 
 ### Claude Code Permission Issues (Windows/WSL)
@@ -287,9 +248,8 @@ MIT License.
 
 ## Upcoming Features
 These features are in development and will be opened soon.
-- **New CLI Agents** - Trust us, you're going to LOVE this!
+- **Native MCP Support** - Model Context Protocol integration for enhanced agent capabilities
 - **Checkpoints for Chat** - Save and restore conversation/codebase states
-- **Advanced MCP Integration** - Native integration with MCP
 - **Enhanced Agent System** - Subagents, AGENTS.md integration
 - **Website Cloning** - You can start a project from a reference URL.
 - Various bug fixes and community PR merges
