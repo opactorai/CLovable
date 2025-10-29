@@ -62,13 +62,13 @@ Claudable supports multiple AI coding agents, giving you the flexibility to choo
 - **Codex CLI** - OpenAI's lightweight coding agent
 - **Cursor CLI** - Powerful multi-model AI agent
 - **Qwen Code** - Alibaba's open-source coding CLI
-- **GLM CLI** - Zhipu AI's open-source coding agent
+- **Z.AI GLM-4.6** - Zhipu AI's coding agent
 
 ### Claude Code (Recommended)
 **[Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup)** - Anthropic's advanced AI coding agent with Claude Opus 4.1
 - **Features**: Deep codebase awareness, Unix philosophy, direct terminal integration
-- **Context**: Native 256K tokens
-- **Pricing**: Requires Anthropic API key or Claude Pro subscription
+- **Context**: Native 200k tokens
+- **Pricing**: Requires Anthropic API key or Claude subscription
 - **Installation**:
   ```bash
   npm install -g @anthropic-ai/claude-code
@@ -108,16 +108,12 @@ Claudable supports multiple AI coding agents, giving you the flexibility to choo
   qwen --version
   ```
 
-### GLM CLI
-**[GLM CLI](https://z.ai/subscribe)** - Zhipu AI's open-source coding agent with GLM-4 models
+### Z.AI GLM-4.6
+**[Z.AI GLM-4.6](https://z.ai/subscribe)** - Zhipu AI's coding agent powered by GLM-4.6
 - **Features**: Strong reasoning capabilities, code generation and understanding, bilingual support (Chinese/English)
 - **Context**: 200K tokens
-- **Pricing**: Free tier available, API key required for advanced usage
-- **Installation**:
-  ```bash
-  npm install -g @zhipuai/glm-cli
-  glm --version
-  ```
+- **Pricing**: Starting from $9/quarter (GLM Coding Lite) to $90/quarter (GLM Coding Max), with 50% off first quarter
+- **Installation**: See [Quick Start Guide](https://docs.z.ai/devpack/quick-start)
 
 ## Technology Stack
 
