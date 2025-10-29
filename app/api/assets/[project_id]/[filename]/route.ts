@@ -4,7 +4,7 @@ import path from 'path';
 import { getProjectById } from '@/lib/services/project';
 
 interface RouteContext {
-  params: { project_id: string; filename: string };
+  params: Promise<{ project_id: string; filename: string }>;
 }
 
 const PROJECTS_DIR = process.env.PROJECTS_DIR || './data/projects';
@@ -32,7 +32,7 @@ function inferContentType(filename: string): string {
 }
 
 export async function GET(_request: Request, { params }: RouteContext) {
-  const { project_id, filename } = params;
+  const { project_id, filename } = await params;
 
   try {
 

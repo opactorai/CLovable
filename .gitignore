@@ -70,3 +70,7 @@ temp/
 
 # YoYo AI version control directory
 .yoyo/
+
+# Electron build artifacts (too large for GitHub)
+dist/
+release/

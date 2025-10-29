@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createServiceToken } from '@/lib/services/tokens';
+import { createSuccessResponse, handleApiError } from '@/lib/utils/api-response';
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,20 +10,9 @@ export async function POST(request: NextRequest) {
     const name = typeof body?.name === 'string' ? body.name : '';
 
     const record = await createServiceToken(provider, token, name);
-    return NextResponse.json(record, { status: 201 });
+    return createSuccessResponse(record, 201);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    const status = message === 'Invalid provider' || message === 'Token cannot be empty' ? 400 : 500;
-
-    console.error('[Tokens API] Failed to create token:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to save token',
-        message,
-      },
-      { status },
-    );
+    return handleApiError(error, 'Tokens API', 'Failed to save token');
   }
 }
 

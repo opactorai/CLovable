@@ -4,11 +4,12 @@
  * POST /api/projects - Create new project
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getAllProjects, createProject } from '@/lib/services/project';
 import type { CreateProjectInput } from '@/types/backend';
 import { serializeProjects, serializeProject } from '@/lib/serializers/project';
 import { getDefaultModelForCli, normalizeModelId } from '@/lib/constants/cliModels';
+import { createSuccessResponse, createErrorResponse, handleApiError } from '@/lib/utils/api-response';
 
 /**
  * GET /api/projects
@@ -17,17 +18,9 @@ import { getDefaultModelForCli, normalizeModelId } from '@/lib/constants/cliMode
 export async function GET() {
   try {
     const projects = await getAllProjects();
-    return NextResponse.json({ success: true, data: serializeProjects(projects) });
+    return createSuccessResponse(serializeProjects(projects));
   } catch (error) {
-    console.error('[API] Failed to get projects:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to fetch projects',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return handleApiError(error, 'API', 'Failed to fetch projects');
   }
 }
 
@@ -52,27 +45,13 @@ export async function POST(request: NextRequest) {
 
     // Validation
     if (!input.project_id || !input.name) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'project_id and name are required',
-        },
-        { status: 400 }
-      );
+      return createErrorResponse('project_id and name are required', undefined, 400);
     }
 
     const project = await createProject(input);
-    return NextResponse.json({ success: true, data: serializeProject(project) }, { status: 201 });
+    return createSuccessResponse(serializeProject(project), 201);
   } catch (error) {
-    console.error('[API] Failed to create project:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to create project',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return handleApiError(error, 'API', 'Failed to create project');
   }
 }
 
