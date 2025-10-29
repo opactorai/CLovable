@@ -1,6 +1,6 @@
 # Claudable
 
-<img src="./assets/Claudable.png" alt="Claudable" style="width: 100%;" />
+<img src="https://storage.googleapis.com/claudable-assets/Claudable.png" alt="Claudable" style="width: 100%;" />
 <div align="center">
 <h3>Connect CLI Agent • Build what you want • Deploy instantly</h3>
 
@@ -29,13 +29,13 @@ How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and 
 ## Try Clink - Web Service
 <div align="center">
 <a href="https://clink.new">
-<img src="./assets/clink.png" alt="Clink - Link, Click, Ship" style="width: 100%; max-width: 800px;">
+<img src="https://storage.googleapis.com/claudable-assets/clink.png" alt="Clink - Link, Click, Ship" style="width: 100%; max-width: 800px;">
 </a>
 <p>Don't want to set up locally? Try <a href="https://clink.new"><strong>Clink</strong></a> - the web-based version with instant access!</p>
 </div>
 
 ## Features
-<img src="./assets/gif/Claudable_v2_cc_4_1080p.gif" alt="Claudable Demo" style="width: 100%; max-width: 800px;">
+<img src="https://storage.googleapis.com/claudable-assets/gif/Claudable_v2_cc_4_1080p.gif" alt="Claudable Demo" style="width: 100%; max-width: 800px;">
 
 - **Powerful Agent Performance**: Leverage the full power of Claude Code and Cursor CLI Agent capabilities with native MCP support
 - **Natural Language to Code**: Simply describe what you want to build, and Claudable generates production-ready Next.js code
@@ -50,10 +50,10 @@ How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and 
 ## Demo Examples
 
 ### Codex CLI Example
-<img src="./assets/gif/Claudable_v2_codex_1_1080p.gif" alt="Codex CLI Demo" style="width: 100%; max-width: 800px;">
+<img src="https://storage.googleapis.com/claudable-assets/gif/Claudable_v2_codex_1_1080p.gif" alt="Codex CLI Demo" style="width: 100%; max-width: 800px;">
 
 ### Qwen Code Example
-<img src="./assets/gif/Claudable_v2_qwen_1_1080p.gif" alt="Qwen Code Demo" style="width: 100%; max-width: 800px;">
+<img src="https://storage.googleapis.com/claudable-assets/gif/Claudable_v2_qwen_1_1080p.gif" alt="Qwen Code Demo" style="width: 100%; max-width: 800px;">
 
 ## Supported AI Coding Agents
 
