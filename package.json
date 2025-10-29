@@ -87,7 +87,12 @@
       ".next/standalone/**/*",
       ".next/static/**/*",
       "public/**/*",
-      "package.json"
+      "package.json",
+      "!dist{,/**}",
+      "!.next/standalone/dist{,/**}"
+    ],
+    "asarUnpack": [
+      ".next/standalone/**/*"
     ],
     "extraResources": [
       {
