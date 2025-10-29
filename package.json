@@ -3,6 +3,7 @@
   "version": "2.0.0",
   "description": "AI-Powered Web App Builder - Build apps with natural language using Claude Code, Cursor, and more",
   "private": true,
+  "main": "index.js",
   "scripts": {
     "dev": "node scripts/run-web.js",
     "dev:web": "node scripts/run-web.js",
