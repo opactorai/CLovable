@@ -1,0 +1,280 @@
+// Claudable - Prisma Schema (SQLite)
+// Supports both development and production using SQLite
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// Core Models
+// ============================================================
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  status      String   @default("idle") // idle, running, stopped, error
+
+  // Preview (legacy metadata retained for compatibility)
+  previewUrl  String?  @map("preview_url")
+  previewPort Int?     @map("preview_port")
+
+  // Repository
+  repoPath    String?  @map("repo_path")
+
+  // Initial setup
+  initialPrompt String? @map("initial_prompt")
+  templateType  String? @map("template_type") // nextjs, react, vue, etc.
+
+  // AI Session Management
+  activeClaudeSessionId String? @map("active_claude_session_id")
+  activeCursorSessionId String? @map("active_cursor_session_id")
+
+  // CLI Preferences
+  preferredCli  String? @map("preferred_cli") // claude, cursor, codex, gemini, qwen
+  selectedModel String? @map("selected_model") // claude model id (claude-opus-4-1-20250805 | claude-sonnet-4-5-20250929 | claude-haiku-4-5-20251001)
+  fallbackEnabled Boolean @default(false) @map("fallback_enabled")
+
+  // Settings (JSON)
+  settings    String? // JSON string for additional settings
+
+  // Timestamps
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  lastActiveAt DateTime @default(now()) @map("last_active_at")
+
+  // Relations
+  messages              Message[]
+  sessions              Session[]
+  envVars               EnvVar[]
+  serviceConnections    ProjectServiceConnection[]
+  commits               Commit[]
+  toolUsages            ToolUsage[]
+  userRequests          UserRequest[]
+
+  @@map("projects")
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  projectId String   @map("project_id")
+
+  // Message content
+  role         String // user, assistant, system, tool
+  messageType  String @map("message_type") // chat, thinking, tool_use, tool_result, error
+  content      String // Message content (text, markdown, code)
+  metadataJson String? @map("metadata_json") // JSON string for tool info, etc.
+
+  // Thread support
+  parentMessageId String? @map("parent_message_id")
+
+  // Session
+  sessionId      String? @map("session_id")
+  conversationId String? @map("conversation_id")
+
+  // Performance tracking
+  durationMs Int? @map("duration_ms")
+  tokenCount Int? @map("token_count")
+  costUsd    Float? @map("cost_usd")
+
+  // Git integration
+  commitSha String? @map("commit_sha")
+
+  // CLI source
+  cliSource String? @map("cli_source") // claude, cursor, etc.
+
+  // Request ID for client-server message matching
+  requestId String? @map("request_id")
+
+  // Timestamp
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  session Session? @relation(fields: [sessionId], references: [id])
+  toolUsages ToolUsage[]
+
+  @@index([projectId])
+  @@index([sessionId])
+  @@index([createdAt])
+  @@index([cliSource])
+  @@index([requestId])
+  @@map("messages")
+}
+
+model Session {
+  id          String   @id @default(cuid())
+  projectId   String   @map("project_id")
+
+  // Session info
+  sessionType String   @map("session_type") // chat, code_gen, error_fix
+  cliType     String   @map("cli_type") // claude, cursor, codex, gemini, qwen
+  sessionId   String   @map("session_id") // Actual CLI session ID
+  modelName   String?  @map("model_name")
+
+  // Context
+  contextTokens Int?   @map("context_tokens")
+
+  // Status
+  status    String   @default("active") // active, ended, error
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  endedAt   DateTime? @map("ended_at")
+
+  // Relations
+  project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([projectId])
+  @@index([cliType])
+  @@map("sessions")
+}
+
+model ProjectServiceConnection {
+  id        String   @id @default(cuid())
+  projectId String   @map("project_id")
+
+  // Service info
+  provider     String // github, vercel, supabase
+  status       String @default("connected") // connected, disconnected, error
+
+  // Service data (JSON)
+  // GitHub: { repo_url, repo_name, default_branch }
+  // Vercel: { deployment_url, project_id, auto_deploy }
+  // Supabase: { project_url, project_id, database_name }
+  serviceData  String @map("service_data")
+
+  // Timestamps
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  lastSyncAt  DateTime? @map("last_sync_at")
+
+  // Relations
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([provider])
+  @@map("project_service_connections")
+}
+
+model EnvVar {
+  id        String   @id @default(cuid())
+  projectId String   @map("project_id")
+
+  // Environment variable
+  key            String
+  valueEncrypted String  @map("value_encrypted") // AES-256 encrypted
+  scope          String  @default("runtime") // runtime, build, preview
+  varType        String  @default("string") @map("var_type") // string, number, boolean, json
+  isSecret       Boolean @default(true) @map("is_secret")
+  description    String?
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, key])
+  @@index([projectId])
+  @@map("env_vars")
+}
+
+model Commit {
+  id        String   @id @default(cuid())
+  projectId String   @map("project_id")
+
+  // Commit info
+  sha         String
+  message     String
+  authorName  String  @map("author_name")
+  authorEmail String  @map("author_email")
+
+  // Timestamp
+  committedAt DateTime @map("committed_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([committedAt])
+  @@map("commits")
+}
+
+model ToolUsage {
+  id         String   @id @default(cuid())
+  projectId  String   @map("project_id")
+  messageId  String?  @map("message_id")
+
+  // Tool info
+  toolName   String   @map("tool_name") // Read, Write, Edit, Bash, etc.
+  toolInput  String   @map("tool_input") // JSON string
+  toolOutput String?  @map("tool_output")
+  error      String?
+
+  // Performance
+  durationMs Int?     @map("duration_ms")
+
+  // Timestamp
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  message Message? @relation(fields: [messageId], references: [id])
+
+  @@index([projectId])
+  @@index([messageId])
+  @@index([toolName])
+  @@map("tool_usages")
+}
+
+model UserRequest {
+  id          String   @id @default(cuid())
+  projectId   String   @map("project_id")
+
+  // Request info
+  instruction    String
+  cliPreference  String?  @map("cli_preference")
+  status         String   @default("pending") // pending, processing, completed, failed
+  errorMessage   String?  @map("error_message")
+
+  // Timestamps
+  createdAt   DateTime @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+
+  // Relations
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([status])
+  @@map("user_requests")
+}
+
+// ============================================================
+// Service Tokens (Local Development Only)
+// ============================================================
+
+model ServiceToken {
+  id       String   @id @default(cuid())
+
+  // Service info
+  provider String // github, vercel, supabase
+  name     String // User-defined name
+  token    String // Access token (plain text - local only)
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  lastUsed  DateTime? @map("last_used")
+
+  @@index([provider])
+  @@map("service_tokens")
+}
