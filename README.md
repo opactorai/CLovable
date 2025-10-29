@@ -109,9 +109,9 @@ Claudable supports multiple AI coding agents, giving you the flexibility to choo
   ```
 
 ### GLM CLI
-**[GLM CLI](https://github.com/THUDM/GLM-4)** - Zhipu AI's open-source coding agent with GLM-4 models
+**[GLM CLI](https://z.ai/subscribe)** - Zhipu AI's open-source coding agent with GLM-4 models
 - **Features**: Strong reasoning capabilities, code generation and understanding, bilingual support (Chinese/English)
-- **Context**: 128K tokens
+- **Context**: 200K tokens
 - **Pricing**: Free tier available, API key required for advanced usage
 - **Installation**:
   ```bash
