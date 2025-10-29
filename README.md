@@ -88,9 +88,9 @@ Claudable supports multiple AI coding agents, giving you the flexibility to choo
 
 ### Cursor CLI
 **[Cursor CLI](https://cursor.com/en/cli)** - Powerful AI agent with access to cutting-edge models
-- **Features**: Multi-model support (Anthropic, OpenAI, Gemini), AGENTS.md support
+- **Features**: Multi-model support (Anthropic, OpenAI), AGENTS.md support
 - **Context**: Model dependent
-- **Pricing**: Free tier available, Pro plans for advanced features
+- **Pricing**: Starting from $20/month Pro plan
 - **Installation**:
   ```bash
   curl https://cursor.com/install -fsS | bash
@@ -110,9 +110,9 @@ Claudable supports multiple AI coding agents, giving you the flexibility to choo
 
 ### Z.AI GLM-4.6
 **[Z.AI GLM-4.6](https://z.ai/subscribe)** - Zhipu AI's coding agent powered by GLM-4.6
-- **Features**: Strong reasoning capabilities, code generation and understanding, bilingual support (Chinese/English)
+- **Features**: Strong reasoning capabilities and cost-efficient, code generation and understanding
 - **Context**: 200K tokens
-- **Pricing**: Starting from $9/quarter (GLM Coding Lite) to $90/quarter (GLM Coding Max), with 50% off first quarter
+- **Pricing**: Starting from $3/month (GLM Coding Lite) to $30/month (GLM Coding Max), with 50% off first month
 - **Installation**: See [Quick Start Guide](https://docs.z.ai/devpack/quick-start)
 
 ## Technology Stack
@@ -248,7 +248,6 @@ MIT License.
 
 ## Upcoming Features
 These features are in development and will be opened soon.
-- **New CLI Agents** - Trust us, you're going to LOVE this!
 - **Native MCP Support** - Model Context Protocol integration for enhanced agent capabilities
 - **Checkpoints for Chat** - Save and restore conversation/codebase states
 - **Enhanced Agent System** - Subagents, AGENTS.md integration
