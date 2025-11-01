@@ -7,14 +7,26 @@
 <p>Available as a web service at <a href="https://clink.new">clink.new</a></p>
 </div>
 <p align="center">
+<a href="https://github.com/hesreallyhim/awesome-claude-code">
+<img src="https://awesome.re/mentioned-badge.svg" alt="Mentioned in Awesome Claude Code">
+</a>
+<a href="https://twitter.com/aaron_xong">
+<img src="https://img.shields.io/badge/Follow-@aaron__xong-000000?style=flat&logo=x&logoColor=white" alt="Follow Aaron">
+</a>
 <a href="https://discord.gg/NJNbafHNQC">
 <img src="https://img.shields.io/badge/Discord-Join%20Community-7289da?style=flat&logo=discord&logoColor=white" alt="Join Discord Community">
+</a>
+<a href="https://github.com/opactorai/Claudable">
+<img src="https://img.shields.io/github/stars/opactorai/Claudable?style=flat&logo=github&logoColor=white&labelColor=181717&color=f9d71c" alt="GitHub Stars">
+</a>
+<a href="https://github.com/opactorai/Claudable">
+<img src="https://img.shields.io/github/forks/opactorai/Claudable?style=flat&logo=github&logoColor=white&labelColor=181717&color=181717" alt="GitHub Forks">
 </a>
 <a href="https://clink.new">
 <img src="https://img.shields.io/badge/Clink-Web%20Service-000000?style=flat&logo=web&logoColor=white" alt="Clink Web Service">
 </a>
-<a href="https://twitter.com/aaron_xong">
-<img src="https://img.shields.io/badge/Follow-@aaron__xong-000000?style=flat&logo=x&logoColor=white" alt="Follow Aaron">
+<a href="https://github.com/opactorai/Claudable/blob/main/LICENSE">
+<img src="https://img.shields.io/github/license/opactorai/Claudable?style=flat&logo=github&logoColor=white&labelColor=181717&color=181717" alt="License">
 </a>
 </p>
 
@@ -51,7 +63,7 @@ How to start? Simply login to Claude Code (or Cursor CLI), start Claudable, and 
 Claudable supports multiple AI coding agents, giving you the flexibility to choose the best tool for your needs:
 
 - **Claude Code** - Anthropic's advanced AI coding agent
-- **Codex CLI** - OpenAI's lightweight coding agent
+- **Codex CLI** - OpenAI's powerful coding agent
 - **Cursor CLI** - Powerful multi-model AI agent
 - **Qwen Code** - Alibaba's open-source coding CLI
 - **Z.AI GLM-4.6** - Zhipu AI's coding agent
@@ -68,7 +80,7 @@ Claudable supports multiple AI coding agents, giving you the flexibility to choo
   ```
 
 ### Codex CLI
-**[Codex CLI](https://github.com/openai/codex)** - OpenAI's lightweight coding agent with GPT-5 support
+**[Codex CLI](https://github.com/openai/codex)** - OpenAI's powerful coding agent with GPT-5 support
 - **Features**: High reasoning capabilities, local execution, multiple operating modes (interactive, auto-edit, full-auto)
 - **Context**: Varies by model
 - **Pricing**: Included with ChatGPT Plus/Pro/Business/Edu/Enterprise plans
