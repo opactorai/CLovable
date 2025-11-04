@@ -1,0 +1,178 @@
+name: Notify Vercel Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - preview
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TEAM_ID: team_xJUTPlOZeM13wcYNcoLMLvcm
+      VERCEL_PROJECT_ID: prj_3IJoRkx3ITEX465EGYtrC4cLklqe
+    steps:
+      - name: Resolve Slack target
+        id: prepare
+        run: |
+          branch="${GITHUB_REF_NAME}"
+          target="preview"
+          webhook="${{ secrets.SLACK_WEBHOOK_URL_FRONT }}"
+          if [ "$branch" = "main" ]; then
+            target="production"
+            webhook="${{ secrets.SLACK_WEBHOOK_URL_FRONT_PROD }}"
+          fi
+
+          if [ -n "$webhook" ]; then
+            echo "::add-mask::$webhook"
+            echo "webhook=$webhook" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+
+      - name: Send Slack notification (started)
+        if: ${{ steps.prepare.outputs.skip != 'true' }}
+        run: |
+          short_sha="${GITHUB_SHA::7}"
+          target="${{ steps.prepare.outputs.target }}"
+          payload=$(jq -n \
+            --arg branch "$GITHUB_REF_NAME" \
+            --arg target "$target" \
+            --arg sha "$short_sha" \
+            --arg repo "$GITHUB_REPOSITORY" \
+            --arg run "$GITHUB_RUN_ID" \
+            '{
+              text: ("[clink-front] Vercel build started\nBranch: " + $branch + " (" + $target + ")\nCommit: " + $sha + "\nWorkflow: https://github.com/" + $repo + "/actions/runs/" + $run)
+            }'
+          )
+          curl -X POST -H 'Content-type: application/json' --data "$payload" "${{ steps.prepare.outputs.webhook }}"
+
+      - name: Wait for Vercel deployment result
+        if: ${{ steps.prepare.outputs.skip != 'true' }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "VERCEL_TOKEN is not set; skipping Vercel status polling."
+            exit 0
+          fi
+
+          target="${{ steps.prepare.outputs.target }}"
+
+          commit_sha="$GITHUB_SHA"
+          short_sha="${commit_sha:0:7}"
+          team_param=""
+          if [ -n "$VERCEL_TEAM_ID" ]; then
+            team_param="&teamId=$VERCEL_TEAM_ID"
+          fi
+
+          # Try to find deployment by project ID and git source
+          endpoint="https://api.vercel.com/v6/deployments?limit=50&projectId=$VERCEL_PROJECT_ID$team_param"
+
+          echo "Polling Vercel API for deployment (branch: $GITHUB_REF_NAME, target: $target)..."
+          echo "Looking for commit: $short_sha"
+
+          attempt=0
+          max_attempts=60
+          sleep_seconds=15
+          deployment_id=""
+          deployment_url=""
+          deployment_state=""
+          while [ $attempt -lt $max_attempts ]; do
+            attempt=$((attempt + 1))
+            response=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" "$endpoint")
+
+            # Debug: print response on first attempt
+            if [ $attempt -eq 1 ]; then
+              echo "API Response (first attempt):"
+              echo "$response" | jq '.deployments[0:5] | .[] | {uid: .uid, state: .state, target: .target, gitSource: .gitSource, commitSha: .commitSha, created: .created}'
+            fi
+
+            # Match by target and created timestamp (since gitSource and commitSha may be null)
+            # Note: preview deployments have target=null, production has target="production"
+            # We'll take the most recent deployment matching the target
+            deployment_id=$(echo "$response" | jq -r --arg target "$target" '
+              .deployments[] |
+              select(
+                if $target == "production" then .target == "production" else (.target == null or .target == "preview") end
+              ) |
+              .uid' | head -n 1)
+
+            deployment_url=$(echo "$response" | jq -r --arg target "$target" '
+              .deployments[] |
+              select(
+                if $target == "production" then .target == "production" else (.target == null or .target == "preview") end
+              ) |
+              .url' | head -n 1)
+
+            deployment_state=$(echo "$response" | jq -r --arg target "$target" '
+              .deployments[] |
+              select(
+                if $target == "production" then .target == "production" else (.target == null or .target == "preview") end
+              ) |
+              .state' | head -n 1)
+
+            if [ -n "$deployment_state" ] && [ "$deployment_state" != "null" ]; then
+              if [ "$deployment_state" = "READY" ] || [ "$deployment_state" = "ERROR" ] || [ "$deployment_state" = "CANCELED" ]; then
+                break
+              fi
+            fi
+            echo "Attempt $attempt/$max_attempts: deployment not ready yet (state: ${deployment_state:-unknown})."
+            sleep $sleep_seconds
+          done
+
+          if [ -z "$deployment_state" ] || [ "$deployment_state" = "null" ]; then
+            payload=$(jq -n \
+              --arg branch "$GITHUB_REF_NAME" \
+              --arg target "$target" \
+              --arg sha "${GITHUB_SHA::7}" \
+              '{text: ("[clink-front] Vercel deployment not found\nBranch: " + $branch + " (" + $target + ")\nCommit: " + $sha)}'
+            )
+            curl -X POST -H 'Content-type: application/json' --data "$payload" "${{ steps.prepare.outputs.webhook }}"
+            exit 1
+          fi
+
+          if [ "$deployment_state" = "READY" ]; then
+            if [ -n "$deployment_url" ] && [ "$deployment_url" != "null" ]; then
+              payload=$(jq -n \
+                --arg branch "$GITHUB_REF_NAME" \
+                --arg target "$target" \
+                --arg sha "${GITHUB_SHA::7}" \
+                --arg url "$deployment_url" \
+                '{text: ("[clink-front] Vercel build succeeded\nBranch: " + $branch + " (" + $target + ")\nCommit: " + $sha + "\nURL: https://" + $url)}'
+              )
+            else
+              payload=$(jq -n \
+                --arg branch "$GITHUB_REF_NAME" \
+                --arg target "$target" \
+                --arg sha "${GITHUB_SHA::7}" \
+                '{text: ("[clink-front] Vercel build succeeded\nBranch: " + $branch + " (" + $target + ")\nCommit: " + $sha)}'
+              )
+            fi
+            curl -X POST -H 'Content-type: application/json' --data "$payload" "${{ steps.prepare.outputs.webhook }}"
+            exit 0
+          fi
+
+          if [ -n "$deployment_url" ] && [ "$deployment_url" != "null" ]; then
+            payload=$(jq -n \
+              --arg branch "$GITHUB_REF_NAME" \
+              --arg target "$target" \
+              --arg sha "${GITHUB_SHA::7}" \
+              --arg state "$deployment_state" \
+              --arg url "$deployment_url" \
+              '{text: ("[clink-front] Vercel build failed\nBranch: " + $branch + " (" + $target + ")\nCommit: " + $sha + "\nState: " + $state + "\nURL: https://" + $url)}'
+            )
+          else
+            payload=$(jq -n \
+              --arg branch "$GITHUB_REF_NAME" \
+              --arg target "$target" \
+              --arg sha "${GITHUB_SHA::7}" \
+              --arg state "$deployment_state" \
+              '{text: ("[clink-front] Vercel build failed\nBranch: " + $branch + " (" + $target + ")\nCommit: " + $sha + "\nState: " + $state)}'
+            )
+          fi
+          curl -X POST -H 'Content-type: application/json' --data "$payload" "${{ steps.prepare.outputs.webhook }}"
+          exit 1

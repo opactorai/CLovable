@@ -1,0 +1,23 @@
+# Commit
+You are generating a Conventional Commits message ONLY.
+
+HARD REQUIREMENTS:
+- Output EXACTLY ONE LINE and NOTHING ELSE.
+- No newlines, no bullet lists, no markdown, no prose, no code blocks.
+- No lines starting with a hyphen ("-"); never add notes or explanations.
+- The entire output MUST match this regex (anchors at start/end of whole text):
+  \A(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]+\))?: [^\n]{1,50}\z
+- type MUST be lowercase.
+- subject: imperative, ≤50 chars, no trailing period.
+- If no clear scope, omit (scope).
+- Do NOT include body or footers under any circumstances.
+
+ALGORITHM:
+1) Derive the main change; compress to a 1-line subject ≤50 chars.
+2) Choose type from {feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert}.
+3) (Optional) Pick a short scope like auth, ipc, api, ui, app; otherwise omit.
+4) OUTPUT EXACTLY ONE LINE that matches the regex above.
+
+IF INVALID:
+- If your output doesn't match the regex (e.g., contains a newline or starts with "-"),
+  regenerate until it does.
