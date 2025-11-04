@@ -154,6 +154,13 @@ Your application will be available at http://localhost:3000
 
 **Note**: Ports are automatically detected. If the default port is in use, the next available port will be assigned.
 
+## Troubleshooting
+- **Database migration conflicts**: If you upgraded from a previous Claudable version and run into database errors, reset the Prisma database so it matches the latest schema:
+  ```bash
+  npm run prisma:reset
+  ```
+  The command drops and recreates the local database, so back up any data you need before running it.
+
 ## Setup
 
 The `npm install` command automatically handles the complete setup:
