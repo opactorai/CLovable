@@ -49,29 +49,29 @@ def get_display_path(file_path: str) -> str:
 MODEL_MAPPING: Dict[str, Dict[str, str]] = {
     "claude": {
         "opus-4.1": "claude-opus-4-1-20250805",
-        "sonnet-4": "claude-sonnet-4-20250514",
+        "sonnet-4.5": "claude-sonnet-4-5-20250929",
         "opus-4": "claude-opus-4-20250514",
         "haiku-3.5": "claude-3-5-haiku-20241022",
         # Handle claude-prefixed model names
-        "claude-sonnet-4": "claude-sonnet-4-20250514",
+        "claude-sonnet-4.5": "claude-sonnet-4-5-20250929",
         "claude-opus-4.1": "claude-opus-4-1-20250805",
         "claude-opus-4": "claude-opus-4-20250514",
         "claude-haiku-3.5": "claude-3-5-haiku-20241022",
         # Support direct full model names
         "claude-opus-4-1-20250805": "claude-opus-4-1-20250805",
-        "claude-sonnet-4-20250514": "claude-sonnet-4-20250514",
+        "claude-sonnet-4-5-20250929": "claude-sonnet-4-5-20250929",
         "claude-opus-4-20250514": "claude-opus-4-20250514",
         "claude-3-5-haiku-20241022": "claude-3-5-haiku-20241022",
     },
     "cursor": {
         "gpt-5": "gpt-5",
-        "sonnet-4": "sonnet-4",
+        "sonnet-4.5": "sonnet-4.5",
         "opus-4.1": "opus-4.1",
         "sonnet-4-thinking": "sonnet-4-thinking",
         # Handle mapping from unified Claude model names
-        "claude-sonnet-4": "sonnet-4",
+        "claude-sonnet-4.5": "sonnet-4.5",
         "claude-opus-4.1": "opus-4.1",
-        "claude-sonnet-4-20250514": "sonnet-4",
+        "claude-sonnet-4-5-20250929": "sonnet-4.5",
         "claude-opus-4-1-20250805": "opus-4.1",
     },
     "codex": {
@@ -83,8 +83,8 @@ MODEL_MAPPING: Dict[str, Dict[str, str]] = {
         "claude-3.5-sonnet": "claude-3.5-sonnet",
         "claude-3-haiku": "claude-3-haiku",
         # Handle unified model names
-        "sonnet-4": "claude-3.5-sonnet",
-        "claude-sonnet-4": "claude-3.5-sonnet",
+        "sonnet-4.5": "claude-3.5-sonnet",
+        "claude-sonnet-4.5": "claude-3.5-sonnet",
         "haiku-3.5": "claude-3-haiku",
         "claude-haiku-3.5": "claude-3-haiku",
     },

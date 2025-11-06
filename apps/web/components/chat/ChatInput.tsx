@@ -23,11 +23,16 @@ interface ChatInputProps {
   selectedModel?: string;
   thinkingMode?: boolean;
   onThinkingModeChange?: (enabled: boolean) => void;
+  isProcessing?: boolean;
+  onStop?: () => void;
+  onAssistantChange?: (assistant: string) => void;
+  onModelChange?: (model: string) => void;
+  availableModels?: Array<{id: string; name: string}>;
 }
 
-export default function ChatInput({ 
-  onSendMessage, 
-  disabled = false, 
+export default function ChatInput({
+  onSendMessage,
+  disabled = false,
   placeholder = "Ask Claudable...",
   mode = 'act',
   onModeChange,
@@ -35,12 +40,19 @@ export default function ChatInput({
   preferredCli = 'claude',
   selectedModel = '',
   thinkingMode = false,
-  onThinkingModeChange
+  onThinkingModeChange,
+  isProcessing = false,
+  onStop,
+  onAssistantChange,
+  onModelChange,
+  availableModels = []
 }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [showAssistantMenu, setShowAssistantMenu] = useState(false);
+  const [showModelMenu, setShowModelMenu] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -339,39 +351,93 @@ export default function ChatInput({
               )
             )}
             
-            {/* Agent and Model Display */}
+            {/* Agent and Model Dropdowns - Split Chip */}
             {preferredCli && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-full">
-                {/* Agent Icon */}
-                <img 
-                  src={preferredCli === 'claude' ? '/claude.png' : 
-                       preferredCli === 'cursor' ? '/cursor.png' : 
-                       preferredCli === 'qwen' ? '/qwen.png' :
-                       preferredCli === 'gemini' ? '/gemini.png' :
-                       '/oai.png'} 
-                  alt={preferredCli}
-                  className="w-4 h-4"
-                />
-                <span>
-                  {preferredCli === 'claude' ? 'Claude Code' : 
-                   preferredCli === 'cursor' ? 'Cursor Agent' : 
-                   preferredCli === 'qwen' ? 'Qwen Coder' :
-                   preferredCli === 'gemini' ? 'Gemini CLI' :
-                   'Codex CLI'}
-                </span>
+              <div className="flex items-center relative bg-gray-50 dark:bg-gray-800/50 rounded-full">
+                <button
+                  onClick={() => onAssistantChange && setShowAssistantMenu(!showAssistantMenu)}
+                  disabled={!onAssistantChange}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed rounded-l-full"
+                >
+                  <img
+                    src={preferredCli === 'claude' ? '/claude.png' :
+                         preferredCli === 'cursor' ? '/cursor.png' :
+                         preferredCli === 'qwen' ? '/qwen.png' :
+                         preferredCli === 'gemini' ? '/gemini.png' :
+                         '/oai.png'}
+                    alt={preferredCli}
+                    className="w-4 h-4"
+                  />
+                  <span>
+                    {preferredCli === 'claude' ? 'Claude Code' :
+                     preferredCli === 'cursor' ? 'Cursor Agent' :
+                     preferredCli === 'qwen' ? 'Qwen Coder' :
+                     preferredCli === 'gemini' ? 'Gemini CLI' :
+                     'Codex CLI'}
+                  </span>
+                </button>
+
+                {showAssistantMenu && onAssistantChange && (
+                  <div className="absolute bottom-full left-0 mb-2 min-w-[160px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-50">
+                    {[
+                      { id: 'claude', name: 'Claude Code', icon: '/claude.png' },
+                      { id: 'cursor', name: 'Cursor Agent', icon: '/cursor.png' },
+                      { id: 'codex', name: 'Codex CLI', icon: '/oai.png' },
+                      { id: 'qwen', name: 'Qwen Coder', icon: '/qwen.png' },
+                      { id: 'gemini', name: 'Gemini CLI', icon: '/gemini.png' }
+                    ].map(assistant => (
+                      <button
+                        key={assistant.id}
+                        onClick={() => {
+                          onAssistantChange(assistant.id);
+                          setShowAssistantMenu(false);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        <img src={assistant.icon} alt={assistant.name} className="w-4 h-4" />
+                        <span>{assistant.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 {selectedModel && (
-                  <>
-                    <span className="text-gray-400 dark:text-gray-600">•</span>
-                    <span className="text-gray-500 dark:text-gray-500">
-                      {selectedModel === 'claude-sonnet-4' ? 'Sonnet 4' : 
-                       selectedModel === 'claude-opus-4.1' ? 'Opus 4.1' :
-                       selectedModel === 'gpt-5' ? 'GPT-5' :
-                       selectedModel === 'qwen3-coder-plus' ? 'Qwen3 Coder Plus' :
-                       selectedModel === 'gemini-2.5-pro' ? 'Gemini 2.5 Pro' :
-                       selectedModel === 'gemini-2.5-flash' ? 'Gemini 2.5 Flash' :
-                       selectedModel}
-                    </span>
-                  </>
+                    <button
+                      onClick={() => onModelChange && setShowModelMenu(!showModelMenu)}
+                      disabled={!onModelChange}
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed rounded-r-full"
+                    >
+                      <span>
+                        {selectedModel === 'claude-sonnet-4' ? 'Sonnet 4' :
+                         selectedModel === 'claude-sonnet-4-20250514' ? 'Sonnet 4 [1m]' :
+                         selectedModel === 'claude-opus-4.1' ? 'Opus 4.1' :
+                         selectedModel === 'gpt-5' ? 'GPT-5' :
+                         selectedModel === 'qwen3-coder-plus' ? 'Qwen3 Coder Plus' :
+                         selectedModel === 'gemini-2.5-pro' ? 'Gemini 2.5 Pro' :
+                         selectedModel === 'gemini-2.5-flash' ? 'Gemini 2.5 Flash' :
+                         selectedModel}
+                      </span>
+                      {onModelChange && (
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      )}
+                    </button>
+                )}{showModelMenu && onModelChange && availableModels.length > 0 && (
+                  <div className="absolute bottom-full left-32 mb-2 min-w-[180px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-50">
+                    {availableModels.map(model => (
+                      <button
+                        key={model.id}
+                        onClick={() => {
+                          onModelChange(model.id);
+                          setShowModelMenu(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        {model.name}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
             )}
@@ -407,17 +473,32 @@ export default function ChatInput({
                 <span>Chat</span>
               </button>
             </div>
-            
-            
-            {/* Send Button */}
-            <button
-              id="chatinput-send-message-button"
-              type="submit"
-              className="flex size-8 items-center justify-center rounded-full bg-gray-900 dark:bg-white text-white dark:text-gray-900 transition-all duration-150 ease-out disabled:cursor-not-allowed disabled:opacity-50 hover:scale-110 disabled:hover:scale-100"
-              disabled={disabled || (!message.trim() && uploadedImages.length === 0) || isUploading}
-            >
-              <SendHorizontal className="h-4 w-4" />
-            </button>
+
+            <div className="flex flex-col gap-2">
+              {/* Stop Button - shown when processing, always visible above send */}
+              {isProcessing && onStop && (
+                <button
+                  type="button"
+                  onClick={onStop}
+                  className="flex size-8 items-center justify-center rounded-full bg-red-500 hover:bg-red-600 text-white transition-all duration-150 ease-out hover:scale-110"
+                  title="Stop processing"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 6h12v12H6z" />
+                  </svg>
+                </button>
+              )}
+
+              {/* Send Button */}
+              <button
+                id="chatinput-send-message-button"
+                type="submit"
+                className="flex size-8 items-center justify-center rounded-full bg-gray-900 dark:bg-white text-white dark:text-gray-900 transition-all duration-150 ease-out disabled:cursor-not-allowed disabled:opacity-50 hover:scale-110 disabled:hover:scale-100"
+                disabled={disabled || (!message.trim() && uploadedImages.length === 0) || isUploading || isProcessing}
+              >
+                <SendHorizontal className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </div>
       </form>

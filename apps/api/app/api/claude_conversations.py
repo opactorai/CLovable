@@ -1,157 +1,98 @@
-"""
-Claude conversation folder reader
-Reads conversation logs from ~/.claude folders
-"""
-import os
-import json
-from pathlib import Path
-from typing import List, Dict, Any, Optional
-from datetime import datetime
-from fastapi import APIRouter, HTTPException
-import logging
+"""Claude CLI conversation synchronisation endpoints."""
+from __future__ import annotations
 
-logger = logging.getLogger(__name__)
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_db
+from app.models.messages import Message
+from app.services.chat.conversation_summary import get_conversation_summaries
+from app.services.claude.conversation_sync import ClaudeConversationSync
 
 router = APIRouter()
 
 
-def parse_project_path(folder_name: str) -> str:
-    """Convert folder name like '-Users-jkneen-Documents-GitHub-flows-Claudable' to readable path"""
-    # Remove leading dash and replace dashes with slashes
-    if folder_name.startswith('-'):
-        folder_name = folder_name[1:]
-    return '/' + folder_name.replace('-', '/')
-
-
-def read_jsonl_summary(file_path: Path) -> Optional[Dict[str, Any]]:
-    """Read first few lines of JSONL to get conversation summary"""
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            lines = []
-            for i, line in enumerate(f):
-                if i >= 3:  # Read first 3 lines max
-                    break
-                try:
-                    lines.append(json.loads(line.strip()))
-                except json.JSONDecodeError:
-                    continue
-
-            if not lines:
-                return None
-
-            # Extract summary and first message
-            summary = None
-            first_message = None
-            timestamp = None
-
-            for entry in lines:
-                if entry.get('type') == 'summary':
-                    summary = entry.get('summary', 'No summary')
-                elif entry.get('type') == 'user' and not first_message:
-                    msg = entry.get('message', {})
-                    if isinstance(msg, dict):
-                        first_message = msg.get('content', '')
-                    timestamp = entry.get('timestamp')
-
-            return {
-                'summary': summary or 'No summary',
-                'first_message': first_message or '',
-                'timestamp': timestamp,
-                'file_name': file_path.stem
-            }
-    except Exception as e:
-        logger.error(f"Error reading {file_path}: {e}")
-        return None
+@router.post("/claude-conversations/sync")
+async def sync_claude_conversations(
+    force: bool = Query(True, description="Re-import conversations even if they exist"),
+    db: Session = Depends(get_db),
+):
+    """Trigger a sync of Claude CLI logs into the database."""
+    syncer = ClaudeConversationSync(db)
+    result = syncer.sync(force=force)
+    return result
 
 
 @router.get("/claude-conversations")
-async def get_claude_conversations():
-    """Get all Claude conversations from ~/.claude folders"""
-    conversations = {
-        'user': [],  # Global conversations from ~/.claude
-        'project': []  # Project-specific conversations (if any)
+async def list_claude_conversations(db: Session = Depends(get_db)):
+    """Return conversations grouped by project for legacy compatibility."""
+    summaries = get_conversation_summaries(db)
+
+    grouped: dict[str, dict] = {}
+    for summary in summaries:
+        project_id = summary["project_id"]
+        project_group = grouped.setdefault(
+            project_id,
+            {
+                "project_id": project_id,
+                "project_name": summary.get("project_name"),
+                "project_path": summary.get("project_path"),
+                "conversations": [],
+            },
+        )
+        project_group["conversations"].append(
+            {
+                "id": summary["conversation_id"],
+                "summary": summary.get("summary"),
+                "first_message": summary.get("first_message"),
+                "timestamp": summary.get("last_message_at"),
+                "cli_type": summary.get("cli_type"),
+                "source": summary.get("source"),
+            }
+        )
+
+    # Sort conversations within each project by timestamp desc
+    for project_data in grouped.values():
+        project_data["conversations"].sort(
+            key=lambda item: item.get("timestamp") or "",
+            reverse=True,
+        )
+
+    # Keep backwards-compatible shape (user = global projects list)
+    return {
+        "user": list(grouped.values()),
+        "project": [],
     }
-
-    home_dir = Path.home()
-
-    # Read global conversations from ~/.claude/projects
-    global_projects_dir = home_dir / '.claude' / 'projects'
-    if global_projects_dir.exists():
-        for project_folder in global_projects_dir.iterdir():
-            if project_folder.is_dir():
-                project_path = parse_project_path(project_folder.name)
-                project_conversations = []
-
-                # Read all JSONL files in this project folder
-                for jsonl_file in project_folder.glob('*.jsonl'):
-                    conv_data = read_jsonl_summary(jsonl_file)
-                    if conv_data:
-                        conv_data['id'] = jsonl_file.stem
-                        conv_data['project_path'] = project_path
-                        project_conversations.append(conv_data)
-
-                if project_conversations:
-                    # Sort by timestamp (newest first)
-                    project_conversations.sort(
-                        key=lambda x: x.get('timestamp') or '',
-                        reverse=True
-                    )
-
-                    conversations['user'].append({
-                        'project_path': project_path,
-                        'project_name': Path(project_path).name,
-                        'conversations': project_conversations[:10]  # Limit to 10 most recent per project
-                    })
-
-    # Sort projects by most recent conversation
-    conversations['user'].sort(
-        key=lambda x: x['conversations'][0]['timestamp'] if x['conversations'] and x['conversations'][0].get('timestamp') else '',
-        reverse=True
-    )
-
-    # Check current working directory for .claude folder (project-specific)
-    cwd = Path.cwd()
-    local_claude = cwd / '.claude'
-    if local_claude.exists():
-        # For now, just note that it exists
-        # Project-specific conversations might be stored differently
-        conversations['project'] = [{
-            'project_path': str(cwd),
-            'project_name': cwd.name,
-            'conversations': []
-        }]
-
-    return conversations
 
 
 @router.get("/claude-conversations/{conversation_id}")
-async def get_conversation_details(conversation_id: str):
-    """Get full conversation details by ID"""
-    home_dir = Path.home()
-    global_projects_dir = home_dir / '.claude' / 'projects'
+async def get_claude_conversation_detail(
+    conversation_id: str,
+    project_id: str | None = Query(None, description="Project ID owning the conversation"),
+    db: Session = Depends(get_db),
+):
+    """Return the full transcript for a conversation sourced from the database."""
+    query = db.query(Message).filter(Message.conversation_id == conversation_id)
+    if project_id:
+        query = query.filter(Message.project_id == project_id)
 
-    # Search for the conversation file
-    for project_folder in global_projects_dir.iterdir():
-        if project_folder.is_dir():
-            jsonl_file = project_folder / f"{conversation_id}.jsonl"
-            if jsonl_file.exists():
-                messages = []
-                try:
-                    with open(jsonl_file, 'r', encoding='utf-8') as f:
-                        for line in f:
-                            try:
-                                entry = json.loads(line.strip())
-                                if entry.get('type') in ['user', 'assistant']:
-                                    messages.append(entry)
-                            except json.JSONDecodeError:
-                                continue
+    messages = query.order_by(Message.created_at.asc()).all()
+    if not messages:
+        raise HTTPException(status_code=404, detail="Conversation not found")
 
-                    return {
-                        'id': conversation_id,
-                        'project_path': parse_project_path(project_folder.name),
-                        'messages': messages
-                    }
-                except Exception as e:
-                    raise HTTPException(status_code=500, detail=str(e))
-
-    raise HTTPException(status_code=404, detail="Conversation not found")
+    return {
+        "conversation_id": conversation_id,
+        "project_id": messages[0].project_id,
+        "messages": [
+            {
+                "id": message.id,
+                "role": message.role,
+                "content": message.content,
+                "metadata_json": message.metadata_json,
+                "created_at": message.created_at.isoformat() if message.created_at else None,
+                "message_type": message.message_type,
+                "cli_source": message.cli_source,
+            }
+            for message in messages
+        ],
+    }

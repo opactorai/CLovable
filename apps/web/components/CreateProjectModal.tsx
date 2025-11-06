@@ -30,7 +30,7 @@ const CLI_OPTIONS: CLIOption[] = [
     downloadUrl: 'https://github.com/anthropics/claude-code',
     installCommand: 'npm install -g @anthropic-ai/claude-code',
     models: [
-      { id: 'claude-sonnet-4', name: 'Claude Sonnet 4', description: 'Superior coding with 1M context window', supportsImages: true },
+      { id: 'claude-sonnet-4.5', name: 'Claude Sonnet 4.5', description: 'Superior coding with 1M context window', supportsImages: true },
       { id: 'claude-opus-4.1', name: 'Claude Opus 4.1', description: 'Most intelligent model for complex coding tasks', supportsImages: true },
     ],
     features: ['Advanced reasoning', 'Code generation', '1M context window']
@@ -45,7 +45,7 @@ const CLI_OPTIONS: CLIOption[] = [
     installCommand: 'Download from cursor.com',
     models: [
       { id: 'gpt-5', name: 'GPT-5', description: 'Best coding model with expert-level intelligence', supportsImages: true },
-      { id: 'claude-sonnet-4', name: 'Claude Sonnet 4', description: 'State-of-the-art coding capabilities', supportsImages: true },
+      { id: 'claude-sonnet-4.5', name: 'Claude Sonnet 4.5', description: 'State-of-the-art coding capabilities', supportsImages: true },
       { id: 'claude-opus-4.1', name: 'Claude Opus 4.1', description: 'Most powerful model for complex tasks', supportsImages: true },
     ],
     features: ['IDE integration', 'Frontier models', 'Real-time coding']
@@ -117,7 +117,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
   const [projectName, setProjectName] = useState('');
   const [prompt, setPrompt] = useState('');
   const [selectedCLI, setSelectedCLI] = useState<string>('claude');
-  const [selectedModel, setSelectedModel] = useState<string>('claude-opus-4.1');
+  const [selectedModel, setSelectedModel] = useState<string>('claude-sonnet-4.5');
   // Fallback is removed but kept for backward compatibility
   const [fallbackEnabled, setFallbackEnabled] = useState(false);
   const [useDefaultSettings, setUseDefaultSettings] = useState(true);
@@ -215,7 +215,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
         setEnabledCLIs(available);
         const firstCLI = available[0]?.id || 'claude';
         setSelectedCLI(firstCLI);
-        const firstModel = available[0]?.models[0]?.id || 'claude-opus-4.1';
+        const firstModel = available[0]?.models[0]?.id || 'claude-sonnet-4.5';
         setSelectedModel(firstModel);
         setFallbackEnabled(true);
         console.log('Fallback: Selected CLI:', firstCLI, 'Model:', firstModel);
@@ -225,7 +225,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
       // Use available CLIs as fallback
       setEnabledCLIs(CLI_OPTIONS.filter(cli => cli.enabled !== false));
       const fallbackCLI = 'claude';
-      const fallbackModel = 'claude-opus-4.1';
+      const fallbackModel = 'claude-sonnet-4.5';
       setSelectedCLI(fallbackCLI);
       setSelectedModel(fallbackModel);
       setFallbackEnabled(true);
@@ -340,10 +340,10 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
       setSelectedCLI(globalSettings.default_cli || 'claude');
       setFallbackEnabled(globalSettings.fallback_enabled ?? true);
       const cliSettings = globalSettings.cli_settings?.[globalSettings.default_cli || 'claude'];
-      setSelectedModel(cliSettings?.model || 'claude-opus-4.1');
+      setSelectedModel(cliSettings?.model || 'claude-sonnet-4.5');
     } else {
       setSelectedCLI('claude');
-      setSelectedModel('claude-opus-4.1');
+      setSelectedModel('claude-sonnet-4.5');
       setFallbackEnabled(true);
     }
     
@@ -393,7 +393,7 @@ export default function CreateProjectModal({ open, onClose, onCreated, onOpenGlo
     if (useDefaultSettings && globalSettings) {
       finalCLI = globalSettings.default_cli || 'claude';
       const cliSettings = globalSettings.cli_settings?.[finalCLI];
-      finalModel = cliSettings?.model || selectedModel || 'claude-opus-4.1';
+      finalModel = cliSettings?.model || selectedModel || 'claude-sonnet-4.5';
     }
     
     if (!finalCLI || !finalModel) {

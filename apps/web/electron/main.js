@@ -36,7 +36,22 @@ function createWindow() {
   })
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:3000')
+    // Try port 3001 first (Next.js usually uses this when 3000 is busy)
+    const loadDevServer = async () => {
+      try {
+        await mainWindow.loadURL('http://localhost:3001')
+        console.log('Loaded from port 3001')
+      } catch (error) {
+        console.log('Port 3001 failed, trying port 3000...')
+        try {
+          await mainWindow.loadURL('http://localhost:3000')
+          console.log('Loaded from port 3000')
+        } catch (error2) {
+          console.error('Failed to load from both ports:', error2)
+        }
+      }
+    }
+    loadDevServer()
     mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadFile(path.join(__dirname, '../out/index.html'))

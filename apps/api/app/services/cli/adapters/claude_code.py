@@ -5,14 +5,21 @@ Moved from unified_manager.py to a dedicated adapter module.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
+import tempfile
 import uuid
 from datetime import datetime
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
 from app.core.terminal_ui import ui
 from app.models.messages import Message
-from claude_code_sdk import ClaudeSDKClient, ClaudeCodeOptions
+try:
+    from claude_code_sdk import ClaudeSDKClient, ClaudeCodeOptions
+except ImportError:
+    # SDK might have compatibility issues, use None as fallback
+    ClaudeSDKClient = None
+    ClaudeCodeOptions = None
 
 from ..base import BaseCLI, CLIType
 
@@ -65,7 +72,7 @@ class ClaudeCodeCLI(BaseCLI):
                 "mode": "CLI",
                 "models": self.get_supported_models(),
                 "default_models": [
-                    "claude-sonnet-4-20250514",
+                    "claude-sonnet-4-5-20250929",
                     "claude-opus-4-1-20250805",
                 ],
             }
@@ -106,14 +113,36 @@ class ClaudeCodeCLI(BaseCLI):
 
             system_prompt = get_system_prompt()
             ui.debug(f"System prompt loaded: {len(system_prompt)} chars", "Claude SDK")
+            full_system_prompt = system_prompt
+
+            # Windows has an 8191 character command-line limit when prompts are passed
+            # via command arguments. We'll only trim in fallback scenarios where we
+            # cannot use a temporary settings file.
+            trimmed_system_prompt = system_prompt
+            if os.name == "nt":
+                max_prompt_chars = 3000
+                if len(system_prompt) > max_prompt_chars:
+                    trimmed_prompt = system_prompt[:max_prompt_chars]
+                    last_linebreak = trimmed_prompt.rfind("\n")
+                    if last_linebreak > 0:
+                        trimmed_prompt = trimmed_prompt[:last_linebreak]
+                    ui.warning(
+                        (
+                            "System prompt exceeded Windows command length; "
+                            "using trimmed prompt fallback if temporary settings fail"
+                        ),
+                        "Claude SDK",
+                    )
+                    trimmed_system_prompt = trimmed_prompt
         except Exception as e:
             ui.error(f"Failed to load system prompt: {e}", "Claude SDK")
-            system_prompt = (
+            full_system_prompt = (
                 "You are Claude Code, an AI coding assistant specialized in building modern web applications."
             )
+            trimmed_system_prompt = full_system_prompt
 
         # Get CLI-specific model name
-        cli_model = self._get_cli_model_name(model) or "claude-sonnet-4-20250514"
+        cli_model = self._get_cli_model_name(model) or "claude-sonnet-4-5-20250929"
 
         # Add project directory structure for initial prompts
         if is_initial_prompt:
@@ -137,10 +166,42 @@ src/app/page.tsx
 public/
 node_modules/
 </initial_context>"""
-            instruction = instruction + project_structure_info
-            ui.info(
-                f"Added project structure info to initial prompt", "Claude SDK"
-            )
+            if os.name == "nt":
+                ui.warning(
+                    "Skipping extra project structure context on Windows to avoid command length limits",
+                    "Claude SDK",
+                )
+            else:
+                instruction = instruction + project_structure_info
+                ui.info(
+                    f"Added project structure info to initial prompt", "Claude SDK"
+                )
+
+        session_settings_path = None
+        base_settings = {}
+        settings_file_path = os.path.join(project_path, ".claude", "settings.json")
+        if os.path.exists(settings_file_path):
+            try:
+                with open(settings_file_path, "r", encoding="utf-8") as settings_file:
+                    loaded_settings = json.load(settings_file)
+                    if isinstance(loaded_settings, dict):
+                        base_settings = loaded_settings
+                    else:
+                        ui.warning("Existing Claude settings file is not a JSON object; ignoring it", "Claude SDK")
+            except Exception as settings_error:
+                ui.warning(f"Failed to load existing Claude settings: {settings_error}", "Claude SDK")
+        session_settings = dict(base_settings)
+        session_settings["customSystemPrompt"] = full_system_prompt
+        try:
+            temp_settings = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8")
+            json.dump(session_settings, temp_settings, ensure_ascii=False)
+            temp_settings.flush()
+            temp_settings.close()
+            session_settings_path = temp_settings.name
+            ui.debug(f"Wrote temporary Claude settings to {session_settings_path}", "Claude SDK")
+        except Exception as settings_write_error:
+            ui.warning(f"Failed to create temporary settings file for Claude CLI: {settings_write_error}", "Claude SDK")
+            session_settings_path = None
 
         # Configure tools based on initial prompt status
         if is_initial_prompt:
@@ -167,14 +228,22 @@ node_modules/
             ui.debug(f"Disallowed tools: {disallowed_tools}", "Claude SDK")
 
             # Configure Claude Code options with disallowed_tools
-            options = ClaudeCodeOptions(
-                system_prompt=system_prompt,
-                allowed_tools=allowed_tools,
-                disallowed_tools=disallowed_tools,
-                permission_mode="bypassPermissions",
-                model=cli_model,
-                continue_conversation=True,
-            )
+            option_kwargs = {
+                "allowed_tools": allowed_tools,
+                "disallowed_tools": disallowed_tools,
+                "permission_mode": "bypassPermissions",
+                "model": cli_model,
+                "continue_conversation": True,
+                "extra_args": {
+                    "print": None,
+                    "verbose": None,
+                },
+            }
+            if session_settings_path:
+                option_kwargs["settings"] = session_settings_path
+            else:
+                option_kwargs["system_prompt"] = trimmed_system_prompt
+            options = ClaudeCodeOptions(**option_kwargs)
         else:
             # For non-initial prompts: include TodoWrite in allowed tools
             allowed_tools = [
@@ -198,13 +267,21 @@ node_modules/
             ui.debug(f"Allowed tools: {allowed_tools}", "Claude SDK")
 
             # Configure Claude Code options without disallowed_tools
-            options = ClaudeCodeOptions(
-                system_prompt=system_prompt,
-                allowed_tools=allowed_tools,
-                permission_mode="bypassPermissions",
-                model=cli_model,
-                continue_conversation=True,
-            )
+            option_kwargs = {
+                "allowed_tools": allowed_tools,
+                "permission_mode": "bypassPermissions",
+                "model": cli_model,
+                "continue_conversation": True,
+                "extra_args": {
+                    "print": None,
+                    "verbose": None,
+                },
+            }
+            if session_settings_path:
+                option_kwargs["settings"] = session_settings_path
+            else:
+                option_kwargs["system_prompt"] = trimmed_system_prompt
+            options = ClaudeCodeOptions(**option_kwargs)
 
         ui.info(f"Using model: {cli_model}", "Claude SDK")
         ui.debug(f"Project path: {project_path}", "Claude SDK")
@@ -387,10 +464,30 @@ node_modules/
                                 and getattr(message_obj, "type", None) == "result"
                             )
                         ):
+                            # Extract real token usage from result
+                            input_tokens = getattr(message_obj, 'input_tokens', None)
+                            output_tokens = getattr(message_obj, 'output_tokens', None)
+
                             ui.success(
                                 f"Session completed in {getattr(message_obj, 'duration_ms', 0)}ms",
                                 "Claude SDK",
                             )
+
+                            if input_tokens and output_tokens:
+                                ui.info(f"Token usage - Input: {input_tokens}, Output: {output_tokens}", "Claude SDK")
+
+                                # Store real token usage using token tracker
+                                from app.services.token_tracker import token_tracker
+                                from app.core.database import SessionLocal
+
+                                db = SessionLocal()
+                                try:
+                                    if session_id:
+                                        token_tracker.update_session_tokens(
+                                            session_id, input_tokens, output_tokens, db
+                                        )
+                                finally:
+                                    db.close()
 
                             # Create internal result message (hidden from UI)
                             result_message = Message(
@@ -435,6 +532,11 @@ node_modules/
                             )
 
             finally:
+                try:
+                    if session_settings_path and os.path.exists(session_settings_path):
+                        os.remove(session_settings_path)
+                except Exception as cleanup_error:
+                    ui.debug(f"Failed to remove temporary settings file {session_settings_path}: {cleanup_error}", "Claude SDK")
                 # Restore original working directory
                 os.chdir(original_cwd)
 

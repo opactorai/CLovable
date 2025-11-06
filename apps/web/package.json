@@ -11,7 +11,7 @@
     "build": "next build",
     "start": "next start",
     "electron": "electron .",
-    "electron:dev": "concurrently -k \"cross-env NODE_ENV=development npm run dev:no-open\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\"",
+    "electron:dev": "concurrently -k \"cross-env NODE_ENV=development npm run dev:no-open\" \"wait-on http://localhost:3001 && cross-env NODE_ENV=development electron .\"",
     "electron:build": "npm run build && electron-builder",
     "electron:dist": "npm run build && electron-builder --publish never"
   },

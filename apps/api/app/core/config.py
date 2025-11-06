@@ -46,6 +46,15 @@ class Settings(BaseModel):
     
     preview_port_start: int = int(os.getenv("PREVIEW_PORT_START", "3100"))
     preview_port_end: int = int(os.getenv("PREVIEW_PORT_END", "3999"))
+    @property
+    def preview_port_fixed(self) -> int | None:
+        val = os.getenv("PREVIEW_PORT_FIXED")
+        if val and val.strip().lower() in {"", "auto", "none"}:
+            return None
+        elif val:
+            return int(val)
+        else:
+            return 3100
 
 
 settings = Settings()

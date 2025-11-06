@@ -2,13 +2,15 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import type { PointerEvent as ReactPointerEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { motion } from 'framer-motion';
+import { MotionDiv } from '@/lib/motion';
 import { useRouter } from 'next/navigation';
 import CreateProjectModal from '@/components/CreateProjectModal';
+import ImportProjectModal from '@/components/ImportProjectModal';
 import DeleteProjectModal from '@/components/DeleteProjectModal';
 import GlobalSettings from '@/components/GlobalSettings';
 import { useGlobalSettings } from '@/contexts/GlobalSettingsContext';
 import Image from 'next/image';
-import { Image as ImageIcon, Search as SearchIcon } from 'lucide-react';
+import { Image as ImageIcon, MessageSquare, Search as SearchIcon, Star, FolderOpen } from 'lucide-react';
 
 // Ensure fetch is available
 const fetchAPI = globalThis.fetch || fetch;
@@ -20,6 +22,7 @@ type Project = {
   name: string; 
   status?: string; 
   preview_url?: string | null;
+  repo_path?: string | null;
   created_at: string;
   last_active_at?: string | null;
   last_message_at?: string | null;
@@ -33,6 +36,26 @@ type Project = {
   };
 };
 
+type ConversationSummary = {
+  project_id: string;
+  project_name: string;
+  project_path?: string | null;
+  conversation_id: string;
+  summary: string;
+  first_message?: string | null;
+  last_message_at?: string | null;
+  cli_type?: string | null;
+  source?: string | null;
+  pinned?: boolean;
+};
+
+type ConversationGroup = {
+  project: Project;
+  conversations: ConversationSummary[];
+  showProjectRow: boolean;
+  lastTimestamp: string;
+};
+
 // Define assistant brand colors
 const assistantBrandColors: { [key: string]: string } = {
   claude: '#DE7356',
@@ -42,14 +65,25 @@ const assistantBrandColors: { [key: string]: string } = {
   codex: '#000000'
 };
 
-const MIN_SIDEBAR_WIDTH = 240;
-const MAX_SIDEBAR_WIDTH = 420;
+const MIN_SIDEBAR_WIDTH = 450;
+const MAX_SIDEBAR_WIDTH = 800;
+const BUILDING_STATUSES = new Set(['building', 'initializing', 'deploying', 'queued']);
+
+const hexToRgba = (hex: string, alpha: number) => {
+  if (!hex.startsWith('#')) return hex;
+  const normalized = hex.replace('#', '');
+  const bigint = parseInt(normalized.length === 3 ? normalized.split('').map(char => char + char).join('') : normalized, 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
 
 export default function HomePage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [showGlobalSettings, setShowGlobalSettings] = useState(false);
-  const [globalSettingsTab, setGlobalSettingsTab] = useState<'general' | 'ai-assistant'>('ai-assistant');
+  const [showImportProject, setShowImportProject] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; project: Project | null }>({ isOpen: false, project: null });
   const [isDeleting, setIsDeleting] = useState(false);
@@ -60,6 +94,7 @@ export default function HomePage() {
   const [usingGlobalDefaults, setUsingGlobalDefaults] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarPinned, setSidebarPinned] = useState(false);
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [sidebarWidth, setSidebarWidth] = useState(280);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [isDesktopViewport, setIsDesktopViewport] = useState(false);
@@ -67,13 +102,16 @@ export default function HomePage() {
   const [sidebarSearch, setSidebarSearch] = useState('');
   const [cliStatus, setCLIStatus] = useState<{ [key: string]: { installed: boolean; checking: boolean; version?: string; error?: string; } }>({});
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [isElectron, setIsElectron] = useState(false);
+  const [conversationSummaries, setConversationSummaries] = useState<ConversationSummary[]>([]);
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+  const [isSyncingClaude, setIsSyncingClaude] = useState(false);
   
   // Define models for each assistant statically
   const modelsByAssistant = {
     claude: [
-      { id: 'claude-sonnet-4', name: 'Claude Sonnet 4' },
-      { id: 'claude-opus-4.1', name: 'Claude Opus 4.1' }
+      { id: 'claude-sonnet-4', name: 'Sonnet 4' },
+      { id: 'claude-sonnet-4-20250514', name: 'Sonnet 4 [1m]' },
+      { id: 'claude-opus-4.1', name: 'Opus 4.1' }
     ],
     cursor: [
       { id: 'gpt-5', name: 'GPT-5' },
@@ -100,11 +138,6 @@ export default function HomePage() {
   // Sync with Global Settings (until user overrides locally)
   const { settings: globalSettings } = useGlobalSettings();
   
-  // Check if running in Electron
-  useEffect(() => {
-    setIsElectron(typeof window !== 'undefined' && !!(window as any).electronAPI);
-  }, []);
-
   // Check if this is a fresh page load (not navigation)
   useEffect(() => {
     const isPageRefresh = !sessionStorage.getItem('navigationFlag');
@@ -394,15 +427,6 @@ export default function HomePage() {
     const date = new Date(utcDateString);
     const now = new Date();
     
-    // Debug: Log the conversion (remove in production)
-    console.log('Time formatting:', {
-      input: dateString,
-      converted: utcDateString,
-      parsedISO: date.toISOString(),
-      parsedLocal: date.toLocaleString(),
-      nowISO: now.toISOString()
-    });
-    
     // Calculate the actual time difference
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / (1000 * 60));
@@ -438,6 +462,222 @@ export default function HomePage() {
     });
   };
 
+  const matchesSearch = useCallback((term: string, ...parts: Array<string | null | undefined>) => {
+    if (!term) return true;
+    const lowered = term.toLowerCase();
+    return parts.some((part) => part && part.toLowerCase().includes(lowered));
+  }, []);
+
+  const normalizeCliValue = useCallback((value?: string | null) => (value || '').toLowerCase(), []);
+
+  const matchesCliFilter = useCallback((cli?: string | null, source?: string | null) => {
+    if (sidebarCliFilter === 'all') return true;
+    const normalized = normalizeCliValue(cli) || normalizeCliValue(source);
+    if (sidebarCliFilter === 'claude') {
+      return normalized === 'claude' || source === 'claude_log';
+    }
+    return normalized === sidebarCliFilter;
+  }, [normalizeCliValue, sidebarCliFilter]);
+
+const renderChatIcon = (color: string, isAnimating: boolean, size: 'lg' | 'sm' = 'lg') => {
+  const dimension = size === 'lg' ? 'h-9 w-9 rounded-xl' : 'h-7 w-7 rounded-lg';
+  const containerClasses = `relative inline-flex ${dimension} items-center justify-center border transition-all duration-300 shadow-sm backdrop-blur-sm`;
+  const iconColor = color || assistantBrandColors.claude;
+  const baseBackground = size === 'lg' ? 'bg-white/80 dark:bg-white/10' : 'bg-white/70 dark:bg-white/10';
+  const animBackground = isAnimating ? hexToRgba(iconColor, 0.22) : baseBackground;
+  const animShadow = isAnimating ? `0 0 16px ${hexToRgba(iconColor, 0.4)}` : `0 2px 6px ${hexToRgba('#000000', 0.08)}`;
+
+  return (
+    <span
+      className={`${containerClasses} ${isAnimating ? 'border-transparent' : 'border-gray-200/70 dark:border-white/10'} ${baseBackground}`}
+      style={{ color: iconColor, backgroundColor: animBackground, boxShadow: animShadow }}
+    >
+      {isAnimating ? (
+        <>
+          <MotionDiv
+            className="absolute inset-0 rounded-[inherit]"
+            style={{ boxShadow: `0 0 0 1px ${hexToRgba(iconColor, 0.35)}` }}
+            animate={{ opacity: [0.5, 0.15, 0.5], scale: [1, 1.1, 1] }}
+            transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+          />
+          <MotionDiv
+            className="relative block h-4 w-4"
+            style={{
+              backgroundColor: iconColor,
+              mask: 'url(/Symbol_white.png) no-repeat center/contain',
+              WebkitMask: 'url(/Symbol_white.png) no-repeat center/contain'
+            }}
+            animate={{ rotate: 360 }}
+            transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+          />
+        </>
+      ) : (
+        <MessageSquare className="relative h-5 w-5" strokeWidth={2.1} />
+      )}
+    </span>
+  );
+};
+
+const renderShimmerText = (text: string, color: string) => (
+  <span
+      className="relative inline-flex"
+      style={{
+        background: `linear-gradient(90deg,
+          ${hexToRgba(color, 0.25)} 0%,
+          ${hexToRgba(color, 0.75)} 30%,
+          rgba(255,255,255,0.95) 50%,
+          ${hexToRgba(color, 0.75)} 70%,
+          ${hexToRgba(color, 0.25)} 100%)`,
+        backgroundSize: '200% 100%',
+        WebkitBackgroundClip: 'text',
+        backgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+        animation: 'shimmerText 4s linear infinite'
+      }}
+    >
+      {text}
+    </span>
+  );
+
+  const loadConversationSummaries = useCallback(async (searchTerm?: string) => {
+    try {
+      setIsLoadingConversations(true);
+      const url = searchTerm
+        ? `${API_BASE}/api/chat/conversations?search=${encodeURIComponent(searchTerm)}`
+        : `${API_BASE}/api/chat/conversations`;
+      const response = await fetchAPI(url);
+      if (response.ok) {
+        const data = await response.json();
+        setConversationSummaries(Array.isArray(data) ? data.map((item: any) => ({
+          ...item,
+          pinned: Boolean(item.pinned)
+        })) : []);
+      }
+    } catch (error) {
+      console.error('Failed to load conversation summaries:', error);
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  }, []);
+
+  const syncClaudeLogs = useCallback(async () => {
+    try {
+      setIsSyncingClaude(true);
+      await fetchAPI(`${API_BASE}/api/claude-conversations/sync`, { method: 'POST' });
+    } catch (error) {
+      console.warn('Failed to sync Claude logs:', error);
+    } finally {
+      setIsSyncingClaude(false);
+      await loadConversationSummaries();
+    }
+  }, [loadConversationSummaries]);
+
+  const conversationGroups = useMemo<ConversationGroup[]>(() => {
+    const term = sidebarSearch.trim().toLowerCase();
+    const byProject = new Map<string, { project: Project; conversations: ConversationSummary[] }>();
+
+    projects.forEach((project) => {
+      byProject.set(project.id, { project, conversations: [] });
+    });
+
+    conversationSummaries.forEach((summary) => {
+      const group = byProject.get(summary.project_id);
+      if (!group) return;
+      group.conversations.push(summary);
+    });
+
+    const getTimestamp = (value?: string | null): number => {
+      if (!value) return 0;
+      const normalisedValue = value.includes('T') ? value : value.replace(' ', 'T');
+      const parsed = Date.parse(normalisedValue);
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+
+    const groups: ConversationGroup[] = [];
+    byProject.forEach(({ project, conversations }) => {
+      const filteredConversations = conversations.filter((summary) => {
+        if (!matchesCliFilter(summary.cli_type, summary.source)) return false;
+        if (!term) return true;
+        return matchesSearch(term, summary.summary, summary.first_message, summary.project_name, summary.project_path, summary.conversation_id);
+      });
+
+      const projectMatches = matchesCliFilter(project.preferred_cli, undefined) && (
+        !term || matchesSearch(term, project.name, project.repo_path, project.initial_prompt)
+      );
+
+      if (!projectMatches && filteredConversations.length === 0) {
+        return;
+      }
+
+      filteredConversations.sort((a, b) => {
+        const aPinned = Boolean(a.pinned);
+        const bPinned = Boolean(b.pinned);
+        if (aPinned !== bPinned) {
+          return aPinned ? -1 : 1;
+        }
+
+        const aTime = getTimestamp(a.last_message_at);
+        const bTime = getTimestamp(b.last_message_at);
+        return bTime - aTime;
+      });
+
+      const lastTimestamp = filteredConversations[0]?.last_message_at
+        || project.last_message_at
+        || project.created_at;
+
+      groups.push({
+        project,
+        conversations: filteredConversations,
+        showProjectRow: projectMatches,
+        lastTimestamp: lastTimestamp || project.created_at,
+      });
+    });
+
+    // Sort groups by most recent conversation
+    groups.sort((a, b) => {
+      const aFirstConvoTime = a.conversations[0]?.last_message_at;
+      const bFirstConvoTime = b.conversations[0]?.last_message_at;
+      return getTimestamp(bFirstConvoTime) - getTimestamp(aFirstConvoTime);
+    });
+
+    return groups;
+  }, [projects, conversationSummaries, sidebarSearch, matchesCliFilter, matchesSearch]);
+
+  const handleProjectClick = useCallback((projectId: string) => {
+    const params = new URLSearchParams();
+    if (selectedAssistant) params.set('cli', selectedAssistant);
+    if (selectedModel) params.set('model', selectedModel);
+    router.push(`/${projectId}/chat${params.toString() ? `?${params.toString()}` : ''}`);
+  }, [router, selectedAssistant, selectedModel]);
+
+  const handleConversationClick = useCallback((projectId: string, conversationId: string) => {
+    if (!projectId || !conversationId) return;
+    const params = new URLSearchParams();
+    params.set('conversation', conversationId);
+    if (selectedAssistant) params.set('cli', selectedAssistant);
+    if (selectedModel) params.set('model', selectedModel);
+    router.push(`/${projectId}/chat${params.toString() ? `?${params.toString()}` : ''}`);
+  }, [router, selectedAssistant, selectedModel]);
+
+  const toggleConversationPin = useCallback(async (conversationId: string, pinned: boolean) => {
+    try {
+      const response = await fetchAPI(`${API_BASE}/api/chat/conversations/${conversationId}/pin`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned })
+      });
+      if (!response.ok) {
+        console.warn('Failed to update pin state for conversation', conversationId);
+        return;
+      }
+      setConversationSummaries((prev) => prev.map((item) => (
+        item.conversation_id === conversationId ? { ...item, pinned } : item
+      )));
+    } catch (error) {
+      console.error('Failed to toggle conversation pin:', error);
+    }
+  }, []);
+
   async function load() {
     try {
       const r = await fetchAPI(`${API_BASE}/api/projects`);
@@ -454,7 +694,7 @@ export default function HomePage() {
     } catch (error) {
       console.error('Failed to load projects:', error);
     }
-    // Remove call to loadClaudeConversations since we removed Claude folders feature
+    await loadConversationSummaries();
   }
   
   async function onCreated() { await load(); }
@@ -797,6 +1037,13 @@ export default function HomePage() {
     };
   }, [selectedAssistant]);
 
+  useEffect(() => {
+    const sessionKey = 'claudeSyncV1';
+    if (!sessionStorage.getItem(sessionKey)) {
+      syncClaudeLogs().finally(() => sessionStorage.setItem(sessionKey, 'true'));
+    }
+  }, [syncClaudeLogs]);
+
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -857,23 +1104,10 @@ export default function HomePage() {
 
   const agentFilterOptions = [{ id: 'all', name: 'All agents' }, ...assistantOptions];
 
-  const filteredProjects = useMemo(() => {
-    const searchTerm = sidebarSearch.trim().toLowerCase();
-    return projects.filter((project) => {
-      const matchesAgent = sidebarCliFilter === 'all' || project.preferred_cli === sidebarCliFilter;
-      if (!matchesAgent) return false;
-
-      if (!searchTerm) return true;
-      const nameMatches = project.name.toLowerCase().includes(searchTerm);
-      const descriptionMatches = project.initial_prompt?.toLowerCase().includes(searchTerm) ?? false;
-      return nameMatches || descriptionMatches;
-    });
-  }, [projects, sidebarCliFilter, sidebarSearch]);
-
   const sidebarContent = (
     <div className="flex flex-col h-full">
       {/* History header with pin controls */}
-      <div className="p-3 pt-10 border-b border-gray-200 dark:border-white/10">
+      <div className="p-3 pt-10">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 px-2 py-1">
             <h2 className="text-gray-900 dark:text-white font-medium text-lg">History</h2>
@@ -911,7 +1145,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="mt-4 space-y-2">
+        <div className="mt-4 space-y-3">
           <div>
             <label className="sr-only" htmlFor="sidebar-agent-filter">Filter conversations by agent</label>
             <select
@@ -933,131 +1167,157 @@ export default function HomePage() {
             <input
               type="text"
               value={sidebarSearch}
-              onChange={(event) => setSidebarSearch(event.target.value)}
+              onChange={(event) => {
+                setSidebarSearch(event.target.value);
+                loadConversationSummaries(event.target.value);
+              }}
               placeholder="Search conversations"
-              className="w-full rounded-lg border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 pl-9 pr-3 py-2 text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#DE7356]/40"
+              className="w-full rounded-lg border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 pl-9 pr-12 py-2 text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#DE7356]/40"
             />
           </div>
         </div>
       </div>
-      
-      <div className="flex-1 overflow-y-auto p-2">
-        <div className="space-y-1">
-          {projects.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="text-gray-500 text-sm">No conversations yet</p>
-          </div>
-        ) : filteredProjects.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="text-gray-500 text-sm">No conversations match filters</p>
+
+      <div className="flex-1 overflow-y-auto px-2 py-3 space-y-3 select-none">
+        {isLoadingConversations ? (
+          <div className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">Loading conversations…</div>
+        ) : conversationGroups.length === 0 ? (
+          <div className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+            {conversationSummaries.length === 0 ? 'No conversations yet' : 'No conversations match filters'}
           </div>
         ) : (
-          filteredProjects.map((project) => (
-            <div 
-              key={project.id}
-              className="p-2 px-3 rounded-lg transition-all group"
-              onMouseEnter={(e) => {
-                if (project.preferred_cli && assistantBrandColors[project.preferred_cli]) {
-                  e.currentTarget.style.backgroundColor = `${assistantBrandColors[project.preferred_cli]}15`;
+          (() => {
+            const topGroupId = conversationGroups[0]?.project.id;
+            const topConversationId = conversationGroups[0]?.conversations[0]?.conversation_id;
+
+            return conversationGroups.map((group) => {
+              const projectStatusRaw = group.project.status || '';
+              const projectStatus = normalizeCliValue(projectStatusRaw);
+              const isProjectBuilding = BUILDING_STATUSES.has(projectStatus)
+                || projectStatus.includes('build')
+                || projectStatus.includes('deploy')
+                || projectStatus.includes('queue');
+              const isProjectRunning = projectStatus.includes('run') && !projectStatus.includes('preview');
+              const isTopGroup = group.project.id === topGroupId;
+              const isProjectAnimating = isTopGroup && (isProjectBuilding || isProjectRunning);
+              const projectCliColor = group.project.preferred_cli && assistantBrandColors[group.project.preferred_cli]
+                ? assistantBrandColors[group.project.preferred_cli]
+                : '#DE7356';
+
+              const isExpanded = expandedProjects.has(group.project.id);
+              const toggleExpand = (e: React.MouseEvent) => {
+                e.stopPropagation();
+                const newExpanded = new Set(expandedProjects);
+                if (isExpanded) {
+                  newExpanded.delete(group.project.id);
+                } else {
+                  newExpanded.add(group.project.id);
                 }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent';
-              }}
-            >
-              <div
-                className="flex items-center justify-between gap-2 cursor-pointer"
-                onClick={() => {
-                  router.prefetch(`/${project.id}/chat`);
-                  const params = new URLSearchParams();
-                  if (selectedAssistant) params.set('cli', selectedAssistant);
-                  if (selectedModel) params.set('model', selectedModel);
-                  router.push(`/${project.id}/chat${params.toString() ? '?' + params.toString() : ''}`);
-                }}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <div className="relative w-9 h-9 rounded-xl overflow-hidden shadow-sm border border-gray-200 dark:border-white/10 flex items-center justify-center bg-white/80 dark:bg-white/5">
-                      <span className="text-xl select-none" role="img" aria-label="Project avatar">📁</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h3 
-                        className="text-gray-900 dark:text-white text-sm transition-colors truncate"
-                        style={{
-                          '--hover-color': project.preferred_cli && assistantBrandColors[project.preferred_cli] 
-                            ? assistantBrandColors[project.preferred_cli]
-                            : '#DE7356'
-                        } as React.CSSProperties}
-                      >
-                        <span 
-                          className="group-hover:text-[var(--hover-color)]"
-                          style={{ transition: 'color 0.2s' }}
-                        >
-                          {project.name.length > 28 
-                            ? `${project.name.substring(0, 28)}...` 
-                            : project.name
-                          }
-                        </span>
-                      </h3>
-                      <div className="flex items-center gap-2 mt-1">
-                        <div className="text-gray-500 text-xs">
-                          {formatTime(project.last_message_at || project.created_at)}
-                        </div>
-                        {project.preferred_cli && (
-                          <div className="flex items-center gap-1">
-                            <span className="text-gray-400 text-xs">•</span>
-                            <span 
-                              className="text-xs transition-colors"
-                              style={{
-                                color: assistantBrandColors[project.preferred_cli] ? `${assistantBrandColors[project.preferred_cli]}CC` : '#6B7280'
-                              }}
-                            >
-                              {project.preferred_cli === 'claude' ? 'Claude' : 
-                               project.preferred_cli === 'cursor' ? 'Cursor' : 
-                               project.preferred_cli === 'qwen' ? 'Qwen' : 
-                               project.preferred_cli === 'gemini' ? 'Gemini' : 
-                               project.preferred_cli === 'codex' ? 'Codex' : 
-                               project.preferred_cli}
-                            </span>
-                          </div>
+                setExpandedProjects(newExpanded);
+              };
+
+              return (
+              <div key={group.project.id} className="space-y-2">
+                {group.showProjectRow && (
+                  <button
+                    onClick={toggleExpand}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-white/5"
+                  >
+                    <svg className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    <div className="min-w-0 flex-1" onClick={(e) => { e.stopPropagation(); handleProjectClick(group.project.id); }}>
+                      <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
+                        {isProjectAnimating ? renderShimmerText(group.project.name, projectCliColor) : group.project.name}
+                      </p>
+                      <div className="mt-1 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                        <span title={formatFullTime(group.lastTimestamp)}>{formatTime(group.lastTimestamp)}</span>
+                        <span className="text-gray-400">{group.conversations.length} conversations</span>
+                        {group.project.preferred_cli && (
+                          <span className="inline-flex items-center gap-1">
+                            <span
+                              className="h-2 w-2 rounded-full"
+                              style={{ backgroundColor: projectCliColor }}
+                            />
+                            <span>{group.project.preferred_cli.charAt(0).toUpperCase() + group.project.preferred_cli.slice(1)}</span>
+                          </span>
                         )}
                       </div>
                     </div>
-                  </div>
-                </div>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingProject(project);
-                    }}
-                    className="p-1 text-gray-400 hover:text-orange-500 transition-colors"
-                    title="Edit project name"
-                  >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
                   </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openDeleteModal(project);
-                    }}
-                    className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                    title="Delete project"
-                  >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </div>
+                )}
+
+                {isExpanded && group.conversations.map((conversation, index) => {
+                  const conversationCli = conversation.cli_type || (conversation.source === 'claude_log' ? 'claude' : null);
+                  const cliColor = conversationCli && assistantBrandColors[conversationCli]
+                    ? assistantBrandColors[conversationCli]
+                    : '#6B7280';
+                  const summaryText = conversation.summary || conversation.first_message || 'No summary yet';
+                  const conversationTimestamp = conversation.last_message_at || group.lastTimestamp;
+                  const isPrimaryAnimating = isProjectAnimating && index === 0 && conversation.conversation_id === topConversationId;
+                  const isPinnedConversation = Boolean(conversation.pinned);
+
+                  return (
+                    <div
+                      key={conversation.conversation_id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleConversationClick(group.project.id, conversation.conversation_id)}
+                      onKeyDown={(event: ReactKeyboardEvent<HTMLDivElement>) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          handleConversationClick(group.project.id, conversation.conversation_id);
+                        }
+                      }}
+                      className={`flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-[#DE7356]/30 cursor-pointer ${isPinnedConversation ? 'bg-amber-50/70 dark:bg-amber-500/10 border border-amber-200/60 dark:border-amber-500/30' : ''}`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-gray-800 dark:text-gray-100 line-clamp-2">
+                          {isPrimaryAnimating ? renderShimmerText(summaryText, cliColor) : summaryText}
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                          <span title={formatFullTime(conversationTimestamp)}>{formatTime(conversationTimestamp)}</span>
+                          <span className="inline-flex items-center gap-1">
+                            <span
+                              className="h-2 w-2 rounded-full"
+                              style={{ backgroundColor: cliColor }}
+                            />
+                            <span>{conversationCli ? conversationCli.charAt(0).toUpperCase() + conversationCli.slice(1) : 'Claude'}</span>
+                          </span>
+                          {conversation.source === 'claude_log' && (
+                            <span className="rounded-full bg-[#DE7356]/10 px-2 py-0.5 text-[10px] font-medium text-[#DE7356]">Claude log</span>
+                          )}
+                          {isPinnedConversation && (
+                            <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">Pinned</span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          toggleConversationPin(conversation.conversation_id, !isPinnedConversation);
+                        }}
+                        className={`ml-auto mt-1 inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${isPinnedConversation ? 'text-amber-500 hover:bg-amber-500/10' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-white/10'}`}
+                        title={isPinnedConversation ? 'Unpin conversation' : 'Pin conversation'}
+                      >
+                        <Star
+                          className="h-4 w-4"
+                          strokeWidth={isPinnedConversation ? 1.5 : 2}
+                          style={isPinnedConversation ? { fill: 'currentColor' } : undefined}
+                        />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
-            </div>
-          ))
+            );
+            });
+          })()
         )}
       </div>
-      </div>
-      
+
       <div className="p-2 border-t border-gray-200 dark:border-white/10">
         <button 
           onClick={() => setShowGlobalSettings(true)}
@@ -1075,6 +1335,12 @@ export default function HomePage() {
 
   return (
     <div className="flex h-screen relative overflow-hidden bg-white dark:bg-black">
+      <style>{`
+        @keyframes shimmerText {
+          0% { background-position: 200% center; }
+          100% { background-position: -200% center; }
+        }
+      `}</style>
       {/* Radial gradient background from bottom center */}
       <div className="absolute inset-0">
         <div className="absolute inset-0 bg-white dark:bg-black" />
@@ -1172,6 +1438,17 @@ export default function HomePage() {
               <p className="text-xl text-gray-700 dark:text-white/80 font-light tracking-tight">
                 Connect CLI Agent • Build what you want • Deploy instantly
               </p>
+
+              {/* Quick Actions */}
+              <div className="flex items-center gap-3 mt-4">
+                <button
+                  onClick={() => setShowImportProject(true)}
+                  className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                >
+                  <FolderOpen className="w-4 h-4" />
+                  Import Project
+                </button>
+              </div>
             </div>
             
             {/* Image thumbnails */}
@@ -1570,6 +1847,15 @@ export default function HomePage() {
           </motion.div>
         </div>
       )}
+
+      {/* Import Project Modal */}
+      <ImportProjectModal
+        isOpen={showImportProject}
+        onClose={() => setShowImportProject(false)}
+        onImported={() => {
+          load(); // Refresh projects list
+        }}
+      />
     </div>
   );
 }

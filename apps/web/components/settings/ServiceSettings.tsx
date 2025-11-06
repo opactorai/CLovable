@@ -68,6 +68,30 @@ export function ServiceSettings({ projectId, onOpenGlobalSettings }: ServiceSett
       connected: false,
       status: 'disconnected',
       description: 'Connect to Supabase for backend services and database'
+    },
+    {
+      id: 'neon',
+      name: 'Neon',
+      icon: 'neon',
+      connected: false,
+      status: 'disconnected',
+      description: 'Connect to Neon for scalable Postgres database hosting'
+    },
+    {
+      id: 'netlify',
+      name: 'Netlify',
+      icon: 'netlify',
+      connected: false,
+      status: 'disconnected',
+      description: 'Deploy your project to Netlify for fast static hosting'
+    },
+    {
+      id: 'replit',
+      name: 'Replit',
+      icon: 'replit',
+      connected: false,
+      status: 'disconnected',
+      description: 'Connect to Replit for collaborative coding and hosting'
     }
   ]);
   
@@ -101,6 +125,27 @@ export function ServiceSettings({ projectId, onOpenGlobalSettings }: ServiceSett
         return (
           <svg width="16" height="16" viewBox="0 0 76 65" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M37.5274 0L75.0548 65H0L37.5274 0Z" fill="currentColor"/>
+          </svg>
+        );
+      case 'neon':
+        return (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L2 7v10l10 5 10-5V7l-10-5z" fill="#60D9FA"/>
+            <path d="M2 7l10 5 10-5" stroke="#00BFFF" strokeWidth="2"/>
+          </svg>
+        );
+      case 'netlify':
+        return (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M0 0l12 12L24 0H0z" fill="#00C7B7"/>
+            <path d="M0 0l12 12L24 0" stroke="#00A89E" strokeWidth="1"/>
+          </svg>
+        );
+      case 'replit':
+        return (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="10" fill="#6366F1"/>
+            <path d="M8 8h8v8H8z" fill="white"/>
           </svg>
         );
       default:
@@ -174,6 +219,11 @@ export function ServiceSettings({ projectId, onOpenGlobalSettings }: ServiceSett
     
     if (serviceId === 'supabase') {
       setSupabaseModalOpen(true);
+      return;
+    }
+    
+    if (serviceId === 'neon' || serviceId === 'netlify' || serviceId === 'replit') {
+      alert(`${serviceId.charAt(0).toUpperCase() + serviceId.slice(1)} integration coming soon!`);
       return;
     }
     

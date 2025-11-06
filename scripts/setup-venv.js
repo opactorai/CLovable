@@ -20,7 +20,7 @@ function hasUv() {
 }
 
 // Python executable names to try
-const pythonCommands = ['python3', 'python'];
+const pythonCommands = ['python3', 'python', 'py'];
 
 function findPython() {
   for (const cmd of pythonCommands) {
