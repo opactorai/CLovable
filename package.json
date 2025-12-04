@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "description": "AI-Powered Web App Builder - Build apps with natural language using Claude Code, Cursor, and more",
   "private": true,
-  "main": "index.js",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "node scripts/run-web.js",
     "dev:web": "node scripts/run-web.js",
@@ -28,7 +28,7 @@
     "postinstall": "npm run ensure:env"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.1.22",
+    "@anthropic-ai/claude-agent-sdk": "^0.1.58",
     "@prisma/client": "^6.1.0",
     "dotenv": "^16.4.5",
     "framer-motion": "^11.11.17",

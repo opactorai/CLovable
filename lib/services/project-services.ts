@@ -1,11 +1,23 @@
 import { prisma } from '@/lib/db/client';
 import type { ProjectServiceConnection } from '@prisma/client';
 
+/** Deserialized service connection with parsed serviceData */
+export interface DeserializedServiceConnection {
+  id: string;
+  projectId: string;
+  provider: string;
+  status: string;
+  serviceData: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+  lastSyncAt: Date | null;
+}
+
 function serializeServiceData(data: Record<string, unknown>): string {
   return JSON.stringify(data ?? {});
 }
 
-function deserializeServiceData(connection: ProjectServiceConnection) {
+function deserializeServiceData(connection: ProjectServiceConnection): DeserializedServiceConnection {
   try {
     return {
       ...connection,
@@ -25,7 +37,7 @@ function deserializeServiceData(connection: ProjectServiceConnection) {
   }
 }
 
-export async function listProjectServices(projectId: string) {
+export async function listProjectServices(projectId: string): Promise<DeserializedServiceConnection[]> {
   const connections = await prisma.projectServiceConnection.findMany({
     where: { projectId },
     orderBy: { createdAt: 'desc' },
@@ -34,7 +46,7 @@ export async function listProjectServices(projectId: string) {
   return connections.map(deserializeServiceData);
 }
 
-export async function getProjectService(projectId: string, provider: string) {
+export async function getProjectService(projectId: string, provider: string): Promise<DeserializedServiceConnection | null> {
   const connection = await prisma.projectServiceConnection.findFirst({
     where: { projectId, provider },
   });
@@ -46,7 +58,7 @@ export async function upsertProjectServiceConnection(
   projectId: string,
   provider: string,
   serviceData: Record<string, unknown>
-) {
+): Promise<DeserializedServiceConnection> {
   const existing = await prisma.projectServiceConnection.findFirst({
     where: { projectId, provider },
   });
@@ -89,7 +101,7 @@ export async function updateProjectServiceData(
   projectId: string,
   provider: string,
   patch: Record<string, unknown>
-) {
+): Promise<DeserializedServiceConnection> {
   const existing = await prisma.projectServiceConnection.findFirst({
     where: { projectId, provider },
   });

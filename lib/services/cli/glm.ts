@@ -416,7 +416,7 @@ async function executeGLM(
     const response = query({
       prompt: promptWithContext,
       options: {
-        cwd: repoPath,
+        workingDirectory: repoPath,
         additionalDirectories: [repoPath],
         model: normalizedModel,
         resume: sessionId,
