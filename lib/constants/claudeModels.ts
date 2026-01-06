@@ -1,4 +1,5 @@
 export type ClaudeModelId =
+  | 'claude-opus-4-5-20251010'
   | 'claude-opus-4-1-20250805'
   | 'claude-sonnet-4-5-20250929'
   | 'claude-haiku-4-5-20251001';
@@ -16,6 +17,20 @@ export interface ClaudeModelDefinition {
 }
 
 export const CLAUDE_MODEL_DEFINITIONS: ClaudeModelDefinition[] = [
+  {
+    id: 'claude-opus-4-5-20251010',
+    name: 'Claude Opus 4.5',
+    description: 'Latest Opus release with enhanced reasoning and creativity',
+    supportsImages: true,
+    aliases: [
+      'claude-opus-4-5-20251010',
+      'claude-opus-4-5',
+      'claude-opus-4.5',
+      'opus-4-5-20251010',
+      'opus-4-5',
+      'opus-4.5',
+    ],
+  },
   {
     id: 'claude-opus-4-1-20250805',
     name: 'Claude Opus 4.1',
