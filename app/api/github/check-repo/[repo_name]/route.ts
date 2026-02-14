@@ -1,31 +1,29 @@
-import { NextResponse } from 'next/server';
-import { checkRepositoryAvailability } from '@/lib/services/github';
+import { NextResponse } from "next/server";
+import { checkRepositoryAvailabilitySimple } from "@/lib/github-api";
+import { getPlainServiceToken } from "@/lib/services/tokens";
 
-interface RouteContext {
-  params: Promise<{ repo_name: string }>;
-}
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-export async function GET(_request: Request, { params }: RouteContext) {
+export async function GET(
+  _req: Request,
+  { params }: { params: { repo_name: string } }
+) {
   try {
-    const { repo_name } = await params;
-    const result = await checkRepositoryAvailability(repo_name);
-    if (result.exists) {
-      return NextResponse.json({ available: false, username: result.username }, { status: 409 });
+    const token = await getPlainServiceToken("github");
+    if (!token) {
+      return NextResponse.json({ error: "No token" }, { status: 401 });
     }
-    return NextResponse.json({ available: true, username: result.username });
-  } catch (error) {
-    console.error('[API] Failed to check repository availability:', error);
-    const status = error instanceof Error && 'status' in error ? (error as any).status ?? 500 : 500;
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to check repository availability',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status },
+
+    const owner = "YOUR_GITHUB_USERNAME"; // 또는 DB에서 가볍게만
+    const result = await checkRepositoryAvailabilitySimple(
+      token,
+      owner,
+      params.repo_name
     );
+
+    return NextResponse.json(result);
+  } catch (err) {
+    return NextResponse.json({ error: "Failed" }, { status: 500 });
   }
 }
-
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
