@@ -28,5 +28,4 @@ export async function GET(_request: Request, { params }: RouteContext) {
   }
 }
 
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

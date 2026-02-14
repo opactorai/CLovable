@@ -1,3 +1,4 @@
+export const runtime = "edge";
 import { NextResponse } from 'next/server';
 import { getActiveSession } from '@/lib/services/chat-sessions';
 
@@ -30,5 +31,4 @@ export async function GET(_request: Request, { params }: RouteContext) {
   }
 }
 
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
