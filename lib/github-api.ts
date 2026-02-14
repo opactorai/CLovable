@@ -1,4 +1,4 @@
-export async function checkRepositoryAvailabilitySimple(
+export async function checkRepositoryAvailability(
     token: string,
     owner: string,
     repoName: string
