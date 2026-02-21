@@ -1,28 +1,70 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createRepository, getGithubUser } from '@/lib/services/github';
+import { NextRequest, NextResponse } from "next/server";
+import { getPlainServiceToken } from "@/lib/services/tokens";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    if (!body || typeof body !== 'object') {
-      return NextResponse.json({ success: false, error: 'Invalid payload' }, { status: 400 });
+
+    const repoName = body?.repo_name;
+    const description = body?.description ?? "";
+    const isPrivate = body?.private ?? false;
+
+    if (!repoName || typeof repoName !== "string") {
+      return NextResponse.json(
+        { success: false, error: "repo_name is required" },
+        { status: 400 }
+      );
     }
 
-    const repoName = typeof body.repo_name === 'string' ? body.repo_name : undefined;
-    if (!repoName) {
-      return NextResponse.json({ success: false, error: 'repo_name is required' }, { status: 400 });
+    const token = await getPlainServiceToken("github");
+    if (!token) {
+      return NextResponse.json(
+        { success: false, error: "GitHub token not configured" },
+        { status: 401 }
+      );
     }
 
-    const description = typeof body.description === 'string' ? body.description : '';
-    const isPrivate = typeof body.private === 'boolean' ? body.private : false;
-
-    const repo = await createRepository({
-      repoName,
-      description,
-      private: isPrivate,
+    // 1️⃣ 사용자 정보 가져오기
+    const userRes = await fetch("https://api.github.com/user", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+      },
     });
 
-    const user = await getGithubUser();
+    if (!userRes.ok) {
+      throw new Error("Failed to fetch GitHub user");
+    }
+
+    const user = await userRes.json();
+
+    // 2️⃣ 레포 생성
+    const repoRes = await fetch("https://api.github.com/user/repos", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        Accept: "application/vnd.github+json",
+      },
+      body: JSON.stringify({
+        name: repoName,
+        description,
+        private: isPrivate,
+      }),
+    });
+
+    if (!repoRes.ok) {
+      const err = await repoRes.json().catch(() => ({}));
+      return NextResponse.json(
+        { success: false, error: err?.message ?? "Failed to create repo" },
+        { status: repoRes.status }
+      );
+    }
+
+    const repo = await repoRes.json();
 
     return NextResponse.json({
       success: true,
@@ -33,18 +75,14 @@ export async function POST(request: NextRequest) {
       owner: user.login,
     });
   } catch (error) {
-    console.error('[API] Failed to create GitHub repository:', error);
-    const status = error instanceof Error && 'status' in error ? (error as any).status ?? 500 : 500;
+    console.error("[API] Failed to create GitHub repository:", error);
+
     return NextResponse.json(
       {
         success: false,
-        error: 'Failed to create GitHub repository',
-        message: error instanceof Error ? error.message : 'Unknown error',
+        error: "Failed to create GitHub repository",
       },
-      { status },
+      { status: 500 }
     );
   }
 }
-
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';

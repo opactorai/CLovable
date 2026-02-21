@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -12,7 +16,7 @@
     "baseUrl": ".",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "incremental": true,
     "plugins": [
       {
@@ -20,25 +24,50 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"],
-      "@/types/shared": ["./types/shared/index.ts"],
-      "@/types/shared/*": ["./types/shared/*"],
-      "@/types/client": ["./types/client/index.ts"],
-      "@/types/client/*": ["./types/client/*"],
-      "@/types/server": ["./types/server/index.ts"],
-      "@/types/server/*": ["./types/server/*"],
-      "@/types/backend": ["./types/backend/index.ts"],
-      "@/types/backend/*": ["./types/backend/*"],
-      "react-icons/fa": ["./stubs/react-icons-fa.tsx"],
-      "react-icons/si": ["./stubs/react-icons-si.tsx"],
-      "react-icons/vsc": ["./stubs/react-icons-vsc.tsx"]
+      "@/*": [
+        "./*"
+      ],
+      "@/types/shared": [
+        "./types/shared/index.ts"
+      ],
+      "@/types/shared/*": [
+        "./types/shared/*"
+      ],
+      "@/types/client": [
+        "./types/client/index.ts"
+      ],
+      "@/types/client/*": [
+        "./types/client/*"
+      ],
+      "@/types/server": [
+        "./types/server/index.ts"
+      ],
+      "@/types/server/*": [
+        "./types/server/*"
+      ],
+      "@/types/backend": [
+        "./types/backend/index.ts"
+      ],
+      "@/types/backend/*": [
+        "./types/backend/*"
+      ],
+      "react-icons/fa": [
+        "./stubs/react-icons-fa.tsx"
+      ],
+      "react-icons/si": [
+        "./stubs/react-icons-si.tsx"
+      ],
+      "react-icons/vsc": [
+        "./stubs/react-icons-vsc.tsx"
+      ]
     }
   },
   "include": [
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

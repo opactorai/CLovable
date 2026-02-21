@@ -4,10 +4,12 @@ import GlobalSettingsProvider from '@/contexts/GlobalSettingsContext'
 import { AuthProvider } from '@/contexts/AuthContext'
 import Header from '@/components/layout/Header'
 import { Metadata } from 'next'
+import RegisterSW from './RegisterSW'
 
 export const metadata: Metadata = {
   title: 'Claudable',
   description: 'Claudable Application',
+  manifest: '/manifest.json',
   icons: {
     icon: '/Claudable_Icon.png',
   },
@@ -24,6 +26,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <main>{children}</main>
           </GlobalSettingsProvider>
         </AuthProvider>
+
+        {/* 👇 이 줄 추가 */}
+        <RegisterSW />
       </body>
     </html>
   );

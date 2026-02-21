@@ -1,31 +1,33 @@
-import { NextResponse } from 'next/server';
-import { checkRepositoryAvailability } from '@/lib/services/github';
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { checkRepositoryAvailability } from "@/lib/github-api";
+import { getPlainServiceToken } from "@/lib/services/tokens";
 
-interface RouteContext {
-  params: Promise<{ repo_name: string }>;
-}
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-export async function GET(_request: Request, { params }: RouteContext) {
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ repo_name: string }> }
+) {
   try {
-    const { repo_name } = await params;
-    const result = await checkRepositoryAvailability(repo_name);
-    if (result.exists) {
-      return NextResponse.json({ available: false, username: result.username }, { status: 409 });
+    const { repo_name } = await params; // 🔥 여기서 await 해야 함
+
+    const token = await getPlainServiceToken("github");
+    if (!token) {
+      return NextResponse.json({ error: "No GitHub token" }, { status: 401 });
     }
-    return NextResponse.json({ available: true, username: result.username });
-  } catch (error) {
-    console.error('[API] Failed to check repository availability:', error);
-    const status = error instanceof Error && 'status' in error ? (error as any).status ?? 500 : 500;
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to check repository availability',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status },
+
+    const owner = process.env.GITHUB_OWNER!;
+    const result = await checkRepositoryAvailability(
+      token,
+      owner,
+      repo_name
     );
+
+    return NextResponse.json(result);
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ error: "Failed" }, { status: 500 });
   }
 }
-
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
