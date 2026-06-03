@@ -3,7 +3,7 @@
  * Minimal Claude Agent SDK integration configured for Zhipu GLM models.
  */
 
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query } from './agent-sdk';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
