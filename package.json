@@ -30,11 +30,12 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.68",
     "@prisma/client": "^6.1.0",
+    "@supabase/supabase-js": "^2.108.2",
     "dotenv": "^16.4.5",
     "framer-motion": "^11.11.17",
     "highlight.js": "^11.10.0",
     "lucide-react": "^0.460.0",
-    "next": "^15.5.6",
+    "next": "^15.5.19",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-icons": "^5.5.0",

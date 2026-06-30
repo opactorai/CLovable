@@ -1,0 +1,30 @@
+# Claudable Cloud — backend on a single Docker host.
+# The backend container mounts the host Docker socket so its SessionManager can
+# launch sibling workspace containers on the same daemon.
+services:
+  server:
+    build:
+      context: ../server
+      dockerfile: Dockerfile
+    image: claudable-cloud-server:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:-project-artifacts}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      CLAUDE_DEFAULT_MODEL: ${CLAUDE_DEFAULT_MODEL:-claude-sonnet-4-6}
+      WORKSPACE_IMAGE: ${WORKSPACE_IMAGE:-claudable-workspace:latest}
+      MAX_CONCURRENT_WORKSPACES: ${MAX_CONCURRENT_WORKSPACES:-10}
+      WORKSPACES_ROOT: /var/lib/claudable/workspaces
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-*}
+    volumes:
+      # Access to the host Docker daemon to manage workspace containers.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Workspaces must live on the HOST path so sibling containers can bind-mount them.
+      - /var/lib/claudable/workspaces:/var/lib/claudable/workspaces

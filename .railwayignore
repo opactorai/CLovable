@@ -1,0 +1,12 @@
+assets
+node_modules
+.next
+out
+data
+.git
+electron
+release
+dist
+.claude
+*.log
+/server

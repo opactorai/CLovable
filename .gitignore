@@ -74,3 +74,11 @@ temp/
 # Electron build artifacts (too large for GitHub)
 dist/
 release/
+
+# ============================================================
+# Claudable Cloud (server/)
+# ============================================================
+server/node_modules/
+server/dist/
+server/.env
+.env.cloud.local
