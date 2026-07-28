@@ -26,6 +26,7 @@ const defaultSettings: GlobalAISettings = {
     codex: { model: getDefaultModelForCli('codex') },
     qwen: { model: getDefaultModelForCli('qwen') },
     glm: { model: getDefaultModelForCli('glm') },
+    minimax: { model: getDefaultModelForCli('minimax') },
   },
 };
 

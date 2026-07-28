@@ -92,6 +92,18 @@ const CLI_OPTIONS: CLIOption[] = [
     enabled: true,
     models: getModelDefinitionsForCli('glm').map(({ id, name }) => ({ id, name })),
   },
+  {
+    id: 'minimax',
+    name: 'MiniMax CLI',
+    icon: '',
+    description: 'MiniMax agent running through Claude Code runtime',
+    color: 'from-purple-500 to-fuchsia-600',
+    brandColor: '#FF2E5F',
+    downloadUrl: 'https://platform.minimax.io/docs',
+    installCommand: 'npm install -g @anthropic-ai/claude-code',
+    enabled: true,
+    models: getModelDefinitionsForCli('minimax').map(({ id, name }) => ({ id, name })),
+  },
 ];
 
 // Global settings are provided by context
@@ -544,6 +556,11 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                             {cli.id === 'glm' && (
                               <Image src="/glm.svg" alt="GLM" width={32} height={32} className="w-8 h-8" />
                             )}
+                            {cli.id === 'minimax' && (
+                              <div className="w-8 h-8 rounded-md flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: '#FF2E5F' }}>
+                                MM
+                              </div>
+                            )}
                             {cli.id === 'gemini' && (
                               <Image src="/gemini.png" alt="Gemini" width={32} height={32} className="w-8 h-8" />
                             )}
@@ -638,6 +655,38 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                                 <p className="text-[11px] text-gray-500 leading-snug">
                                   Injected as <code className="font-mono">CURSOR_API_KEY</code> and passed to <code className="font-mono">cursor-agent</code>.
                                   Leave blank to rely on the logged-in Cursor CLI session.
+                                </p>
+                              </div>
+                            )}
+                            {cli.id === 'minimax' && (
+                              <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-gray-600 ">
+                                  API Key
+                                </label>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type={apiKeyVisibility[cli.id] ? 'text' : 'password'}
+                                    value={settings.apiKey ?? ''}
+                                    onChange={(e) => setCliApiKey(cli.id, e.target.value)}
+                                    placeholder="Enter MiniMax API key"
+                                    className="flex-1 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-200"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      toggleApiKeyVisibility(cli.id);
+                                    }}
+                                    className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg bg-white transition-colors"
+                                  >
+                                    {apiKeyVisibility[cli.id] ? 'Hide' : 'Show'}
+                                  </button>
+                                </div>
+                                <p className="text-[11px] text-gray-500 leading-snug">
+                                  Stored locally and injected as <code className="font-mono">MINIMAX_API_KEY</code> when running MiniMax.
+                                  Set <code className="font-mono">MINIMAX_REGION</code> to <code className="font-mono">cn_zh</code> to use the China endpoint.
+                                  Leave blank to rely on server environment variables instead.
                                 </p>
                               </div>
                             )}
@@ -918,6 +967,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                   </span>
                   {selectedCLI.id === 'gemini' && 'Authenticate (OAuth or API Key)'}
                   {selectedCLI.id === 'glm' && 'Authenticate (Z.ai DevPack login)'}
+                  {selectedCLI.id === 'minimax' && 'Authenticate (MiniMax API key)'}
                   {selectedCLI.id === 'qwen' && 'Authenticate (Qwen OAuth or API Key)'}
                   {selectedCLI.id === 'codex' && 'Start Codex and sign in'}
                   {selectedCLI.id === 'claude' && 'Start Claude and sign in'}
@@ -930,6 +980,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                      selectedCLI.id === 'codex' ? 'codex' :
                      selectedCLI.id === 'qwen' ? 'qwen' :
                      selectedCLI.id === 'glm' ? 'zai' :
+                     selectedCLI.id === 'minimax' ? 'claude' :
                      selectedCLI.id === 'gemini' ? 'gemini' : ''}
                   </code>
                   <button
@@ -942,6 +993,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                                       selectedCLI.id === 'codex' ? 'codex' :
                                       selectedCLI.id === 'qwen' ? 'qwen' :
                                       selectedCLI.id === 'glm' ? 'zai' :
+                                      selectedCLI.id === 'minimax' ? 'claude' :
                                       selectedCLI.id === 'gemini' ? 'gemini' : '';
                       if (authCmd) navigator.clipboard.writeText(authCmd);
                       showToast('Command copied to clipboard', 'success');
@@ -971,6 +1023,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                      selectedCLI.id === 'codex' ? 'codex --version' :
                      selectedCLI.id === 'qwen' ? 'qwen --version' :
                      selectedCLI.id === 'glm' ? 'zai --version' :
+                     selectedCLI.id === 'minimax' ? 'claude --version' :
                      selectedCLI.id === 'gemini' ? 'gemini --version' : ''}
                   </code>
                   <button
@@ -983,6 +1036,7 @@ export default function GlobalSettings({ isOpen, onClose, initialTab = 'general'
                                         selectedCLI.id === 'codex' ? 'codex --version' :
                                         selectedCLI.id === 'qwen' ? 'qwen --version' :
                                         selectedCLI.id === 'glm' ? 'zai --version' :
+                                        selectedCLI.id === 'minimax' ? 'claude --version' :
                                         selectedCLI.id === 'gemini' ? 'gemini --version' : '';
                       if (versionCmd) navigator.clipboard.writeText(versionCmd);
                       showToast('Command copied to clipboard', 'success');
