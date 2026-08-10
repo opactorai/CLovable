@@ -30,6 +30,9 @@ const DEFAULT_SETTINGS: GlobalSettings = {
     glm: {
       model: getDefaultModelForCli('glm'),
     },
+    minimax: {
+      model: getDefaultModelForCli('minimax'),
+    },
   },
 };
 

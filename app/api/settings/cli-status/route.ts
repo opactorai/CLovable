@@ -10,6 +10,7 @@ import type { CLIStatus } from '@/types/backend';
 import { CODEX_MODEL_DEFINITIONS } from '@/lib/constants/codexModels';
 import { QWEN_MODEL_DEFINITIONS } from '@/lib/constants/qwenModels';
 import { GLM_MODEL_DEFINITIONS } from '@/lib/constants/glmModels';
+import { MINIMAX_MODEL_DEFINITIONS } from '@/lib/constants/minimaxModels';
 import { CURSOR_MODEL_DEFINITIONS } from '@/lib/constants/cursorModels';
 
 const execAsync = promisify(exec);
@@ -132,6 +133,10 @@ export async function GET() {
         installed: false,
         checking: false,
       },
+      minimax: {
+        installed: false,
+        checking: false,
+      },
     };
 
     // Check Claude Code CLI installation
@@ -177,6 +182,16 @@ export async function GET() {
       checking: false,
       error: glmStatus.error,
       models: GLM_MODEL_DEFINITIONS.map((model) => model.id),
+    };
+
+    // MiniMax reuses the Claude Code runtime (Anthropic-compatible endpoint)
+    const minimaxStatus = claudeStatus;
+    status.minimax = {
+      installed: minimaxStatus.installed,
+      version: minimaxStatus.version,
+      checking: false,
+      error: minimaxStatus.error,
+      models: MINIMAX_MODEL_DEFINITIONS.map((model) => model.id),
     };
 
     return NextResponse.json(status);

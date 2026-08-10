@@ -98,6 +98,22 @@ const CLI_OPTIONS: CLIOption[] = [
     })),
     features: ['Claude-compatible runtime', 'GLM 4.6 reasoning', 'Text-only mode'],
   },
+  {
+    id: 'minimax',
+    name: 'MiniMax CLI',
+    icon: '🟣',
+    description: 'MiniMax agent running via Claude Code runtime',
+    color: 'from-purple-500 to-fuchsia-600',
+    downloadUrl: 'https://platform.minimax.io/docs',
+    installCommand: 'npm install -g @anthropic-ai/claude-code',
+    models: getModelDefinitionsForCli('minimax').map(({ id, name, description, supportsImages }) => ({
+      id,
+      name,
+      description,
+      supportsImages,
+    })),
+    features: ['Claude-compatible runtime', 'MiniMax M3 reasoning', 'Multimodal input'],
+  },
 ];
 
 function generateUUID() {
